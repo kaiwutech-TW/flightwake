@@ -60,6 +60,13 @@ npx github:kaiwutech-TW/flightwake init        # 升級既有安裝:加 --force
 
 init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claude/skills/`、把 Stop hook 併入 `.claude/settings.json`、把觸發義務表(含 `<!-- flightwake:begin/end -->` 標記)附加到 CLAUDE.md(或提示你手動貼 `snippets/CLAUDE-md-snippet.md`)。**純檔案複製,零執行期依賴**(Node ≥18 只在安裝與 hook 時用)— 與既有 GSD `.planning/` 可並存(舊紀錄即歷史檔案)。使用者資料(STATE/DECISIONS/TRAPS)任何情況下都不覆蓋;`--force` 只更新框架擁有的 skill/hook/模板/片段。
 
+## 安全性
+
+- **零依賴、無網路、無 install script**:安裝器只做檔案複製;hook 只用 `git`(無 shell)做唯讀查詢。
+- **寫入範圍固定**:`init` 只碰 `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`、CLAUDE.md。
+- **hook 進 git**:`.flightwake/hooks/state-check.mjs` 是 repo 內的檔案,能 commit 的人就能改——與所有 repo-local 設定同級,Claude Code 載入時會要求確認。
+- 漏洞回報見 [SECURITY.md](SECURITY.md)。開源後將以 npm Trusted Publishing 發布(附 provenance),使用者可用 `npm audit signatures` 驗證。
+
 ## 起源
 
 從 2026-07-15~17 的一個真實三日 session 萃取(repo-A × repo-B 雙 repo,19 commits、4 條 cron、2 個深層 bug 修復,全程無事前計畫、零走偏)。該 session 留下的 SUMMARY/CONTEXT/記憶檔就是本框架三個模板的原型。
