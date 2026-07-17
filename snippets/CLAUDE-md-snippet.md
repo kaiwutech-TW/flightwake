@@ -1,5 +1,4 @@
-# flightwake 觸發義務(貼進目標 repo 的 CLAUDE.md)
-
+<!-- flightwake 觸發義務片段 — init 會將本檔內容(不含此註解)附加進目標 repo 的 CLAUDE.md -->
 ## flightwake 工作紀律
 
 本 repo 使用 flightwake(行車記錄器式工作框架):**記錄追隨工作,不引導工作**。
