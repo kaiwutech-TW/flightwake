@@ -48,7 +48,7 @@ for (const s of readdirSync(join(FW_SRC, 'skills'))) {
 }
 
 // 3. CLAUDE.md 片段(找到就附加;已含標記則跳過)
-const snippet = readFileSync(join(FW_SRC, 'snippets', 'CLAUDE-md-snippet.md'), 'utf8');
+const snippet = readFileSync(join(FW_SRC, 'snippets', 'CLAUDE-md-snippet.md'), 'utf8').replace(/^<!--[\s\S]*?-->\n?/, '');
 const candidates = [join(TARGET, '.claude', 'CLAUDE.md'), join(TARGET, 'CLAUDE.md')];
 const cmdFile = candidates.find((p) => existsSync(p));
 if (!cmdFile) {

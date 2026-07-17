@@ -44,7 +44,7 @@ if [ -e "$TARGET/CLAUDE.md" ] || [ -e "$TARGET/.claude/CLAUDE.md" ]; then
   if grep -q "flightwake 工作紀律" "$CMD_FILE"; then
     echo "  skip CLAUDE.md 片段(已安裝)"
   else
-    { echo ""; cat "$SNIPPET"; } >> "$CMD_FILE"
+    { echo ""; sed "1{/^<!--/d;}" "$SNIPPET"; } >> "$CMD_FILE"
     echo "  append CLAUDE.md ← 觸發義務表($CMD_FILE)"
   fi
 else
