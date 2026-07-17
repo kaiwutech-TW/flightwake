@@ -17,7 +17,7 @@ description: flightwake 跨 session 交接 — 為「還沒做完、之後要繼
    - **下一步**:具體到「打開哪個檔案/跑哪個指令」
 2. 開放問題單獨列——**需要問人的標「需與 X 確認」**,不要讓下個 session 用猜的
 3. 更新 STATE:進行中 + 下一步入口指向此 CONTEXT
-4. commit + push(交接物必須離開本機)
+4. commit;並向使用者提議 push(交接物離開本機才保險,但 push 由使用者決定)
 
 ## 與 GSD phase 的關係
 

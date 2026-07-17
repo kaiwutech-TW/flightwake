@@ -31,12 +31,21 @@ GSD 是 **stage-driven**(research→plan→execute→verify 關卡制);flightwak
 ```
 your-repo/
 ├── .flightwake/
-│   ├── STATE.md        # 現在在哪、下一步入口(永遠短、永遠新)
-│   ├── DECISIONS.md    # append-only 決策日誌(一行一決策,記 why)
-│   ├── TRAPS.md        # 坑registry(OKF 式 frontmatter 條目)
-│   └── records/        # 飛行紀錄(每次有意義的收尾一份)
-└── .claude/skills/fw-*/  # 四個 skill
+│   ├── STATE.md             # 現在在哪、下一步入口(永遠短、永遠新)
+│   ├── DECISIONS.md         # append-only 決策日誌(一行一決策,記 why)
+│   ├── TRAPS.md             # 坑registry(OKF 式 frontmatter 條目)
+│   ├── TEMPLATE-record.md   # 飛行紀錄模板
+│   ├── hooks/state-check.mjs  # Stop hook:STATE 落後 ≥3 commits 時提醒收尾
+│   └── records/             # 飛行紀錄(每次有意義的收尾一份)
+├── .claude/skills/fw-*/     # 四個 skill
+└── .claude/settings.json    # init 併入 Stop hook 設定
 ```
+
+## 與 Claude Code 記憶功能的分工
+
+Claude Code 的持久記憶(memory 目錄)與 flightwake 同形(frontmatter + `[[連結]]`)但不同層:
+**記憶是單機單人的;flightwake 的檔案進 git,隨 repo 共享給團隊、CI 與任何 agent。**
+分工規則:repo 的事實(坑、決策、狀態)進 flightwake;個人偏好與跨專案習慣進記憶。同一件事不要雙寫。
 
 ## 與 OKF 的關係(分層,不競爭)
 
@@ -45,12 +54,11 @@ your-repo/
 ## 安裝
 
 ```bash
-git clone https://github.com/kaiwutech-TW/flightwake.git
 cd your-repo
-bash /path/to/flightwake/bin/init.sh
+npx github:kaiwutech-TW/flightwake init        # 升級既有安裝:加 --force
 ```
 
-init 會:建 `.flightwake/`(模板)、複製 4 個 skill 到 `.claude/skills/`、把觸發義務表附加到 CLAUDE.md(或提示你手動貼 `snippets/CLAUDE-md-snippet.md`)。**純檔案複製,零執行期依賴** — 與既有 GSD `.planning/` 可並存(舊紀錄即歷史檔案)。
+init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claude/skills/`、把 Stop hook 併入 `.claude/settings.json`、把觸發義務表(含 `<!-- flightwake:begin/end -->` 標記)附加到 CLAUDE.md(或提示你手動貼 `snippets/CLAUDE-md-snippet.md`)。**純檔案複製,零執行期依賴**(Node ≥18 只在安裝與 hook 時用)— 與既有 GSD `.planning/` 可並存(舊紀錄即歷史檔案)。使用者資料(STATE/DECISIONS/TRAPS)任何情況下都不覆蓋;`--force` 只更新框架擁有的 skill/hook/模板/片段。
 
 ## 起源
 

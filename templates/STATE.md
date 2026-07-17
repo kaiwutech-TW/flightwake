@@ -1,12 +1,12 @@
-<!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
-<!-- 規則:只寫「現在」與「下一步」;歷史去 records/,決策去 DECISIONS.md。 -->
-<!-- 冷啟動契約:讀完本檔 + latest_record 必須能在 5 分鐘內安全接手。 -->
 ---
 updated: {{DATE}}
 updated_by: {{SESSION_OR_PERSON}}
 latest_record: records/{{YYMMDD}}-{{slug}}.md
 health: green   # green | yellow(有未驗證變更) | red(已知壞掉)
 ---
+<!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
+<!-- 規則:只寫「現在」與「下一步」;歷史去 records/,決策去 DECISIONS.md。 -->
+<!-- 冷啟動契約:讀完本檔 + latest_record 必須能在 5 分鐘內安全接手。 -->
 
 # 現在在哪
 

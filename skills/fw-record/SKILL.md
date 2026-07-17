@@ -9,8 +9,9 @@ description: flightwake 收尾記錄 — 寫飛行紀錄並更新 STATE。Use wh
 
 ## 步驟
 
-1. 盤點本段工作:`git log --oneline` 找出範圍內的 commits;回想關鍵發現/決策/驗證
-2. 依 `templates/records/TEMPLATE-record.md` 寫 `.flightwake/records/YYMMDD-slug.md`:
+1. 盤點本段工作:`git log --oneline "$(git log -1 --format=%H -- .flightwake/STATE.md)"..HEAD`
+   列出自上次收尾以來的 commits(STATE 從未 commit 時直接 `git log --oneline -20`);回想關鍵發現/決策/驗證
+2. 依 `.flightwake/TEMPLATE-record.md` 寫 `.flightwake/records/YYMMDD-slug.md`:
    - TL;DR 兩三句(起點問題 → 終點狀態)
    - 關鍵發現按重要性排序;夠格的**同步登進 TRAPS**(用 /fw-trap 格式)**與 DECISIONS**
    - commits 對照表、驗證證據、未完交接

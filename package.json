@@ -1,12 +1,13 @@
 {
   "name": "flightwake",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Flight-recorder style work framework for strong AI coding agents — records follow work, they don't lead it. ✈️",
   "bin": {
     "flightwake": "bin/cli.mjs"
   },
   "files": [
     "bin/",
+    "hooks/",
     "templates/",
     "skills/",
     "snippets/",
@@ -22,5 +23,5 @@
   },
   "author": "kaiwutech-TW",
   "license": "UNLICENSED",
-  "private": false
+  "private": true
 }

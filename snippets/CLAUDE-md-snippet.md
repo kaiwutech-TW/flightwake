@@ -9,7 +9,7 @@
 | 本 session 首次要動這個 repo | 先跑 `/fw-coldstart`(讀 `.flightwake/STATE.md` + 最近 record,回報後才動手) |
 | 做出關掉其他選項的決策 | 一行 append 進 `.flightwake/DECISIONS.md`(含 why) |
 | 發現非顯而易見的坑 | 當下 `/fw-trap` 登進 `.flightwake/TRAPS.md` |
-| 動 schema / 動 prod / 累計 3+ commits | 收尾 `/fw-record`(飛行紀錄 + 更新 STATE) |
+| 動 schema / 動 prod / 自上次 record ≥3 commits | 收尾 `/fw-record`(飛行紀錄 + 更新 STATE;Stop hook 會在落後時提醒) |
 | 跨 session 的建設要停手 | `/fw-handoff`(寫 CONTEXT,停手前寫、不是開工前) |
 | session 結束 | STATE 必須反映真實現況(health 誠實標色) |
 
