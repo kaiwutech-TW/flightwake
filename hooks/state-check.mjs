@@ -11,7 +11,11 @@ const THRESHOLD = 3;
 const STATE = '.flightwake/STATE.md';
 
 let input = {};
-try { input = JSON.parse(readFileSync(0, 'utf8')); } catch {}
+// stdin 只在非 TTY(hook 情境:Claude Code pipe JSON 進來)才讀 — 手動執行時
+// readFileSync(0) 會因 stdin 不關閉而永久阻塞(2026-07-17 dashboard 手測 2 分鐘 timeout 坐實)
+if (!process.stdin.isTTY) {
+  try { input = JSON.parse(readFileSync(0, 'utf8')); } catch {}
+}
 if (input.stop_hook_active) process.exit(0); // 已在 hook 觸發的續跑中,避免循環
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
