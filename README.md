@@ -69,7 +69,7 @@ init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claud
 
 ## 起源
 
-從 2026-07-15~17 的一個真實三日 session 萃取(repo-A × repo-B 雙 repo,19 commits、4 條 cron、2 個深層 bug 修復,全程無事前計畫、零走偏)。該 session 留下的 SUMMARY/CONTEXT/記憶檔就是本框架三個模板的原型。
+從 2026-07-15~17 的一個真實三日 session 萃取(雙 repo:後端自動化服務 × 資料儀表板;19 commits、4 條 cron、2 個深層 bug 修復,全程無事前計畫、零走偏)。該 session 留下的 SUMMARY/CONTEXT/記憶檔就是本框架三個模板的原型。
 
 ## 狀態
 
