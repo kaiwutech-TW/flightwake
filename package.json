@@ -1,0 +1,26 @@
+{
+  "name": "flightwake",
+  "version": "0.1.0",
+  "description": "Flight-recorder style work framework for strong AI coding agents — records follow work, they don't lead it. ✈️",
+  "bin": {
+    "flightwake": "bin/cli.mjs"
+  },
+  "files": [
+    "bin/",
+    "templates/",
+    "skills/",
+    "snippets/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": ["claude-code", "ai-agent", "workflow", "flight-recorder", "gsd"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kaiwutech-TW/flightwake.git"
+  },
+  "author": "kaiwutech-TW",
+  "license": "UNLICENSED",
+  "private": false
+}
