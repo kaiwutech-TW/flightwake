@@ -1,7 +1,7 @@
 ---
 updated: 2026-07-18
 updated_by: Claude(Fable 5)
-latest_record: records/260718-v080-statusline.md
+latest_record: records/260718-v081-actionable-statusline.md
 health: green
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
@@ -10,7 +10,7 @@ health: green
 
 # 現在在哪
 
-flightwake v0.8.0,**已開源上線(2026-07-18)**:公開 repo、npm 0.8.0(trusted publishing 兩次 Release 實證)、README 四語含 GSD 遷移指南、--statusline 儀表(本 repo 與 marketing_dashboard 實跑中)。缺口 1–7 全落地、兩 gate 全關、benchmarks n=2(非自我參照,零糾正)。剩:發宣傳。定位:給強模型(Fable 5 級)的事後記錄框架,補持久性與紀律、不補智力。
+flightwake v0.8.1,**已開源上線(2026-07-18)**:公開 repo、npm 0.8.1(trusted publishing 連三次 Release 零失誤)、README 四語含 GSD 遷移指南、--statusline 儀表含下一步指令提示(本 repo 與 marketing_dashboard 實跑中)。缺口 1–7 全落地、兩 gate 全關、benchmarks n=2(非自我參照,零糾正)、宣傳素材全齊(三稿 + 三張截圖)。剩:發宣傳。定位:給強模型(Fable 5 級)的事後記錄框架,補持久性與紀律、不補智力。
 
 # 進行中(未完成勿刪)
 
@@ -26,13 +26,13 @@ flightwake v0.8.0,**已開源上線(2026-07-18)**:公開 repo、npm 0.8.0(truste
 - [x] 開源收殘 ✅(MIT + 英文 README + release.yml + flip runbook;舊 objects 清理併入 runbook 第 1 步;v0.7.1)
 - [x] 冷啟動實測 ✅ 首筆有效樣本入 docs/benchmarks.md(2026-07-18;flightwake 邊際 ≈ 2.6K 讀 + 2K 出,接手零猶豫)
 - 已定案待觀察:慣例演進採讀取端容忍(見 DECISIONS 2026-07-18),容忍不了時再議遷移工具
-- v0.8 規劃:完整 i18n(CLI 輸出英文化 + `--lang` 模板語言;README 已四語但 CLI/skill/模板仍 zh-TW,英文 README 有註記)。程式註解翻譯併入此項,不單獨做半套
+- v0.9 規劃:完整 i18n(CLI 輸出英文化 + `--lang` 模板語言;README 已四語但 CLI/skill/模板仍 zh-TW,英文 README 有註記;程式註解翻譯併入,不單獨做半套)+ statusline context 視窗改為依模型推斷(現 200k 硬編碼,大視窗模型會高估)
 
 # 下一步入口
 
-1. ~~gate 2~~ ✅ 第二 repo 冷啟動實測完成(2026-07-18,marketing_dashboard,非自我參照;數據見 benchmarks.md)——**兩 gate 全關,可宣傳**
-2. **宣傳**(HN/X/相關社群;n=2 數據 + 活範例 + provenance 全在手)——素材點:四個結構性不足的論述、.flightwake/ 活範例、benchmarks 對照
-3. 範例 repo 可再議(活範例已是 .flightwake/ 本身,獨立範例 repo 降為 nice-to-have);GSD 側對照實測待補(benchmarks 公平性)
+1. **發宣傳**(素材全齊:HN/X 中文串/X 英文短版三稿在 2026-07-18 session 對話中,截圖紅 99%/綠 43%/開場提示三張在使用者手上;HN 挑能盯留言的時段發)
+2. 宣傳後:盯 issues/討論回饋;GSD 階段二全域拆除(使用者所有 repo 轉完後,拆前備份 ~/.claude/settings.json)
+3. v0.9 見進行中清單;GSD 側對照實測待補(benchmarks 公平性);範例 repo 降為 nice-to-have
 
 # 常備事實(這個 repo 的 3-5 條保命知識)
 
