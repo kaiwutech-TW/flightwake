@@ -31,7 +31,7 @@ flightwake v0.7.1,**已開源上線(2026-07-18)**:公開 repo(乾淨歷史,舊 r
 # 下一步入口
 
 1. **gate 2 第二 repo 冷啟動實測(宣傳前唯一未關)**:挑一個內部真實 repo(最好有 GSD 歷史)→ `npx flightwake init` → 做一段真實工作收尾 → 下個 session 開場 /fw-coldstart 計時 + tools/session-cost.mjs --since 量 token → 數據進 benchmarks.md 第二筆
-2. gate 2 關掉 → 發首個 GitHub Release(順便驗證 trusted publishing 全鏈路 + `npm audit signatures`)→ 宣傳(HN/X;n=2 數據在手)
+2. ~~首個 Release~~ ✅ v0.7.2 已發(2026-07-18,trusted publishing 實證、npm README 刷新英文)——gate 2 關掉後直接進宣傳(HN/X;n=2 數據在手)
 3. 範例 repo 可再議(活範例已是 .flightwake/ 本身,獨立範例 repo 降為 nice-to-have)
 
 # 常備事實(這個 repo 的 3-5 條保命知識)
