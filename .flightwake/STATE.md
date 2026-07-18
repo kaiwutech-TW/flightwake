@@ -1,7 +1,7 @@
 ---
 updated: 2026-07-18
 updated_by: Claude(Fable 5)
-latest_record: records/260718-gaps-1-3.md
+latest_record: records/260718-coldstart-gap4.md
 health: green
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
