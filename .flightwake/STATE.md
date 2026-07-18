@@ -30,7 +30,7 @@ flightwake v0.8.1,**已開源上線(2026-07-18)**:公開 repo、npm 0.8.1(truste
 
 # 下一步入口
 
-1. **發宣傳,發前先改稿**:三稿(HN/X 中文串/X 英文短版,在 2026-07-18 session 對話中)引用 context 對比的段落改寫為**不點名 GSD** 的版本(決策見 DECISIONS 2026-07-18;可用數字紅線見個人記憶 gsd-context-overhead-case);截圖三張在使用者手上;HN 挑能盯留言的時段發
+1. **發宣傳**:三稿最終版(已改寫為不點名 GSD,含 HN 留言預備)在使用者桌面 `~/Desktop/flightwake-launch-copy.md`;截圖三張在使用者手上;HN 挑能盯留言的時段發
 2. 宣傳後:盯 issues/討論回饋;v0.9 見進行中清單;GSD 側對照實測待補(benchmarks 公平性);範例 repo 降為 nice-to-have
 
 # 常備事實(這個 repo 的 3-5 條保命知識)
