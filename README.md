@@ -64,7 +64,9 @@ init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claud
 
 `uninstall` 反向清除 init 的固定寫入範圍:刪 skill 與框架檔、從 settings 摘除 flightwake 的 Stop hook(使用者其他 hook 原樣保留)、移除指令檔與 `.git/info/exclude` 的標記區塊(由 flightwake 建的檔案清空後刪除)。**`.flightwake/`(STATE/DECISIONS/TRAPS/records)是使用者資料,預設保留**,`uninstall --purge` 才連同刪除。
 
-**monorepo 政策:單 repo 一份,裝在 git root。** 工作是 session 形狀的——一個 session 常橫跨多個 package,記錄跟著 session 走;拆到子目錄各裝會把同一段工作切碎成多份 record,也讓「該讀哪份 STATE」變成新的冷啟動歧義。子目錄執行 init 會擋下並指路 root。submodule 有自己的 `.git`,視為獨立 repo 各裝各的。多團隊高流量 monorepo 若覺得 CI 落後檢查誤報,先調 `--threshold`;子目錄各裝的真實需求出現時再重評。skill 與 Stop hook 是 Claude Code 上的便利糖衣;`.flightwake/` 本體是純 Markdown,任何 agent 讀指令檔即可遵循同一套觸發義務。**純檔案複製,零執行期依賴**(Node ≥18 只在安裝與 hook 時用)— 與既有 GSD `.planning/` 可並存(舊紀錄即歷史檔案)。使用者資料(STATE/DECISIONS/TRAPS)任何情況下都不覆蓋;`--force` 只更新框架擁有的 skill/hook/模板/片段。
+**monorepo 政策:單 repo 一份,裝在 git root。** 工作是 session 形狀的——一個 session 常橫跨多個 package,記錄跟著 session 走;拆到子目錄各裝會把同一段工作切碎成多份 record,也讓「該讀哪份 STATE」變成新的冷啟動歧義。子目錄執行 init 會擋下並指路 root。submodule 有自己的 `.git`,視為獨立 repo 各裝各的。多團隊高流量 monorepo 若覺得 CI 落後檢查誤報,先調 `--threshold`;子目錄各裝的真實需求出現時再重評。
+
+skill 與 Stop hook 是 Claude Code 上的便利糖衣;`.flightwake/` 本體是純 Markdown,任何 agent 讀指令檔即可遵循同一套觸發義務。**純檔案複製,零執行期依賴**(Node ≥18 只在安裝與 hook 時用)— 與既有 GSD `.planning/` 可並存(舊紀錄即歷史檔案)。使用者資料(STATE/DECISIONS/TRAPS)任何情況下都不覆蓋;`--force` 只更新框架擁有的 skill/hook/模板/片段。
 
 ### CI 端收尾檢查(選配)
 
@@ -105,3 +107,7 @@ flightwake 不會把 workflow 寫進你的 repo——`.github/workflows/` 權限
 ## 狀態
 
 🚧 內部測試中(kaiwutech-TW private)。驗證完成後開源。
+
+## License
+
+[MIT](LICENSE)

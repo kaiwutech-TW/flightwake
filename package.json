@@ -11,17 +11,24 @@
     "templates/",
     "skills/",
     "snippets/",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=18"
   },
-  "keywords": ["claude-code", "ai-agent", "workflow", "flight-recorder", "gsd"],
+  "keywords": [
+    "claude-code",
+    "ai-agent",
+    "workflow",
+    "flight-recorder",
+    "gsd"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kaiwutech-TW/flightwake.git"
   },
   "author": "kaiwutech-TW",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "private": true
 }
