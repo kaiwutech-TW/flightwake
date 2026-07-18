@@ -6,7 +6,9 @@
 ## 測量方法
 
 1. **冷啟動 token**:開全新 session → 只跑 `/fw-coldstart`(或 GSD 等效續作指令)→
-   記錄 Claude Code `/cost`(或 `/context`)顯示的該 turn 用量。讀取面可用
+   `node tools/session-cost.mjs`(零 token:解析 Claude Code 本機 transcript 的原始 usage,
+   已做串流去重;`--since=<ISO>` 可切單一 turn)。`/cost` 降為人工 cross-check;
+   transcript 格式是內部實作,工具失效時退回 /cost。讀取面可用
    `wc -c <讀到的檔案>` 精算下界(中文 ≈ 1 token/字 ≈ 0.35 token/byte)。
 2. **冷啟動時間**:skill 內建計時(讀取起訖);另記「回報後使用者確認方向」的主觀正確性。
 3. **每任務總量**:同一個真實任務分別在兩框架流程下完成,比 `/cost` 總量與 wall time

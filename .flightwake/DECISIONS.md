@@ -6,6 +6,7 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
+| 2026-07-18 | token 量測工具(tools/session-cost.mjs)dev-only:不隨 init 安裝、不入框架承諾;正解是零 token 解析本機 transcript,不用 sub-agent | 量測是框架開發者驗證品質的事,使用者日常不該為此花 token;transcript 格式是 Claude Code 內部實作無穩定承諾,只能當工具不能當承諾;sub-agent 看不到 usage 還燒 token | Claude Code 提供正式 usage API 時 |
 | 2026-07-18 | --private 寫入細則:claude 義務表改寫 CLAUDE.local.md,codex/gemini 遇受 git 追蹤的指令檔跳過並警告;exclude 條目以 # flightwake:begin/end 包裹 | exclude 對已追蹤檔不生效,寫入受追蹤檔必留痕跡;claude 有本地等價檔、其他平台沒有;標記包裹為 uninstall(缺口 5)可逆性鋪路 | 其他平台出現 local 指令檔等價物時 |
 | 2026-07-18 | 去重原則入義務表:同一事實只寫一處,git 能查的不重抄,其他處用連結/hash | 自我審查發現同一事實寫四遍(commit/record/DECISIONS/回覆);寫兩處必有一處過時,重複正是新舊衝突偏差的源頭 | — |
 | 2026-07-18 | 使用者資料(TRAPS/DECISIONS)的慣例演進採「讀取端容忍舊格式」,不做遷移工具 | --force 永不碰使用者資料是硬承諾;容忍(無 status 欄視同 active)讓舊安裝不炸、零遷移成本 | 慣例變動大到容忍不了時再議遷移工具 |
