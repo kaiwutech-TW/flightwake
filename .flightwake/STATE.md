@@ -1,7 +1,7 @@
 ---
 updated: 2026-07-18
 updated_by: Claude(Fable 5)
-latest_record: records/260718-v081-actionable-statusline.md
+latest_record: records/260718-gsd-teardown.md
 health: green
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
@@ -10,7 +10,7 @@ health: green
 
 # 現在在哪
 
-flightwake v0.8.1,**已開源上線(2026-07-18)**:公開 repo、npm 0.8.1(trusted publishing 連三次 Release 零失誤)、README 四語含 GSD 遷移指南、--statusline 儀表含下一步指令提示(本 repo 與 marketing_dashboard 實跑中)。缺口 1–7 全落地、兩 gate 全關、benchmarks n=2(非自我參照,零糾正)、宣傳素材全齊(三稿 + 三張截圖)。剩:發宣傳。定位:給強模型(Fable 5 級)的事後記錄框架,補持久性與紀律、不補智力。
+flightwake v0.8.1,**已開源上線(2026-07-18)**:公開 repo、npm 0.8.1(trusted publishing 連三次 Release 零失誤)、README 四語含 GSD 遷移指南、--statusline 儀表含下一步指令提示(本 repo 與 marketing_dashboard 實跑中)。缺口 1–7 全落地、兩 gate 全關、benchmarks n=2(非自我參照,零糾正)、宣傳素材全齊(三稿 + 三張截圖 + context 開銷故事線)。**GSD 全域已拆除(2026-07-18 晚,手冊 docs/cleanGSD.md)**。剩:發宣傳。定位:給強模型(Fable 5 級)的事後記錄框架,補持久性與紀律、不補智力。
 
 # 進行中(未完成勿刪)
 
@@ -30,9 +30,9 @@ flightwake v0.8.1,**已開源上線(2026-07-18)**:公開 repo、npm 0.8.1(truste
 
 # 下一步入口
 
-1. **發宣傳**(素材全齊:HN/X 中文串/X 英文短版三稿在 2026-07-18 session 對話中,截圖紅 99%/綠 43%/開場提示三張在使用者手上;HN 挑能盯留言的時段發)
-2. 宣傳後:盯 issues/討論回饋;GSD 階段二全域拆除(使用者所有 repo 轉完後,拆前備份 ~/.claude/settings.json)
-3. v0.9 見進行中清單;GSD 側對照實測待補(benchmarks 公平性);範例 repo 降為 nice-to-have
+1. **A/B 底盤量測**:新 session 量開場第一筆 usage 對比 40,377 tokens(移除 GSD 前值;文案引用對比前必做,紅線見個人記憶 gsd-context-overhead-case)
+2. **發宣傳**(素材全齊:HN/X 中文串/X 英文短版三稿在 2026-07-18 session 對話中,截圖紅 99%/綠 43%/開場提示三張在使用者手上,context 開銷故事線見 records/260718-gsd-teardown.md;HN 挑能盯留言的時段發)
+3. 宣傳後:盯 issues/討論回饋;v0.9 見進行中清單;GSD 側對照實測待補(benchmarks 公平性);範例 repo 降為 nice-to-have
 
 # 常備事實(這個 repo 的 3-5 條保命知識)
 
