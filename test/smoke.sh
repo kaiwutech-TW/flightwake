@@ -195,6 +195,7 @@ node "$CLI" init --statusline >/dev/null
 node -e "const s=require('./.claude/settings.json'); if(!String(s.statusLine.command).includes('statusline.mjs')) process.exit(1)" \
   || fail "--statusline 應寫入 settings.statusLine"
 echo '{}' | node .flightwake/hooks/statusline.mjs | grep -q 'flightwake' || fail "statusline 應輸出儀表"
+echo '{}' | node .flightwake/hooks/statusline.mjs | grep -q 'fw-coldstart' || fail "剛開場應提示 /fw-coldstart"
 node "$CLI" uninstall >/dev/null
 [ -f .claude/settings.json ] && fail "uninstall 後全 flightwake 的 settings 應已空刪除"
 [ -f .flightwake/hooks/statusline.mjs ] && fail "uninstall 應刪 statusline.mjs"

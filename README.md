@@ -128,7 +128,7 @@ Wrap up your current milestone first, then:
 ✈️ flightwake │ ●green · STATE 2c behind │ ▓▓░░░░░░░░ 23%
 ```
 
-Health color (the one thing you watch), STATE staleness (same rev-list logic as the Stop hook — but as a live gauge instead of an exit-time reminder), and context usage — when the bar runs hot, that's your cue to wrap up or hand off. It never overwrites an existing statusline (a single-value setting), and repo-level config takes precedence over user-level, so it coexists with tools that set a global one.
+Health color (the one thing you watch), STATE staleness (same rev-list logic as the Stop hook — but as a live gauge instead of an exit-time reminder), and context usage. The gauge also tells you **the next command for the current state** — session just started → `→ 開工先 /fw-coldstart`; STATE ≥3 commits behind → `→ /fw-record`; context running hot → `→ /fw-record → /clear → /fw-coldstart`; all healthy → silence. It never overwrites an existing statusline (a single-value setting), and repo-level config takes precedence over user-level, so it coexists with tools that set a global one.
 
 ### CI-side wrap-up check (optional)
 
