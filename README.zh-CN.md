@@ -51,6 +51,10 @@ STATE 的 health 诚不诚实(green/yellow/red)。框架的质量指标只有一
 
 本 repo 自己就 dogfooding 这套框架:[`.flightwake/`](.flightwake/) 里是真实的 STATE、DECISIONS 与 records——框架从缺口清单到开源上线的每一步都记录在里面,那就是装进你 repo 后会自然长出的东西。
 
+### 分阶段实战手册
+
+刚开始跟强模型协作?[docs/workflow.md](docs/workflow.md) 是一张阶段地图:每个阶段**你**该做什么、该对模型说什么——主线给新手,「⚙ 进阶」折叠给 Claude Code 老手。(目前为 zh-TW,英文随 v0.9 i18n 落地。)
+
 ## 为什么会有这个项目
 
 Fable 5 级的模型不需要人教它怎么做事——但有四件事再强的模型也做不到,而且全是**结构性**的,不会随模型变强而消失:

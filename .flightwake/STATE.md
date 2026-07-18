@@ -30,9 +30,8 @@ flightwake v0.8.1,**已開源上線(2026-07-18)**:公開 repo、npm 0.8.1(truste
 
 # 下一步入口
 
-1. **A/B 底盤量測**:新 session 量開場第一筆 usage 對比 40,377 tokens(移除 GSD 前值;文案引用對比前必做,紅線見個人記憶 gsd-context-overhead-case)
-2. **發宣傳**(素材全齊:HN/X 中文串/X 英文短版三稿在 2026-07-18 session 對話中,截圖紅 99%/綠 43%/開場提示三張在使用者手上,context 開銷故事線見 records/260718-gsd-teardown.md;HN 挑能盯留言的時段發)
-3. 宣傳後:盯 issues/討論回饋;v0.9 見進行中清單;GSD 側對照實測待補(benchmarks 公平性);範例 repo 降為 nice-to-have
+1. **發宣傳**(素材全齊:HN/X 中文串/X 英文短版三稿在 2026-07-18 session 對話中,截圖紅 99%/綠 43%/開場提示三張在使用者手上,context 開銷故事線見 records/260718-gsd-teardown.md;A/B 已量:拆 GSD 後開場 20.2%→16.9%、實佔 ~6.6k/3.3%,但**文案不點名 GSD**(見 DECISIONS 2026-07-18,三稿引用處需改寫);HN 挑能盯留言的時段發)
+2. 宣傳後:盯 issues/討論回饋;v0.9 見進行中清單;GSD 側對照實測待補(benchmarks 公平性);範例 repo 降為 nice-to-have
 
 # 常備事實(這個 repo 的 3-5 條保命知識)
 

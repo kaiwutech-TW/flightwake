@@ -55,6 +55,10 @@ Whether STATE's health is honest (green/yellow/red). The framework has a single 
 
 This repo dogfoods its own framework: [`.flightwake/`](.flightwake/) contains the real STATE, DECISIONS, and records — every step from the gap list to the open-source launch is recorded there. That's exactly what will grow in your repo after installing.
 
+### Stage-by-stage playbook
+
+New to working with a strong model? [docs/workflow.md](docs/workflow.md) is a stage map of what **you** do and what to say to the model at each point — beginner main line, advanced folds for Claude Code veterans. (zh-TW for now; English lands with the v0.9 i18n pass.)
+
 ## Why this project exists
 
 A Fable 5-class model doesn't need to be taught how to do the work — but there are four things no model can do however strong it gets, because they are **structural** and don't disappear as models improve:

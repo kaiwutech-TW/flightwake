@@ -51,6 +51,10 @@ STATE 的 health 誠不誠實(green/yellow/red)。框架的品質指標只有一
 
 本 repo 自己就 dogfooding 這套框架:[`.flightwake/`](.flightwake/) 裡是真實的 STATE、DECISIONS 與 records——框架從缺口清單到開源上線的每一步都記錄在裡面,那就是裝進你 repo 後會自然長出的東西。
 
+### 分階段實戰手冊
+
+剛開始跟強模型協作?[docs/workflow.md](docs/workflow.md) 是一張階段地圖:每個階段**你**該做什麼、該對模型說什麼——主線給新手,「⚙ 進階」摺疊給 Claude Code 老手。
+
 ## 為什麼會有這個專案
 
 Fable 5 級的模型不需要人教它怎麼做事——但有四件事再強的模型也做不到,而且全是**結構性**的,不會隨模型變強而消失:
