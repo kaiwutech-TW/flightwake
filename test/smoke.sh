@@ -113,5 +113,27 @@ node "$CLI" init --agents=codex >/dev/null
 node "$CLI" init --agents=nonsense >/dev/null 2>&1 && fail "--agents 不認得的值應退出非零"
 pass "多平台偵測與 --agents"
 
+# 10. --private:全部寫入被 exclude、hook 進 settings.local.json、受追蹤的 CLAUDE.md 不碰、git status 乾淨、重跑冪等
+REPO4="$TMP/repo4"
+mkdir -p "$REPO4" && cd "$REPO4"
+git init -q && git config user.email t@t.t && git config user.name t
+echo "# c" > CLAUDE.md
+git add CLAUDE.md && git commit -qm "base"
+node "$CLI" init --private >/dev/null
+grep -q 'flightwake:begin' .git/info/exclude || fail "--private 應在 .git/info/exclude 寫入標記區塊"
+grep -q '^\.flightwake/$' .git/info/exclude || fail "exclude 缺 .flightwake/ 條目"
+[ -f .claude/settings.local.json ] || fail "--private 應把 hook 寫進 settings.local.json"
+[ -f .claude/settings.json ] && fail "--private 不應建 settings.json"
+node -e "const s=require('./.claude/settings.local.json'); if(!JSON.stringify(s.hooks.Stop).includes('state-check.mjs')) process.exit(1)" \
+  || fail "settings.local.json 無效或缺 Stop hook"
+grep -q 'flightwake:begin' CLAUDE.md && fail "--private 不應碰受追蹤的 CLAUDE.md"
+[ "$(grep -c 'flightwake:begin' CLAUDE.local.md)" = 1 ] || fail "--private 應把義務表寫進 CLAUDE.local.md"
+[ -z "$(git status --porcelain)" ] || fail "--private 後 git status 應乾淨(got: $(git status --porcelain | tr '\n' ' '))"
+node "$CLI" init --private >/dev/null
+[ "$(grep -c 'flightwake:begin' .git/info/exclude)" = 1 ] || fail "重跑後 exclude 區塊重複"
+[ "$(grep -c 'flightwake:begin' CLAUDE.local.md)" = 1 ] || fail "重跑後 CLAUDE.local.md 片段重複"
+grep -q '^CLAUDE\.local\.md$' .git/info/exclude || fail "重跑後 exclude 掉了 CLAUDE.local.md 條目"
+pass "--private 本機模式"
+
 echo ""
 echo "✅ smoke 全過"

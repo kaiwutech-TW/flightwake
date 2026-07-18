@@ -6,6 +6,7 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
+| 2026-07-18 | --private 寫入細則:claude 義務表改寫 CLAUDE.local.md,codex/gemini 遇受 git 追蹤的指令檔跳過並警告;exclude 條目以 # flightwake:begin/end 包裹 | exclude 對已追蹤檔不生效,寫入受追蹤檔必留痕跡;claude 有本地等價檔、其他平台沒有;標記包裹為 uninstall(缺口 5)可逆性鋪路 | 其他平台出現 local 指令檔等價物時 |
 | 2026-07-18 | 去重原則入義務表:同一事實只寫一處,git 能查的不重抄,其他處用連結/hash | 自我審查發現同一事實寫四遍(commit/record/DECISIONS/回覆);寫兩處必有一處過時,重複正是新舊衝突偏差的源頭 | — |
 | 2026-07-18 | 使用者資料(TRAPS/DECISIONS)的慣例演進採「讀取端容忍舊格式」,不做遷移工具 | --force 永不碰使用者資料是硬承諾;容忍(無 status 欄視同 active)讓舊安裝不炸、零遷移成本 | 慣例變動大到容忍不了時再議遷移工具 |
 | 2026-07-18 | record 的 secret 防護採 fw-record 檢查清單 + grep 自查,不內建自動掃描器 | 祕密判定需語境(敏感範圍因專案而異);內建掃描器違反零依賴承諾;公開 repo 建議另配 gitleaks 類工具 | 實際發生 record 洩漏事故時 |
