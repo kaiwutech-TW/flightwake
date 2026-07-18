@@ -1,7 +1,7 @@
 ---
 updated: 2026-07-18
 updated_by: Claude(Fable 5)
-latest_record: records/260718-flip.md
+latest_record: records/260718-v080-statusline.md
 health: green
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
@@ -10,7 +10,7 @@ health: green
 
 # 現在在哪
 
-flightwake v0.7.1,**已開源上線(2026-07-18)**:公開 repo(乾淨歷史,舊 repo 封存 flightwake-archive)、npm `flightwake@0.7.1` 已發布、trusted publisher 已接 release.yml、PVR + branch protection 開啟、Scorecard 跑綠、README 四語(en 主版)。缺口 1–7 全落地。剩:gate 2(第二 repo 冷啟動實測)→ 發首個 GitHub Release 驗證自動發布鏈路 → 開始宣傳。定位:給強模型(Fable 5 級)的事後記錄框架,補持久性與紀律、不補智力。
+flightwake v0.8.0,**已開源上線(2026-07-18)**:公開 repo、npm 0.8.0(trusted publishing 兩次 Release 實證)、README 四語含 GSD 遷移指南、--statusline 儀表(本 repo 與 marketing_dashboard 實跑中)。缺口 1–7 全落地、兩 gate 全關、benchmarks n=2(非自我參照,零糾正)。剩:發宣傳。定位:給強模型(Fable 5 級)的事後記錄框架,補持久性與紀律、不補智力。
 
 # 進行中(未完成勿刪)
 
