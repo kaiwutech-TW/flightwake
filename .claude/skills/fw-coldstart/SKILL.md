@@ -16,6 +16,7 @@ description: flightwake 冷啟動 — 接手一個 repo 前先恢復狀態。Use
 4. 量化落後程度:`git rev-list --count "$(git log -1 --format=%H -- .flightwake/STATE.md)"..HEAD`
    (≥1 = 上個 session 沒收尾,提高警覺;STATE 從未 commit 時改看 `git log --oneline -10`)
 5. 向使用者回報一段話:「上次到哪、這次打算從哪接、有沒有未驗證的變更(health)」——**回報完才開始動手**
+   (要量 token 成本時:模型端看不到自己的用量,回報時直接向使用者要 `/cost` 輸出回填,別事後才想起)
 
 ## 紅線
 
