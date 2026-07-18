@@ -6,6 +6,7 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
+| 2026-07-18 | flip 提前:放棄兩週試跑(原 8/1),改「兩 gate 關掉即上」(活範例指引 + 第二 repo 冷啟動實測);npm 名字立即手動發布佔位 | 護城河薄(週末可仿),先機 + 實測數據幾乎是唯一差異化;名字被佔風險與準備度無關天天在跑;慣例穩定性由 v0.x 語意 + superseded 生命週期承接,不值兩週 | 上線後若實戰冒出重大缺陷,回頭檢討此取捨 |
 | 2026-07-18 | 開源 license 定 MIT(LICENSE + package.json;private flag 留到 flip 日) | dev-tool 社群事實標準、採用阻力最低;品牌曝光最大化;放棄 Apache-2.0 的明確專利條款(本框架無專利敏感面) | — |
 | 2026-07-18 | monorepo 政策:單 repo 一份、裝在 git root;submodule 視為獨立 repo;init/uninstall 在子目錄執行擋下並指路 | 工作是 session 形狀、常跨 package——子目錄各裝會切碎 record,也讓「讀哪份 STATE」成為新的冷啟動歧義;高流量誤報用 --threshold 緩解;複雜度不該加在還沒人提出的需求上 | 多團隊 monorepo 使用者的真實分區需求出現時 |
 | 2026-07-18 | CI 端 STATE 檢查採 state-check.mjs --ci 雙模式 + README 範例 workflow,init 不寫入使用者 .github/workflows/;錯誤時兩模式都靜默放行 | rev-list 邏輯只寫一處(去重);workflows 目錄權限敏感,寫入超出「寫入範圍固定」承諾;這是紀律提醒不是安全閘門,寧可漏報不可誤擋 CI | 使用者普遍要求 init --ci 自動建 workflow 時 |

@@ -138,6 +138,10 @@ Forgot to wrap up? No problem: when STATE lags ≥3 commits, the Stop hook block
 
 Whether STATE's health is honest (green/yellow/red). The framework has a single quality metric: **how long a fresh session needs to take over safely** (>5 minutes = your records are degrading). Everything else — record count, format compliance — doesn't matter.
 
+### See what it actually looks like
+
+This repo dogfoods its own framework: [`.flightwake/`](.flightwake/) contains the real STATE, DECISIONS, and records — every step from the gap list to the open-source launch is recorded there. That's exactly what will grow in your repo after installing.
+
 ## Security
 
 - **Zero dependencies, no network, no install scripts**: the installer only copies files; the hook only uses `git` (no shell) for read-only queries.

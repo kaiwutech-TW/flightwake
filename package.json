@@ -29,6 +29,5 @@
     "url": "git+https://github.com/kaiwutech-TW/flightwake.git"
   },
   "author": "kaiwutech-TW",
-  "license": "MIT",
-  "private": true
+  "license": "MIT"
 }

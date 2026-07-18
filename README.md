@@ -135,6 +135,10 @@ flightwake 不會把 workflow 寫進你的 repo——`.github/workflows/` 權限
 
 STATE 的 health 誠不誠實(green/yellow/red)。框架的品質指標只有一個:**新 session 冷啟動多久能安全接手**(>5 分鐘 = 記錄在退化)。其他一切——記錄多寡、格式合規——都不重要。
 
+### 想看實際長相
+
+本 repo 自己就 dogfooding 這套框架:[`.flightwake/`](.flightwake/) 裡是真實的 STATE、DECISIONS 與 records——框架從缺口清單到開源上線的每一步都記錄在裡面,那就是裝進你 repo 後會自然長出的東西。
+
 ## 安全性
 
 - **零依賴、無網路、無 install script**:安裝器只做檔案複製;hook 只用 `git`(無 shell)做唯讀查詢。
