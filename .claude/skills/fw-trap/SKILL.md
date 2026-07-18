@@ -21,3 +21,5 @@ description: flightwake 登記坑 — 把非顯而易見的陷阱寫進 TRAPS re
 2. 四欄都要:症狀(原始錯誤訊息照貼)、根因一句話、解法/繞法、佐證連結(commit/record)
 3. 相關的坑用 `[[name]]` 互連
 4. 當下就寫——坑的細節半天就忘
+5. 新坑**取代或涵蓋**既有條目時:舊條目 frontmatter 的 `status` 改 `superseded`、內文指向 [[新條目]]——不刪行,
+   讓「舊 md vs 新 md」的衝突有明確方向邊
