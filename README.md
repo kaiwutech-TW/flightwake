@@ -120,6 +120,16 @@ Wrap up your current milestone first, then:
 2. Tell your agent: *"This repo is switching from GSD to flightwake. Read `.planning/` for the current state and initialize `.flightwake/STATE.md` with /fw-record — unfinished items go into the next-step entries. From now on `.planning/` is a historical archive; don't update it."*
 3. Remove (or comment out) GSD's own instruction block from CLAUDE.md, so the two rulebooks don't compete for the model's obedience
 
+### Status line (optional)
+
+`npx flightwake init --statusline` puts a persistent gauge at the bottom of Claude Code:
+
+```
+✈️ flightwake │ ●green · STATE 2c behind │ ▓▓░░░░░░░░ 23%
+```
+
+Health color (the one thing you watch), STATE staleness (same rev-list logic as the Stop hook — but as a live gauge instead of an exit-time reminder), and context usage — when the bar runs hot, that's your cue to wrap up or hand off. It never overwrites an existing statusline (a single-value setting), and repo-level config takes precedence over user-level, so it coexists with tools that set a global one.
+
 ### CI-side wrap-up check (optional)
 
 The Stop hook only works inside Claude Code; to extend the "STATE must not lag" discipline to other agents and human collaborators, run the same script in CI — it fails when STATE lags HEAD by ≥3 commits (tunable via `--threshold=N`):

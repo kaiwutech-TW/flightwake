@@ -10,5 +10,9 @@
         ]
       }
     ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "node \"$CLAUDE_PROJECT_DIR/.flightwake/hooks/statusline.mjs\""
   }
 }

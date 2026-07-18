@@ -186,6 +186,28 @@ grep -q 'flightwake:begin' CLAUDE.md && fail "混用後片段被重複貼進 CLA
 grep -q 'state-check' .claude/settings.json 2>/dev/null && fail "混用後 hook 被重複裝進 settings.json"
 pass "模式混用不重複"
 
+# 16. --statusline:選配儀表、輸出正常、他家設定不覆蓋、uninstall 清除
+REPO8="$TMP/repo8"
+mkdir -p "$REPO8" && cd "$REPO8"
+git init -q && git config user.email t@t.t && git config user.name t
+echo "# c" > CLAUDE.md
+node "$CLI" init --statusline >/dev/null
+node -e "const s=require('./.claude/settings.json'); if(!String(s.statusLine.command).includes('statusline.mjs')) process.exit(1)" \
+  || fail "--statusline 應寫入 settings.statusLine"
+echo '{}' | node .flightwake/hooks/statusline.mjs | grep -q 'flightwake' || fail "statusline 應輸出儀表"
+node "$CLI" uninstall >/dev/null
+[ -f .claude/settings.json ] && fail "uninstall 後全 flightwake 的 settings 應已空刪除"
+[ -f .flightwake/hooks/statusline.mjs ] && fail "uninstall 應刪 statusline.mjs"
+REPO9="$TMP/repo9"
+mkdir -p "$REPO9" && cd "$REPO9"
+git init -q && git config user.email t@t.t && git config user.name t
+echo "# c" > CLAUDE.md
+mkdir -p .claude && echo '{"statusLine":{"type":"command","command":"other-tool"}}' > .claude/settings.json
+node "$CLI" init --statusline >/dev/null
+node -e "const s=require('./.claude/settings.json'); if(s.statusLine.command!=='other-tool') process.exit(1)" \
+  || fail "不得覆蓋他家 statusline"
+pass "--statusline 儀表"
+
 # 13. monorepo 政策:子目錄跑 init/uninstall 應退出非零並指路 git root
 cd "$REPO3"
 mkdir -p sub

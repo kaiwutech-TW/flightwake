@@ -17,13 +17,14 @@ const args = process.argv.slice(2);
 const cmd = args.find((a) => !a.startsWith('-')) ?? 'init';
 const FORCE = args.includes('--force');
 const PRIVATE = args.includes('--private');
+const STATUSLINE = args.includes('--statusline');
 const VERSION = JSON.parse(readFileSync(join(FW_SRC, 'package.json'), 'utf8')).version;
 
 const log = (s) => console.log(s);
 const noJunk = (src) => !/(^|[\\/])\.(DS_Store|AppleDouble)$/.test(src);
 
 if ((cmd !== 'init' && cmd !== 'uninstall') || args.includes('--help') || args.includes('-h')) {
-  log('flightwake — 用法: npx flightwake init [--force] [--private] [--agents=claude,codex,gemini] | uninstall [--purge]\n  在目標 repo 根目錄執行;--force 更新既有 skill/hook/片段;--private 紀錄只留本機不進 git(.git/info/exclude + settings.local.json);--agents 指定要貼觸發義務表的平台指令檔(預設自動偵測)\n  uninstall 反向清除框架檔與標記區塊;預設保留 .flightwake/ 使用者資料,--purge 才連同刪除');
+  log('flightwake — 用法: npx flightwake init [--force] [--private] [--statusline] [--agents=claude,codex,gemini] | uninstall [--purge]\n  在目標 repo 根目錄執行;--force 更新既有 skill/hook/片段;--private 紀錄只留本機不進 git(.git/info/exclude + settings.local.json);--statusline 裝底部儀表(health/STATE 落後/context 用量;不覆蓋既有 statusline);--agents 指定要貼觸發義務表的平台指令檔(預設自動偵測)\n  uninstall 反向清除框架檔與標記區塊;預設保留 .flightwake/ 使用者資料,--purge 才連同刪除');
   process.exit(cmd === 'init' || cmd === 'uninstall' || cmd === 'help' ? 0 : 1);
 }
 
@@ -64,23 +65,29 @@ if (cmd === 'uninstall') {
   }
   rm('.flightwake/TEMPLATE-record.md');
   rm('.flightwake/hooks/state-check.mjs');
+  rm('.flightwake/hooks/statusline.mjs');
   try { rmdirSync(join(TARGET, '.flightwake', 'hooks')); } catch {}
-  // 2. settings:只摘 flightwake 的 Stop hook 條目,使用者其他 hook 原樣保留;摘完全空才刪檔
+  // 2. settings:只摘 flightwake 的 Stop hook 與 statusLine,使用者其他設定原樣保留;摘完全空才刪檔
   for (const rel of ['.claude/settings.json', '.claude/settings.local.json']) {
     const p = join(TARGET, ...rel.split('/'));
     if (!existsSync(p)) continue;
     let s;
     try { s = JSON.parse(readFileSync(p, 'utf8')); }
-    catch { log(`  ⚠️  ${rel} 不是有效 JSON — 請手動移除 state-check.mjs 的 Stop hook`); continue; }
+    catch { log(`  ⚠️  ${rel} 不是有效 JSON — 請手動移除 state-check.mjs 的 Stop hook 與 statusline.mjs 的 statusLine`); continue; }
+    let changed = false;
     const stop = s.hooks?.Stop;
-    if (!Array.isArray(stop) || !JSON.stringify(stop).includes('state-check.mjs')) continue;
-    const cleaned = stop
-      .map((e) => ({ ...e, hooks: (e.hooks ?? []).filter((h) => !String(h.command ?? '').includes('state-check.mjs')) }))
-      .filter((e) => e.hooks.length);
-    if (cleaned.length) s.hooks.Stop = cleaned; else delete s.hooks.Stop;
-    if (s.hooks && !Object.keys(s.hooks).length) delete s.hooks;
-    if (!Object.keys(s).length) { rmSync(p); log(`  rm   ${rel}(移除 hook 後已空)`); }
-    else { writeFileSync(p, JSON.stringify(s, null, 2) + '\n'); log(`  edit ${rel} ← 移除 Stop hook`); }
+    if (Array.isArray(stop) && JSON.stringify(stop).includes('state-check.mjs')) {
+      const cleaned = stop
+        .map((e) => ({ ...e, hooks: (e.hooks ?? []).filter((h) => !String(h.command ?? '').includes('state-check.mjs')) }))
+        .filter((e) => e.hooks.length);
+      if (cleaned.length) s.hooks.Stop = cleaned; else delete s.hooks.Stop;
+      if (s.hooks && !Object.keys(s.hooks).length) delete s.hooks;
+      changed = true;
+    }
+    if (JSON.stringify(s.statusLine ?? null).includes('statusline.mjs')) { delete s.statusLine; changed = true; }
+    if (!changed) continue;
+    if (!Object.keys(s).length) { rmSync(p); log(`  rm   ${rel}(移除後已空)`); }
+    else { writeFileSync(p, JSON.stringify(s, null, 2) + '\n'); log(`  edit ${rel} ← 移除 flightwake 設定`); }
   }
   // 3. 指令檔的標記區塊;移除後檔案全空(= 當初由 flightwake 建檔)才刪檔
   for (const rel of ['.claude/CLAUDE.md', 'CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', 'GEMINI.md']) {
@@ -134,6 +141,7 @@ for (const f of ['STATE.md', 'DECISIONS.md', 'TRAPS.md']) {
 for (const [src, rel] of [
   [join(FW_SRC, 'templates', 'TEMPLATE-record.md'), join('.flightwake', 'TEMPLATE-record.md')],
   [join(FW_SRC, 'hooks', 'state-check.mjs'), join('.flightwake', 'hooks', 'state-check.mjs')],
+  [join(FW_SRC, 'hooks', 'statusline.mjs'), join('.flightwake', 'hooks', 'statusline.mjs')],
 ]) {
   const dst = join(TARGET, rel);
   const existed = existsSync(dst);
@@ -181,6 +189,29 @@ for (const s of readdirSync(join(FW_SRC, 'skills'))) {
       settings.hooks.Stop.push({ hooks: [{ type: 'command', command: HOOK_CMD }] });
       writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
       log(`  add  ${settingsRel} ← Stop hook(STATE 過期檢查)`);
+    }
+    // --statusline:底部儀表(選配)。statusLine 是單值設定 — 他家既有設定絕不覆蓋
+    if (STATUSLINE) {
+      const SL_CMD = 'node "$CLAUDE_PROJECT_DIR/.flightwake/hooks/statusline.mjs"';
+      const slInOther = (() => {
+        try { return existsSync(otherPath) && JSON.stringify(JSON.parse(readFileSync(otherPath, 'utf8')).statusLine ?? null).includes('statusline.mjs'); }
+        catch { return false; }
+      })();
+      if (slInOther) {
+        log(`  skip statusLine(${otherRel} 已設定 — 另一模式的安裝仍生效)`);
+      } else if (settings.statusLine && !JSON.stringify(settings.statusLine).includes('statusline.mjs')) {
+        log(`  ⚠️  ${settingsRel} 已有其他 statusLine,不覆蓋 — 要換請手動設 command 為:${SL_CMD}`);
+      } else if (settings.statusLine) {
+        log(`  skip ${settingsRel} statusLine(已設定)`);
+      } else {
+        if (Array.isArray(settings.hooks?.Stop) && !settings.hooks.Stop.length) {
+          delete settings.hooks.Stop;
+          if (!Object.keys(settings.hooks).length) delete settings.hooks;
+        }
+        settings.statusLine = { type: 'command', command: SL_CMD };
+        writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+        log(`  add  ${settingsRel} ← statusLine(flightwake 儀表)`);
+      }
     }
   }
 }
