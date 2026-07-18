@@ -6,6 +6,7 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
+| 2026-07-18 | GSD 全域拆除提前執行(原定等所有 repo 轉完;.planning/ 資料保留,整包備份於 ~/.claude/backups/gsd-full-backup-20260718.tar.gz;手冊沉澱為 docs/cleanGSD.md) | 實測開場固定 context 40.4k tokens(20.2%),GSD 71 skill+34 agent 清單+7 類 hooks 是最大可移除項,等待成本每個 session 都在付 | 若他 repo 仍需 GSD 指令,從備份 tar 還原 |
 | 2026-07-18 | statusline 做成 opt-in flag(--statusline),絕不覆蓋既有 statusLine;內容只放 health/STATE 落後/context 三項 | statusLine 是單值設定,搶佔=破壞使用者環境(GSD 等工具裝在 user 層,repo 層自動優先即可並存);三項恰好是「路標+警示燈」的常駐化,多了就是噪音 | 使用者要求可配置欄位時 |
 | 2026-07-18 | flip 提前:放棄兩週試跑(原 8/1),改「兩 gate 關掉即上」(活範例指引 + 第二 repo 冷啟動實測);npm 名字立即手動發布佔位 | 護城河薄(週末可仿),先機 + 實測數據幾乎是唯一差異化;名字被佔風險與準備度無關天天在跑;慣例穩定性由 v0.x 語意 + superseded 生命週期承接,不值兩週 | 上線後若實戰冒出重大缺陷,回頭檢討此取捨 |
 | 2026-07-18 | 開源 license 定 MIT(LICENSE + package.json;private flag 留到 flip 日) | dev-tool 社群事實標準、採用阻力最低;品牌曝光最大化;放棄 Apache-2.0 的明確專利條款(本框架無專利敏感面) | — |
