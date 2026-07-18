@@ -112,6 +112,14 @@ The skills and Stop hook are convenience sugar for Claude Code; `.flightwake/` i
 
 **Monorepo policy: one install per repo, at the git root.** Work is session-shaped — a session routinely spans multiple packages, and records follow the session; per-subdirectory installs would shred one stretch of work into fragmented records and turn "which STATE do I read?" into a new cold-start ambiguity. Running init in a subdirectory stops and points you to the root. Submodules have their own `.git` and count as independent repos. If a high-traffic multi-team monorepo sees false positives from the CI staleness check, tune `--threshold` first.
 
+### Migrating from GSD
+
+Wrap up your current milestone first, then:
+
+1. `npx flightwake init` — coexists with `.planning/`; nothing is deleted
+2. Tell your agent: *"This repo is switching from GSD to flightwake. Read `.planning/` for the current state and initialize `.flightwake/STATE.md` with /fw-record — unfinished items go into the next-step entries. From now on `.planning/` is a historical archive; don't update it."*
+3. Remove (or comment out) GSD's own instruction block from CLAUDE.md, so the two rulebooks don't compete for the model's obedience
+
 ### CI-side wrap-up check (optional)
 
 The Stop hook only works inside Claude Code; to extend the "STATE must not lag" discipline to other agents and human collaborators, run the same script in CI — it fails when STATE lags HEAD by ≥3 commits (tunable via `--threshold=N`):
