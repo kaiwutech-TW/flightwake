@@ -27,15 +27,21 @@ if ((cmd !== 'init' && cmd !== 'uninstall') || args.includes('--help') || args.i
   process.exit(cmd === 'init' || cmd === 'uninstall' || cmd === 'help' ? 0 : 1);
 }
 
-// .git 用 existsSync:worktree/submodule 的 .git 是檔案不是目錄
-if (!existsSync(join(TARGET, '.git'))) {
-  log(`⚠️  目前目錄不是 git repo(${TARGET})— flightwake 依賴 git 作為記錄底層。先 git init。`);
-  process.exit(1);
-}
-
-// git 只在 --private 與 uninstall 需要(exclude 路徑解析 + 追蹤判定);預設 init 路徑維持純檔案複製
 const git = (...a) => execFileSync('git', a, { cwd: TARGET, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 const isTracked = (rel) => { try { return git('ls-files', '--', rel) !== ''; } catch { return false; } };
+
+// .git 用 existsSync:worktree/submodule 的 .git 是檔案不是目錄
+if (!existsSync(join(TARGET, '.git'))) {
+  let root = null;
+  try { root = git('rev-parse', '--show-toplevel'); } catch {}
+  if (root) {
+    // monorepo 政策:單 repo 一份 — session 跨目錄工作,記錄跟著 session 走,不跟目錄
+    log(`⚠️  flightwake 政策:單 repo 一份,裝在 git root。\n    請到 ${root} 執行(submodule 有自己的 .git,視為獨立 repo 各裝各的)。`);
+  } else {
+    log(`⚠️  目前目錄不是 git repo(${TARGET})— flightwake 依賴 git 作為記錄底層。先 git init。`);
+  }
+  process.exit(1);
+}
 const excludePath = () => {
   let p;
   try { p = git('rev-parse', '--git-path', 'info/exclude'); } catch { p = join('.git', 'info', 'exclude'); }

@@ -173,5 +173,14 @@ node "$CLI" uninstall --purge >/dev/null
 [ -z "$(git status --porcelain)" ] || fail "--private 裝完再 uninstall --purge 後應無任何痕跡(got: $(git status --porcelain | tr '\n' ' '))"
 pass "uninstall --private/--purge"
 
+# 13. monorepo 政策:子目錄跑 init/uninstall 應退出非零並指路 git root
+cd "$REPO3"
+mkdir -p sub
+cd sub
+out=$(node "$CLI" init 2>&1) && fail "子目錄 init 應退出非零"
+echo "$out" | grep -q '單 repo 一份' || fail "子目錄 init 應說明 monorepo 政策(got: $out)"
+node "$CLI" uninstall >/dev/null 2>&1 && fail "子目錄 uninstall 也應擋下"
+pass "monorepo 政策:子目錄擋下指路"
+
 echo ""
 echo "✅ smoke 全過"

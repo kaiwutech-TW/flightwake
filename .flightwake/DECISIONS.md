@@ -6,6 +6,7 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
+| 2026-07-18 | monorepo 政策:單 repo 一份、裝在 git root;submodule 視為獨立 repo;init/uninstall 在子目錄執行擋下並指路 | 工作是 session 形狀、常跨 package——子目錄各裝會切碎 record,也讓「讀哪份 STATE」成為新的冷啟動歧義;高流量誤報用 --threshold 緩解;複雜度不該加在還沒人提出的需求上 | 多團隊 monorepo 使用者的真實分區需求出現時 |
 | 2026-07-18 | CI 端 STATE 檢查採 state-check.mjs --ci 雙模式 + README 範例 workflow,init 不寫入使用者 .github/workflows/;錯誤時兩模式都靜默放行 | rev-list 邏輯只寫一處(去重);workflows 目錄權限敏感,寫入超出「寫入範圍固定」承諾;這是紀律提醒不是安全閘門,寧可漏報不可誤擋 CI | 使用者普遍要求 init --ci 自動建 workflow 時 |
 | 2026-07-18 | uninstall 預設保留 .flightwake/ 使用者資料,--purge 才刪;settings 只摘 state-check 條目、flightwake 建的檔案清空後才刪檔 | 紀錄是使用者資產,預設刪除違反「使用者資料不覆蓋」精神;--purge 由使用者明確輸入即是破壞性操作的確認,維持非互動承諾;清空才刪檔避免誤刪使用者自己的內容 | — |
 | 2026-07-18 | token 量測工具(tools/session-cost.mjs)dev-only:不隨 init 安裝、不入框架承諾;正解是零 token 解析本機 transcript,不用 sub-agent | 量測是框架開發者驗證品質的事,使用者日常不該為此花 token;transcript 格式是 Claude Code 內部實作無穩定承諾,只能當工具不能當承諾;sub-agent 看不到 usage 還燒 token | Claude Code 提供正式 usage API 時 |
