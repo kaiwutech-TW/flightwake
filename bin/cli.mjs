@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * flightwake CLI — `npx flightwake init [--force]`(或 `npx github:kaiwutech-TW/flightwake init`)
- * 在目標 repo 根目錄執行:安裝 .flightwake/ 模板 + 4 個 skill + Stop hook + CLAUDE.md 觸發義務表。
+ * 在目標 repo 根目錄執行:安裝 .flightwake/ 模板 + 4 個 skill + Stop hook,
+ * 並把觸發義務表貼進偵測到的 agent 指令檔(CLAUDE.md/AGENTS.md/GEMINI.md;--agents 可指定)。
  * 純檔案複製,跨平台(Node ≥18)。使用者資料(STATE/DECISIONS/TRAPS)永不覆蓋;
  * 框架擁有的檔案(skills/hook/TEMPLATE/CLAUDE.md 片段)預設不覆蓋,--force 才更新。
  */
@@ -20,7 +21,7 @@ const log = (s) => console.log(s);
 const noJunk = (src) => !/(^|[\\/])\.(DS_Store|AppleDouble)$/.test(src);
 
 if (cmd !== 'init' || args.includes('--help') || args.includes('-h')) {
-  log('flightwake — 用法: npx flightwake init [--force](在目標 repo 根目錄執行;--force 更新既有 skill/hook/片段)');
+  log('flightwake — 用法: npx flightwake init [--force] [--agents=claude,codex,gemini]\n  在目標 repo 根目錄執行;--force 更新既有 skill/hook/片段;--agents 指定要貼觸發義務表的平台指令檔(預設自動偵測)');
   process.exit(cmd === 'init' || cmd === 'help' ? 0 : 1);
 }
 
@@ -87,31 +88,51 @@ for (const s of readdirSync(join(FW_SRC, 'skills'))) {
   }
 }
 
-// 5. CLAUDE.md 片段 — 以 begin/end 標記包裹;檢查兩個候選位置,任一已裝就不重複
+// 5. 觸發義務片段 → 各 agent 指令檔。預設偵測既有檔(CLAUDE.md/AGENTS.md/GEMINI.md,有哪個貼哪個);
+//    --agents=claude,codex,gemini 指定平台(檔案不存在則建檔);全無指令檔且未指定 → 建 AGENTS.md(相容面最廣)。
 {
   const BEGIN = '<!-- flightwake:begin';
   const END = '<!-- flightwake:end -->';
   const LEGACY = 'flightwake 工作紀律';
   const body = readFileSync(join(FW_SRC, 'snippets', 'CLAUDE-md-snippet.md'), 'utf8').replace(/^<!--[\s\S]*?-->\n?/, '');
   const block = `${BEGIN} v${VERSION} -->\n${body.trimEnd()}\n${END}\n`;
-  const candidates = [join(TARGET, '.claude', 'CLAUDE.md'), join(TARGET, 'CLAUDE.md')].filter(existsSync);
-  const withMarker = candidates.find((p) => readFileSync(p, 'utf8').includes(BEGIN));
-  const withLegacy = candidates.find((p) => readFileSync(p, 'utf8').includes(LEGACY));
-  if (!candidates.length) {
-    log('  ⚠️  找不到 CLAUDE.md — 請手動把 snippets/CLAUDE-md-snippet.md 貼進你的 CLAUDE.md');
-  } else if (withMarker) {
-    if (FORCE) {
-      const updated = readFileSync(withMarker, 'utf8').replace(/<!-- flightwake:begin[\s\S]*?<!-- flightwake:end -->\n?/, block);
-      writeFileSync(withMarker, updated);
-      log(`  update CLAUDE.md 片段(${withMarker})`);
+  // 平台群組:同群組的候選檔視為同一份(裝進第一個存在的;任一已有標記即不重複)。
+  // 群組最後一個候選是 --agents 指定但檔案不存在時的建檔目標。
+  const GROUPS = {
+    claude: ['.claude/CLAUDE.md', 'CLAUDE.md'],
+    codex: ['AGENTS.md'],
+    gemini: ['GEMINI.md'],
+  };
+  const agentsArg = args.find((a) => a.startsWith('--agents='));
+  const wanted = agentsArg ? agentsArg.slice('--agents='.length).split(',').map((s) => s.trim()).filter(Boolean) : null;
+  if (wanted) {
+    const bad = wanted.filter((w) => !GROUPS[w]);
+    if (bad.length) { log(`⚠️  --agents 不認得:${bad.join(', ')}(可用:${Object.keys(GROUPS).join(', ')})`); process.exit(1); }
+  }
+  const anyInstructionFile = Object.values(GROUPS).flat().some((rel) => existsSync(join(TARGET, ...rel.split('/'))));
+  for (const [name, rels] of Object.entries(GROUPS)) {
+    const files = rels.map((rel) => ({ rel, path: join(TARGET, ...rel.split('/')) }));
+    const existing = files.filter((f) => existsSync(f.path));
+    // 預設模式只裝進「已有指令檔」的平台;全無指令檔時 fallback 到 codex 群組建 AGENTS.md
+    const fallback = !wanted && !anyInstructionFile && name === 'codex';
+    if (wanted ? !wanted.includes(name) : (!existing.length && !fallback)) continue;
+    const withMarker = existing.find((f) => readFileSync(f.path, 'utf8').includes(BEGIN));
+    const withLegacy = existing.find((f) => readFileSync(f.path, 'utf8').includes(LEGACY));
+    if (withMarker) {
+      if (FORCE) {
+        const updated = readFileSync(withMarker.path, 'utf8').replace(/<!-- flightwake:begin[\s\S]*?<!-- flightwake:end -->\n?/, block);
+        writeFileSync(withMarker.path, updated);
+        log(`  update ${withMarker.rel} 片段`);
+      } else {
+        log(`  skip ${withMarker.rel} 片段(已安裝,--force 可更新)`);
+      }
+    } else if (withLegacy) {
+      log(`  skip ${withLegacy.rel} 片段(偵測到 v0.1 無標記版本 — 手動刪除該段後重跑即可升級)`);
     } else {
-      log('  skip CLAUDE.md 片段(已安裝,--force 可更新)');
+      const dst = existing[0] ?? files[files.length - 1];
+      appendFileSync(dst.path, (existsSync(dst.path) ? '\n' : '') + block);
+      log(`  add  ${dst.rel} ← 觸發義務表`);
     }
-  } else if (withLegacy) {
-    log(`  skip CLAUDE.md 片段(偵測到 v0.1 無標記版本於 ${withLegacy} — 手動刪除該段後重跑即可升級)`);
-  } else {
-    appendFileSync(candidates[0], '\n' + block);
-    log(`  add  CLAUDE.md ← 觸發義務表(${candidates[0]})`);
   }
 }
 

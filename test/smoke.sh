@@ -38,6 +38,11 @@ done
 [ -d .flightwake/records ] || fail "缺 records/"
 pass "初裝檔案齊全"
 
+# 1b. 敏感資訊防護:模板與 fw-record skill 帶去識別化提醒
+grep -q '去識別化' .flightwake/TEMPLATE-record.md || fail "record 模板缺去識別化提醒"
+grep -q '去識別化' .claude/skills/fw-record/SKILL.md || fail "fw-record skill 缺去識別化檢查"
+pass "去識別化提醒到位"
+
 # 2. 不夾帶垃圾檔
 find .claude/skills -name '.DS_Store' | grep -q . && fail ".DS_Store 被裝進 skills"
 pass "無 .DS_Store"
@@ -81,6 +86,32 @@ echo "updated" >> .flightwake/STATE.md
 out=$(echo '{}' | node .flightwake/hooks/state-check.mjs)
 [ -z "$out" ] || fail "STATE 有未 commit 更新時應視為新鮮"
 pass "Stop hook 行為正確"
+
+# 8. 多平台:無任何指令檔 → 建 AGENTS.md,重跑冪等
+REPO2="$TMP/repo2"
+mkdir -p "$REPO2" && cd "$REPO2"
+git init -q && git config user.email t@t.t && git config user.name t
+node "$CLI" init >/dev/null
+[ -f AGENTS.md ] || fail "無指令檔時應建 AGENTS.md"
+[ "$(grep -c 'flightwake:begin' AGENTS.md)" = 1 ] || fail "AGENTS.md 片段不是恰好一份"
+node "$CLI" init >/dev/null
+[ "$(grep -c 'flightwake:begin' AGENTS.md)" = 1 ] || fail "重跑後 AGENTS.md 片段重複"
+pass "無指令檔 → 建 AGENTS.md"
+
+# 9. 多平台:CLAUDE.md + GEMINI.md 同存 → 各貼一份、不多建;--agents 指定缺檔平台會建檔;不認得的值退出非零
+REPO3="$TMP/repo3"
+mkdir -p "$REPO3" && cd "$REPO3"
+git init -q && git config user.email t@t.t && git config user.name t
+echo "# c" > CLAUDE.md
+echo "# g" > GEMINI.md
+node "$CLI" init >/dev/null
+[ "$(grep -c 'flightwake:begin' CLAUDE.md)" = 1 ] || fail "CLAUDE.md 應恰好一份片段"
+[ "$(grep -c 'flightwake:begin' GEMINI.md)" = 1 ] || fail "GEMINI.md 應恰好一份片段"
+[ -f AGENTS.md ] && fail "已有指令檔時不應多建 AGENTS.md"
+node "$CLI" init --agents=codex >/dev/null
+[ "$(grep -c 'flightwake:begin' AGENTS.md)" = 1 ] || fail "--agents=codex 應建 AGENTS.md 並貼片段"
+node "$CLI" init --agents=nonsense >/dev/null 2>&1 && fail "--agents 不認得的值應退出非零"
+pass "多平台偵測與 --agents"
 
 echo ""
 echo "✅ smoke 全過"

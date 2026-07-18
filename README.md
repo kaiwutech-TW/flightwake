@@ -58,12 +58,12 @@ cd your-repo
 npx github:kaiwutech-TW/flightwake init        # 升級既有安裝:加 --force
 ```
 
-init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claude/skills/`、把 Stop hook 併入 `.claude/settings.json`、把觸發義務表(含 `<!-- flightwake:begin/end -->` 標記)附加到 CLAUDE.md(或提示你手動貼 `snippets/CLAUDE-md-snippet.md`)。**純檔案複製,零執行期依賴**(Node ≥18 只在安裝與 hook 時用)— 與既有 GSD `.planning/` 可並存(舊紀錄即歷史檔案)。使用者資料(STATE/DECISIONS/TRAPS)任何情況下都不覆蓋;`--force` 只更新框架擁有的 skill/hook/模板/片段。
+init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claude/skills/`、把 Stop hook 併入 `.claude/settings.json`、把觸發義務表(含 `<!-- flightwake:begin/end -->` 標記)附加到**偵測到的 agent 指令檔**(CLAUDE.md / AGENTS.md / GEMINI.md,有哪個貼哪個;全都沒有就建 AGENTS.md——跨工具相容面最廣;`--agents=claude,codex,gemini` 可明確指定,缺檔會建檔)。skill 與 Stop hook 是 Claude Code 上的便利糖衣;`.flightwake/` 本體是純 Markdown,任何 agent 讀指令檔即可遵循同一套觸發義務。**純檔案複製,零執行期依賴**(Node ≥18 只在安裝與 hook 時用)— 與既有 GSD `.planning/` 可並存(舊紀錄即歷史檔案)。使用者資料(STATE/DECISIONS/TRAPS)任何情況下都不覆蓋;`--force` 只更新框架擁有的 skill/hook/模板/片段。
 
 ## 安全性
 
 - **零依賴、無網路、無 install script**:安裝器只做檔案複製;hook 只用 `git`(無 shell)做唯讀查詢。
-- **寫入範圍固定**:`init` 只碰 `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`、CLAUDE.md。
+- **寫入範圍固定**:`init` 只碰 `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`,以及 agent 指令檔(CLAUDE.md / AGENTS.md / GEMINI.md)裡的標記區塊。
 - **hook 進 git**:`.flightwake/hooks/state-check.mjs` 是 repo 內的檔案,能 commit 的人就能改——與所有 repo-local 設定同級,Claude Code 載入時會要求確認。
 - 漏洞回報見 [SECURITY.md](SECURITY.md)。開源後將以 npm Trusted Publishing 發布(附 provenance),使用者可用 `npm audit signatures` 驗證。
 
