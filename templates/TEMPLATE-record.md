@@ -19,9 +19,9 @@ prod_changes: {{migrations/部署/資料操作,無則 none}}
 
 ## 交付 / Commits
 
-| 內容 | Commit/位置 |
-|---|---|
-| {{做了什麼}} | {{hash 或路徑}} |
+<!-- 去重:細節 git 自己講,這裡只寫 range;git log 看不出的對應關係才補一句。 -->
+
+{{起 hash}}..{{迄 hash}}({{一句話說這段 range 涵蓋什麼;git log 已清楚就不寫}})
 
 ## 驗證證據
 
