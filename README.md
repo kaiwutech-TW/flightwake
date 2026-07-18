@@ -68,7 +68,7 @@ Claude Code 的持久記憶(memory 目錄)與 flightwake 同形(frontmatter + `[
 
 ```bash
 cd your-repo
-npx github:kaiwutech-TW/flightwake init        # 升級既有安裝:加 --force
+npx flightwake init        # 升級既有安裝:加 --force
 ```
 
 init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claude/skills/`、把 Stop hook 併入 `.claude/settings.json`、把觸發義務表(含 `<!-- flightwake:begin/end -->` 標記)附加到**偵測到的 agent 指令檔**(CLAUDE.md / AGENTS.md / GEMINI.md,有哪個貼哪個;全都沒有就建 AGENTS.md——跨工具相容面最廣;`--agents=claude,codex,gemini` 可明確指定,缺檔會建檔)。

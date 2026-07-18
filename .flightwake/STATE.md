@@ -32,7 +32,7 @@ flightwake v0.7.1,內部測試中(kaiwutech-TW private)。**開源前缺口 1–
 1. **flip 判準(2026-07-18 改):兩個 gate 關掉即上,不等 8/1**(搶先機決策見 DECISIONS)——
    gate 1 活範例指引 ✅(README 指向本 repo .flightwake/);gate 2 第二 repo 冷啟動實測(唯一未關)
 2. **gate 2 執行法**:挑一個內部真實 repo(最好有 GSD 歷史)→ `npx github:kaiwutech-TW/flightwake init` → 做一段真實工作收尾 → 下個 session 開場 /fw-coldstart 計時 + tools/session-cost.mjs --since 量 token → 數據進 benchmarks.md 第二筆
-3. gate 2 關掉 → 執行 flip runbook(docs/design.md);npm 名字已先佔位不在 runbook 內
+3. gate 2 關掉 → 執行 flip runbook(docs/design.md);npm 已佔位 ✅(flightwake@0.7.1 手動發布,2026-07-18,registry 實裝驗證過;runbook 的 npm 步驟只剩 trusted publisher 登記)
 
 # 常備事實(這個 repo 的 3-5 條保命知識)
 
