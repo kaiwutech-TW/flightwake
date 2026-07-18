@@ -29,9 +29,9 @@ flightwake v0.7.1,內部測試中(kaiwutech-TW private)。**開源前缺口 1–
 
 # 下一步入口
 
-1. 內部試跑(2 週)持續:累積冷啟動樣本進 benchmarks(用 tools/session-cost.mjs --since 切單 turn)、驗證 --private 與 uninstall 的真實場景
-2. 範例 repo(開源準備唯一未完項)
-3. flip 日:照 docs/design.md 的 runbook 依序執行(推全新 repo → private 改 false + README 對調 → npm trusted publisher 登記 → PVR/branch protection → 首個 Release)
+1. 內部試跑至 **2026-08-01**(v0.7.1 功能完備才起算):累積冷啟動樣本進 benchmarks(tools/session-cost.mjs --since 切單 turn)、--private/uninstall 至少一次真實場景、慣例兩週無大改
+2. 範例 repo(開源準備唯一未完項,試跑期間做掉)
+3. **2026-08-01 檢視試跑資料,達標即執行 flip runbook**(docs/design.md;提前條件:真實使用無摩擦且慣例不再動;延後訊號:試跑再冒新缺口則修完重算兩週)
 
 # 常備事實(這個 repo 的 3-5 條保命知識)
 
