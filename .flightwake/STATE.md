@@ -10,7 +10,7 @@ health: green
 
 # 現在在哪
 
-flightwake v0.3.0,內部測試中(kaiwutech-TW private),準備開源。開源前缺口清單前三項已落地(去識別化防護、superseded 時效管理、多平台安裝偵測 + --agents),剩 4–7 項。安全硬化與匿名化已完成,dogfooding 運作中。
+flightwake v0.3.0,內部測試中(kaiwutech-TW private),準備開源。缺口 1–3 已落地(去識別化、superseded 時效管理、多平台安裝),去重原則已入義務表(record 的 commits 表改薄為 range)。剩缺口 4–7。定位已確立:給強模型(Fable 5 級)的事後記錄框架,刻意不做 GSD 式導航——強模型自己會開車。
 
 # 進行中(未完成勿刪)
 
@@ -24,12 +24,14 @@ flightwake v0.3.0,內部測試中(kaiwutech-TW private),準備開源。開源前
 - [ ] 6. CI 端 STATE 落後檢查(把 Stop hook 的紀律帶到 Claude Code 之外)
 - [ ] 7. monorepo 政策:單 repo 一份或允許 workspace 子目錄各裝,開源前想清楚
 - [ ] 開源前 checklist(既有):伺服器端舊 objects 清理(見 commit f50f174 的 docs)
+- [ ] 冷啟動實測:下個新 session 開場 /fw-coldstart 計時+記 token,數據補進 docs/benchmarks.md(唯一品質指標至今無真數據)
+- 已定案待觀察:慣例演進採讀取端容忍(見 DECISIONS 2026-07-18),容忍不了時再議遷移工具
 
 # 下一步入口
 
-1. 缺口 4 `--private` → `bin/cli.mjs` 加 flag(寫 .git/info/exclude + settings.local.json)+ smoke case
-2. 缺口 5 uninstall → `bin/cli.mjs` 加子指令(寫入範圍固定,反向刪除 + 移除標記區塊)
-3. 開源後發布 → npm Trusted Publishing(附 provenance),README「安全性」段已承諾
+1. **冷啟動實測(下個 session 開場第一件事)**:/fw-coldstart 計時+記 token → 數據進 docs/benchmarks.md,順便回顧實測感受可再優化處
+2. 缺口 4 `--private` → `bin/cli.mjs` 加 flag(寫 .git/info/exclude + settings.local.json)+ smoke case
+3. 缺口 5 uninstall → `bin/cli.mjs` 加子指令(寫入範圍固定,反向刪除 + 移除標記區塊)
 
 # 常備事實(這個 repo 的 3-5 條保命知識)
 
