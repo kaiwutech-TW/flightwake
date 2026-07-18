@@ -26,7 +26,7 @@ flightwake v0.8.1,**已開源上線(2026-07-18)**:公開 repo、npm 0.8.1(truste
 - [x] 開源收殘 ✅(MIT + 英文 README + release.yml + flip runbook;舊 objects 清理併入 runbook 第 1 步;v0.7.1)
 - [x] 冷啟動實測 ✅ 首筆有效樣本入 docs/benchmarks.md(2026-07-18;flightwake 邊際 ≈ 2.6K 讀 + 2K 出,接手零猶豫)
 - 已定案待觀察:慣例演進採讀取端容忍(見 DECISIONS 2026-07-18),容忍不了時再議遷移工具
-- v0.9 規劃:完整 i18n(CLI 輸出英文化 + `--lang` 模板語言;README 已四語但 CLI/skill/模板仍 zh-TW,英文 README 有註記;程式註解翻譯併入,不單獨做半套)+ statusline context 視窗改為依模型推斷(現 200k 硬編碼,大視窗模型會高估)
+- v0.9 規劃:完整 i18n(CLI 輸出英文化 + `--lang` 模板語言;README 已四語但 CLI/skill/模板仍 zh-TW,英文 README 有註記;程式註解翻譯併入,不單獨做半套)。statusline 視窗項已提前完成(2026-07-18:改用 stdin `context_window` 官方欄位,舊版 fallback 200k)
 
 # 下一步入口
 

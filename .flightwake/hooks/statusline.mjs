@@ -37,7 +37,18 @@ try {
   }
 } catch {}
 
-// context 用量:transcript 最後一筆 usage ≈ 目前 prompt 大小(視窗以 200k 計);順便數訊息量(判斷剛開場)
+// context 用量:優先用 Claude Code stdin 的 context_window(帶真實視窗大小,1M 模型不會高估);
+// 舊版無此欄位時退回解析 transcript 最後一筆 usage(視窗保守以 200k 計)。訊息量照數(判斷剛開場)。
+try {
+  const cw = j.context_window;
+  if (typeof cw?.used_percentage === 'number') {
+    pct = Math.min(99, Math.round(cw.used_percentage));
+  } else if (cw?.current_usage && cw?.context_window_size > 0) {
+    const u = cw.current_usage;
+    const used = (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0);
+    pct = Math.min(99, Math.round((used / cw.context_window_size) * 100));
+  }
+} catch {}
 try {
   const t = j.transcript_path;
   if (t && existsSync(t)) {
