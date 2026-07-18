@@ -307,3 +307,4 @@ log(PRIVATE ? `
 ✅ done。下一步:
    1. 編輯 .flightwake/STATE.md 填入現況(或讓 Claude 用 /fw-record 初始化)
    2. git add .flightwake .claude CLAUDE.md && git commit`);
+if (!STATUSLINE) log('   ℹ️  底部儀表未裝(選配)— 要的話:npx flightwake init --statusline(health/STATE 落後/context 用量)');

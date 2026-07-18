@@ -134,6 +134,8 @@ Wrap up your current milestone first, then:
 
 Health color (the one thing you watch), STATE staleness (same rev-list logic as the Stop hook — but as a live gauge instead of an exit-time reminder), and context usage. The gauge also tells you **the next command for the current state** — session just started → `→ 開工先 /fw-coldstart`; STATE ≥3 commits behind → `→ /fw-record`; context running hot → `→ /fw-record → /clear → /fw-coldstart`; all healthy → silence. It never overwrites an existing statusline (a single-value setting), and repo-level config takes precedence over user-level, so it coexists with tools that set a global one.
 
+Note: a plain `npx flightwake init` does **not** install the gauge — it's opt-in. Already ran init without it? Running `npx flightwake init --statusline` again just adds the gauge (everything else is skipped as already installed); the bar appears in the next Claude Code session.
+
 ### CI-side wrap-up check (optional)
 
 The Stop hook only works inside Claude Code; to extend the "STATE must not lag" discipline to other agents and human collaborators, run the same script in CI — it fails when STATE lags HEAD by ≥3 commits (tunable via `--threshold=N`):
