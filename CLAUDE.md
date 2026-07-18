@@ -1,4 +1,4 @@
-<!-- flightwake:begin v0.5.0 -->
+<!-- flightwake:begin v0.6.0 -->
 ## flightwake 工作紀律
 
 本 repo 使用 flightwake(行車記錄器式工作框架):**記錄追隨工作,不引導工作**。

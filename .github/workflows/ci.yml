@@ -16,3 +16,15 @@ jobs:
         with:
           node-version: 24
       - run: bash test/smoke.sh
+
+  # 收尾紀律的 CI 端執行:STATE 落後 ≥3 commits 就擋(Stop hook 的紀律帶到 Claude Code 之外)
+  state-fresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0 # rev-list 數落後量需要完整歷史
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: node .flightwake/hooks/state-check.mjs --ci

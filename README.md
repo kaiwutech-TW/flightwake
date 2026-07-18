@@ -64,6 +64,31 @@ init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claud
 
 `uninstall` 反向清除 init 的固定寫入範圍:刪 skill 與框架檔、從 settings 摘除 flightwake 的 Stop hook(使用者其他 hook 原樣保留)、移除指令檔與 `.git/info/exclude` 的標記區塊(由 flightwake 建的檔案清空後刪除)。**`.flightwake/`(STATE/DECISIONS/TRAPS/records)是使用者資料,預設保留**,`uninstall --purge` 才連同刪除。skill 與 Stop hook 是 Claude Code 上的便利糖衣;`.flightwake/` 本體是純 Markdown,任何 agent 讀指令檔即可遵循同一套觸發義務。**純檔案複製,零執行期依賴**(Node ≥18 只在安裝與 hook 時用)— 與既有 GSD `.planning/` 可並存(舊紀錄即歷史檔案)。使用者資料(STATE/DECISIONS/TRAPS)任何情況下都不覆蓋;`--force` 只更新框架擁有的 skill/hook/模板/片段。
 
+### CI 端收尾檢查(選配)
+
+Stop hook 只在 Claude Code 生效;要把「STATE 不落後」的紀律帶到其他 agent 與人類協作者,在 CI 跑同一份腳本——STATE 落後 HEAD ≥3 commits 即失敗(`--threshold=N` 可調):
+
+```yaml
+# .github/workflows/flightwake.yml(範例;依你的 repo 慣例建議把 actions 釘到 SHA)
+name: flightwake
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  state-fresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # rev-list 數落後量需要完整歷史
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: node .flightwake/hooks/state-check.mjs --ci
+```
+
+flightwake 不會把 workflow 寫進你的 repo——`.github/workflows/` 權限敏感,這超出「寫入範圍固定」的承諾;範例請自行複製。
+
 ## 安全性
 
 - **零依賴、無網路、無 install script**:安裝器只做檔案複製;hook 只用 `git`(無 shell)做唯讀查詢。

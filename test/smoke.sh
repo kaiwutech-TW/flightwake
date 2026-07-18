@@ -80,6 +80,8 @@ git add -A && git commit -qm "install flightwake"
 for i in 1 2 3; do echo "$i" > "f$i.txt" && git add "f$i.txt" && git commit -qm "c$i"; done
 out=$(echo '{}' | node .flightwake/hooks/state-check.mjs)
 echo "$out" | grep -q '"decision":"block"' || fail "落後 3 commits 時 hook 應該 block(got: $out)"
+node .flightwake/hooks/state-check.mjs --ci >/dev/null 2>&1 && fail "--ci 落後時應退出非零"
+node .flightwake/hooks/state-check.mjs --ci --threshold=99 >/dev/null 2>&1 || fail "--ci 未達門檻時應通過"
 out=$(echo '{"stop_hook_active":true}' | node .flightwake/hooks/state-check.mjs)
 [ -z "$out" ] || fail "stop_hook_active 時應靜默(防循環)"
 echo "updated" >> .flightwake/STATE.md
