@@ -9,6 +9,19 @@
 2. **儀表警示燈**:模型強弱無關的硬防護(測試綠才算完成、prod 變更必留驗證證據、破壞性操作先確認)
 3. **路標**:任何 session 死掉,下一個 session 讀 `STATE.md` 2 分鐘內安全接手
 
+## 為什麼會有這個專案
+
+Fable 5 級的模型不需要人教它怎麼做事——但有四件事再強的模型也做不到,而且全是**結構性**的,不會隨模型變強而消失:
+
+1. **session 必死,context 有限**。工作跨 session 時記憶歸零;沒有記錄,每次接手都是一場 git 考古——強模型只是考古得比較快,不是不用考古。
+2. **git 記 what,不記 why**。commit 查得到改了什麼,查不到「當時為什麼不選另一條路」和「這個坑的根因」——而這兩樣恰好是下個 session(或下個 agent)最貴的資訊。
+3. **紀律會在長 session 裡漂移**。「測試還沒跑就回報完成」「動了 prod 沒留驗證證據」這類滑坡與模型智力無關,需要模型之外的硬防護。
+4. **多 agent 不共享狀態**。Claude、Codex、Gemini 與人類隊友各看各的;狀態進了 git 才是大家的。
+
+所以 flightwake 補的是**持久性與紀律,不是智力**——這也是它刻意不做 GSD 式導航的原因:導航補的是「模型不會規劃」,那個不足已經消失;記錄補的不足還在。
+
+起源是一個真實的三日 session(2026-07-15~17:雙 repo、19 commits、4 條 cron、2 個深層 bug 修復,全程無事前計畫、零走偏)。它證明了強模型不需要導航——但它留下的 SUMMARY/CONTEXT/記憶檔,也就是讓下一個 session 能接手的東西,全是臨場發明的。flightwake 把那套臨場發明變成可安裝的慣例。
+
 ## 核心原則:記錄追隨工作,而非引導工作
 
 GSD 是 **stage-driven**(research→plan→execute→verify 關卡制);flightwake 是 **trigger-driven**(事件觸發義務制):
@@ -93,16 +106,41 @@ jobs:
 
 flightwake 不會把 workflow 寫進你的 repo——`.github/workflows/` 權限敏感,這超出「寫入範圍固定」的承諾;範例請自行複製。
 
+## 使用教學
+
+### 第一次安裝後
+
+1. `npx flightwake init` 跑完,開一個 Claude Code session,說「**用 /fw-record 初始化 STATE**」——讓模型把 repo 現況寫成第一份 STATE
+2. `git add .flightwake .claude CLAUDE.md && git commit`
+3. 之後每個 session 都是下面的日常循環
+
+### 日常循環
+
+你(和模型)只需要記得一件事:**開工先 `/fw-coldstart`,其餘義務模型自己會觸發**——義務表已貼在指令檔裡,強模型讀得懂也守得住。一個典型 session 長這樣:
+
+```text
+你:  /fw-coldstart
+模型:(讀 STATE + 最近 record,約 1 分鐘)
+      「上次做到 X,health green,下一步入口是 Y。有沒有未驗證的變更:無。從 Y 接手?」
+你:  對,做吧
+模型:(直接動手。過程中做了關掉其他選項的決策 → 自動一行進 DECISIONS;
+      踩到非顯而易見的坑 → 自動 /fw-trap 登記)
+你:  收尾
+模型:(/fw-record:寫飛行紀錄、更新 STATE、敏感資訊自查)
+```
+
+忘了收尾也沒關係:STATE 落後 ≥3 commits 時,Stop hook 會在 session 結束前擋一次提醒;CI 端用 `--ci` 把同一道關卡帶給其他 agent 與人類協作者。要跨 session 停手的大工程,停手前說「交接」讓模型跑 `/fw-handoff`。
+
+### 你唯一要盯的事
+
+STATE 的 health 誠不誠實(green/yellow/red)。框架的品質指標只有一個:**新 session 冷啟動多久能安全接手**(>5 分鐘 = 記錄在退化)。其他一切——記錄多寡、格式合規——都不重要。
+
 ## 安全性
 
 - **零依賴、無網路、無 install script**:安裝器只做檔案複製;hook 只用 `git`(無 shell)做唯讀查詢。
 - **寫入範圍固定**:`init` 只碰 `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`,以及 agent 指令檔(CLAUDE.md / AGENTS.md / GEMINI.md)裡的標記區塊;`--private` 時改碰 `.claude/settings.local.json`、`CLAUDE.local.md` 與 `.git/info/exclude` 裡的 `# flightwake:begin/end` 標記區塊。`uninstall` 反向清除同一範圍,預設不動 `.flightwake/` 使用者資料(`--purge` 才刪)。
 - **hook 進 git**:`.flightwake/hooks/state-check.mjs` 是 repo 內的檔案,能 commit 的人就能改——與所有 repo-local 設定同級,Claude Code 載入時會要求確認。
 - 漏洞回報見 [SECURITY.md](SECURITY.md)。開源後將以 npm Trusted Publishing 發布(附 provenance),使用者可用 `npm audit signatures` 驗證。
-
-## 起源
-
-從 2026-07-15~17 的一個真實三日 session 萃取(雙 repo:後端自動化服務 × 資料儀表板;19 commits、4 條 cron、2 個深層 bug 修復,全程無事前計畫、零走偏)。該 session 留下的 SUMMARY/CONTEXT/記憶檔就是本框架三個模板的原型。
 
 ## 狀態
 

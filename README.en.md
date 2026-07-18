@@ -10,6 +10,19 @@ Its ancestor in spirit is GSD: GSD is **navigation** (turn-by-turn guidance for 
 2. **Warning lights**: hard guards independent of model strength (tests green before "done", prod changes must leave verification evidence, destructive operations need confirmation first)
 3. **Road signs**: any session can die; the next session reads `STATE.md` and takes over safely within 2 minutes
 
+## Why this project exists
+
+A Fable 5-class model doesn't need to be taught how to do the work — but there are four things no model can do however strong it gets, because they are **structural** and don't disappear as models improve:
+
+1. **Sessions die; context is finite.** When work spans sessions, memory resets to zero; without records, every takeover is a git archaeology dig — a strong model just digs faster, it doesn't get to skip the dig.
+2. **Git records the what, not the why.** Commits tell you what changed, never "why the other path wasn't taken" or "the root cause of that trap" — which happen to be the two most expensive pieces of information for the next session (or the next agent).
+3. **Discipline drifts in long sessions.** "Reported done before the tests ran", "touched prod without leaving verification evidence" — these slides have nothing to do with model intelligence and need guards outside the model.
+4. **Agents don't share state.** Claude, Codex, Gemini, and human teammates each see their own world; state only becomes everyone's once it's in git.
+
+So flightwake supplements **persistence and discipline, not intelligence** — which is exactly why it deliberately drops GSD-style navigation: navigation compensated for "models can't plan", and that deficit is gone; the deficits records compensate for are still here.
+
+The origin was a real three-day session (2026-07-15~17: two repos, 19 commits, 4 cron jobs, 2 deep bug fixes — no upfront planning, zero derailment). It proved a strong model needs no navigation — but everything it left behind to make the next session possible (SUMMARY/CONTEXT/memory files) was improvised on the spot. flightwake turns that improvisation into an installable convention.
+
 ## Core principle: records follow work — they don't lead it
 
 GSD is **stage-driven** (research→plan→execute→verify gates); flightwake is **trigger-driven** (events create obligations):
@@ -94,16 +107,43 @@ jobs:
 
 flightwake will not write a workflow into your repo — `.github/workflows/` is permission-sensitive and outside the "fixed write scope" promise; copy the example yourself.
 
+## How to use it
+
+### Right after the first install
+
+1. Once `npx flightwake init` finishes, open a Claude Code session and say "**initialize STATE with /fw-record**" — let the model write the repo's current situation into the first STATE
+2. `git add .flightwake .claude CLAUDE.md && git commit`
+3. Every session after that follows the daily loop below
+
+### The daily loop
+
+You (and the model) only need to remember one thing: **start work with `/fw-coldstart`; the model triggers every other obligation itself** — the obligation table is already in the instruction file, and strong models both read it and honor it. A typical session:
+
+```text
+You:   /fw-coldstart
+Model: (reads STATE + the latest record, ~1 minute)
+       "Last session got to X, health green, next entry point is Y.
+        Unverified changes: none. Pick up from Y?"
+You:   Yes, go
+Model: (starts working directly. Makes a decision that closes off options →
+        one line appended to DECISIONS; hits a non-obvious trap → /fw-trap)
+You:   Wrap up
+Model: (/fw-record: writes the flight record, updates STATE, runs the
+        sensitive-info self-check)
+```
+
+Forgot to wrap up? No problem: when STATE lags ≥3 commits, the Stop hook blocks once before the session ends to remind you; `--ci` brings the same gate to other agents and human collaborators. For multi-session construction, say "handoff" before stopping so the model runs `/fw-handoff`.
+
+### The only thing you need to watch
+
+Whether STATE's health is honest (green/yellow/red). The framework has a single quality metric: **how long a fresh session needs to take over safely** (>5 minutes = your records are degrading). Everything else — record count, format compliance — doesn't matter.
+
 ## Security
 
 - **Zero dependencies, no network, no install scripts**: the installer only copies files; the hook only uses `git` (no shell) for read-only queries.
 - **Fixed write scope**: `init` only touches `.flightwake/`, `.claude/skills/fw-*`, `.claude/settings.json`, and the marker blocks inside agent instruction files (CLAUDE.md / AGENTS.md / GEMINI.md); with `--private` it instead touches `.claude/settings.local.json`, `CLAUDE.local.md`, and the `# flightwake:begin/end` marker block in `.git/info/exclude`. `uninstall` reverses the same scope and never touches `.flightwake/` user data by default (`--purge` to delete).
 - **The hook lives in git**: `.flightwake/hooks/state-check.mjs` is a file in your repo — anyone who can commit can change it, same trust level as all repo-local config; Claude Code asks for confirmation when loading it.
 - Vulnerability reports: see [SECURITY.md](SECURITY.md). Published to npm via Trusted Publishing (with provenance); verify with `npm audit signatures`.
-
-## Origin
-
-Distilled from a real three-day session (2026-07-15~17; two repos: a backend automation service × a data dashboard; 19 commits, 4 cron jobs, 2 deep bug fixes — no upfront planning, zero derailment). The SUMMARY/CONTEXT/memory files that session left behind became the prototypes of this framework's three templates.
 
 ## License
 
