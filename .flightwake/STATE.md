@@ -1,5 +1,5 @@
 ---
-updated: 2026-07-17
+updated: 2026-07-18
 updated_by: Claude(Fable 5)
 latest_record: records/260717-self-install.md
 health: green
@@ -14,14 +14,22 @@ flightwake v0.2.0,內部測試中(kaiwutech-TW private),準備開源。本 repo 
 
 # 進行中(未完成勿刪)
 
-- [ ] 開源前 checklist:伺服器端舊 objects 清理(見 commit f50f174 的 docs)
-- [ ] 待議:init 在目標 repo 無 CLAUDE.md 時是否直接建檔(目前只警告,本次自裝就撞到)
+開源前缺口清單(優先序見 DECISIONS 2026-07-18):
+
+- [ ] 1. 敏感資訊防護:TEMPLATE-record + fw-record skill 加「驗證證據去識別化」檢查;評估 record commit 前的簡易 secret 掃描(擋開源,最優先)
+- [ ] 2. 記錄增長+時效管理:TRAPS/DECISIONS 條目加 superseded 標記、設計觸發式壓實義務(如 fw-curate);防「舊條目與新現況衝突」的偏差
+- [ ] 3. 多平台安裝:init 偵測 CLAUDE.md/AGENTS.md/GEMINI.md 貼片段(都無則建 AGENTS.md)+ `--agents` flag;此決策同時解掉「無 CLAUDE.md 只警告」的舊待議
+- [ ] 4. `--private` flag:.git/info/exclude + settings.local.json,安裝時印出代價說明
+- [ ] 5. uninstall 指令(寫入範圍固定 + 標記包裹片段,可逆性已具備)
+- [ ] 6. CI 端 STATE 落後檢查(把 Stop hook 的紀律帶到 Claude Code 之外)
+- [ ] 7. monorepo 政策:單 repo 一份或允許 workspace 子目錄各裝,開源前想清楚
+- [ ] 開源前 checklist(既有):伺服器端舊 objects 清理(見 commit f50f174 的 docs)
 
 # 下一步入口
 
-1. 繼續開源前 checklist → 讀 `docs/` 下的 checklist 相關文件與 commit f50f174
-2. 開源後發布 → npm Trusted Publishing(附 provenance),README「安全性」段已承諾
-3. 改 init 的 CLAUDE.md 建檔行為 → `bin/cli.mjs` 第 90 行起的區塊 + `test/smoke.sh` 加 case
+1. 敏感資訊防護 → `templates/TEMPLATE-record.md` + `skills/fw-record/SKILL.md` 加檢查項,`test/smoke.sh` 加 case
+2. init 多平台偵測 → `bin/cli.mjs` 第 90 行起的 CLAUDE.md 區塊改多候選偵測
+3. 開源後發布 → npm Trusted Publishing(附 provenance),README「安全性」段已承諾
 
 # 常備事實(這個 repo 的 3-5 條保命知識)
 

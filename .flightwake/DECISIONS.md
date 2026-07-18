@@ -5,4 +5,8 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
-| {{YYYY-MM-DD}} | {{採用 X 而非 Y}} | {{一句話}} | {{什麼情況要回頭看(選填)}} |
+| 2026-07-18 | 開源前缺口優先序定為:敏感資訊防護 > 記錄增長+時效管理 > 多平台安裝 > --private > uninstall > CI 端 STATE 檢查 > monorepo | 敏感資訊直接擋開源;時效偏差傷唯一品質指標(冷啟動成本);其餘按採用信任排 | 內部試跑(2 週)結束後重排 |
+| 2026-07-18 | TRAPS/DECISIONS 維持 append-only,但條目加 superseded 生命週期標記 + 觸發式壓實(由 skill 執行),不做框架自動改寫 | 功能合併後舊條目變成「看似有效的錯誤事實」,偏差風險比佔空間嚴重;自動改寫違反零執行期依賴,records 因有日期+只讀最新而天生免疫此問題 | 條目數超門檻或實測冷啟動 >5 分鐘 |
+| 2026-07-18 | 多平台安裝採「偵測既有指令檔(CLAUDE.md/AGENTS.md/GEMINI.md)+ --agents flag 覆寫」,不做 GSD 式互動選單;都沒有時建 AGENTS.md | 互動 prompt 違反零依賴/無 install script 承諾,且卡死 agent 與 CI 的非互動安裝;AGENTS.md 是跨工具相容面最廣的事實標準 | AGENTS.md 標準化格局變動 |
+| 2026-07-18 | --private(不進 git)做成 opt-in flag:用 .git/info/exclude + .claude/settings.local.json,預設維持進 git | 「進 git 隨 repo 共享」是 flightwake 與個人記憶分工的存在理由,不可預設放棄;exclude 純本地、不在 repo 留下使用痕跡 | 團隊使用者對 private 模式的實際回饋 |
+| 2026-07-17 | flightwake repo 自我安裝(dogfooding),本 repo 開發適用自己的觸發義務表 | 框架吃自己的狗糧才能在開源前發現真實摩擦(當天即發現 init 無 CLAUDE.md 只警告的缺口) | — |
