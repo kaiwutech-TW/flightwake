@@ -135,5 +135,41 @@ node "$CLI" init --private >/dev/null
 grep -q '^CLAUDE\.local\.md$' .git/info/exclude || fail "重跑後 exclude 掉了 CLAUDE.local.md 條目"
 pass "--private 本機模式"
 
+# 11. uninstall:框架檔全清、使用者資料與使用者 hook 保留、片段移除不傷其他內容、冪等
+REPO5="$TMP/repo5"
+mkdir -p "$REPO5" && cd "$REPO5"
+git init -q && git config user.email t@t.t && git config user.name t
+echo "# 專案說明" > CLAUDE.md
+node "$CLI" init >/dev/null
+echo "USER-DATA" >> .flightwake/STATE.md
+node -e "const f='./.claude/settings.json',fs=require('fs'),s=require(f);s.hooks.Stop.push({hooks:[{type:'command',command:'echo user-hook'}]});fs.writeFileSync(f,JSON.stringify(s,null,2))"
+node "$CLI" uninstall >/dev/null
+[ -d .claude/skills/fw-coldstart ] && fail "uninstall 應刪 skills"
+[ -f .flightwake/TEMPLATE-record.md ] && fail "uninstall 應刪 TEMPLATE-record"
+[ -f .flightwake/hooks/state-check.mjs ] && fail "uninstall 應刪 hook 檔"
+grep -q USER-DATA .flightwake/STATE.md || fail "uninstall 不應動使用者資料"
+grep -q 'flightwake:begin' CLAUDE.md && fail "uninstall 應移除 CLAUDE.md 片段"
+grep -q '專案說明' CLAUDE.md || fail "uninstall 不應動 CLAUDE.md 其他內容"
+grep -q 'state-check' .claude/settings.json 2>/dev/null && fail "uninstall 應移除 flightwake Stop hook"
+grep -q 'user-hook' .claude/settings.json || fail "uninstall 不應動使用者自己的 hook"
+node "$CLI" uninstall >/dev/null || fail "重跑 uninstall 應成功(冪等)"
+pass "uninstall 反向清除"
+
+# 12. --private 安裝後 uninstall:exclude/CLAUDE.local.md/settings.local.json 全清;--purge 連使用者資料一起刪
+REPO6="$TMP/repo6"
+mkdir -p "$REPO6" && cd "$REPO6"
+git init -q && git config user.email t@t.t && git config user.name t
+echo "# c" > CLAUDE.md && git add CLAUDE.md && git commit -qm base
+node "$CLI" init --private >/dev/null
+node "$CLI" uninstall >/dev/null
+grep -q 'flightwake:begin' .git/info/exclude 2>/dev/null && fail "uninstall 應移除 exclude 區塊"
+[ -f CLAUDE.local.md ] && fail "uninstall 應刪由 flightwake 建的 CLAUDE.local.md"
+[ -f .claude/settings.local.json ] && fail "uninstall 應刪只含 flightwake hook 的 settings.local.json"
+[ -d .flightwake ] || fail "uninstall 預設應保留 .flightwake/"
+node "$CLI" uninstall --purge >/dev/null
+[ -d .flightwake ] && fail "--purge 應刪 .flightwake/"
+[ -z "$(git status --porcelain)" ] || fail "--private 裝完再 uninstall --purge 後應無任何痕跡(got: $(git status --porcelain | tr '\n' ' '))"
+pass "uninstall --private/--purge"
+
 echo ""
 echo "✅ smoke 全過"

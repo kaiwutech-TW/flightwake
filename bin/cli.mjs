@@ -6,7 +6,7 @@
  * 純檔案複製,跨平台(Node ≥18)。使用者資料(STATE/DECISIONS/TRAPS)永不覆蓋;
  * 框架擁有的檔案(skills/hook/TEMPLATE/CLAUDE.md 片段)預設不覆蓋,--force 才更新。
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, copyFileSync, readdirSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, copyFileSync, readdirSync, statSync, rmSync, rmdirSync } from 'node:fs';
 import { join, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -22,9 +22,9 @@ const VERSION = JSON.parse(readFileSync(join(FW_SRC, 'package.json'), 'utf8')).v
 const log = (s) => console.log(s);
 const noJunk = (src) => !/(^|[\\/])\.(DS_Store|AppleDouble)$/.test(src);
 
-if (cmd !== 'init' || args.includes('--help') || args.includes('-h')) {
-  log('flightwake — 用法: npx flightwake init [--force] [--private] [--agents=claude,codex,gemini]\n  在目標 repo 根目錄執行;--force 更新既有 skill/hook/片段;--private 紀錄只留本機不進 git(.git/info/exclude + settings.local.json);--agents 指定要貼觸發義務表的平台指令檔(預設自動偵測)');
-  process.exit(cmd === 'init' || cmd === 'help' ? 0 : 1);
+if ((cmd !== 'init' && cmd !== 'uninstall') || args.includes('--help') || args.includes('-h')) {
+  log('flightwake — 用法: npx flightwake init [--force] [--private] [--agents=claude,codex,gemini] | uninstall [--purge]\n  在目標 repo 根目錄執行;--force 更新既有 skill/hook/片段;--private 紀錄只留本機不進 git(.git/info/exclude + settings.local.json);--agents 指定要貼觸發義務表的平台指令檔(預設自動偵測)\n  uninstall 反向清除框架檔與標記區塊;預設保留 .flightwake/ 使用者資料,--purge 才連同刪除');
+  process.exit(cmd === 'init' || cmd === 'uninstall' || cmd === 'help' ? 0 : 1);
 }
 
 // .git 用 existsSync:worktree/submodule 的 .git 是檔案不是目錄
@@ -33,9 +33,80 @@ if (!existsSync(join(TARGET, '.git'))) {
   process.exit(1);
 }
 
-// git 只在 --private 需要(exclude 路徑解析 + 追蹤判定);預設路徑維持純檔案複製
+// git 只在 --private 與 uninstall 需要(exclude 路徑解析 + 追蹤判定);預設 init 路徑維持純檔案複製
 const git = (...a) => execFileSync('git', a, { cwd: TARGET, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 const isTracked = (rel) => { try { return git('ls-files', '--', rel) !== ''; } catch { return false; } };
+const excludePath = () => {
+  let p;
+  try { p = git('rev-parse', '--git-path', 'info/exclude'); } catch { p = join('.git', 'info', 'exclude'); }
+  return isAbsolute(p) ? p : join(TARGET, p);
+};
+
+// ── uninstall:反向清除 init 的固定寫入範圍;.flightwake/ 使用者資料預設保留,--purge 才刪 ──
+if (cmd === 'uninstall') {
+  const PURGE = args.includes('--purge');
+  log(`flightwake uninstall v${VERSION}${PURGE ? '(--purge)' : ''} → ${TARGET}\n`);
+  const rm = (rel) => {
+    const p = join(TARGET, ...rel.split('/'));
+    if (!existsSync(p)) return;
+    rmSync(p, { recursive: true });
+    log(`  rm   ${rel}`);
+  };
+  // 1. skills + .flightwake/ 裡的框架檔(hooks/ 清空後移除,留下使用者自己放的東西)
+  for (const s of readdirSync(join(FW_SRC, 'skills'))) {
+    if (statSync(join(FW_SRC, 'skills', s)).isDirectory()) rm(`.claude/skills/${s}`);
+  }
+  rm('.flightwake/TEMPLATE-record.md');
+  rm('.flightwake/hooks/state-check.mjs');
+  try { rmdirSync(join(TARGET, '.flightwake', 'hooks')); } catch {}
+  // 2. settings:只摘 flightwake 的 Stop hook 條目,使用者其他 hook 原樣保留;摘完全空才刪檔
+  for (const rel of ['.claude/settings.json', '.claude/settings.local.json']) {
+    const p = join(TARGET, ...rel.split('/'));
+    if (!existsSync(p)) continue;
+    let s;
+    try { s = JSON.parse(readFileSync(p, 'utf8')); }
+    catch { log(`  ⚠️  ${rel} 不是有效 JSON — 請手動移除 state-check.mjs 的 Stop hook`); continue; }
+    const stop = s.hooks?.Stop;
+    if (!Array.isArray(stop) || !JSON.stringify(stop).includes('state-check.mjs')) continue;
+    const cleaned = stop
+      .map((e) => ({ ...e, hooks: (e.hooks ?? []).filter((h) => !String(h.command ?? '').includes('state-check.mjs')) }))
+      .filter((e) => e.hooks.length);
+    if (cleaned.length) s.hooks.Stop = cleaned; else delete s.hooks.Stop;
+    if (s.hooks && !Object.keys(s.hooks).length) delete s.hooks;
+    if (!Object.keys(s).length) { rmSync(p); log(`  rm   ${rel}(移除 hook 後已空)`); }
+    else { writeFileSync(p, JSON.stringify(s, null, 2) + '\n'); log(`  edit ${rel} ← 移除 Stop hook`); }
+  }
+  // 3. 指令檔的標記區塊;移除後檔案全空(= 當初由 flightwake 建檔)才刪檔
+  for (const rel of ['.claude/CLAUDE.md', 'CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', 'GEMINI.md']) {
+    const p = join(TARGET, ...rel.split('/'));
+    if (!existsSync(p)) continue;
+    const cur = readFileSync(p, 'utf8');
+    if (!cur.includes('<!-- flightwake:begin')) {
+      if (cur.includes('flightwake 工作紀律')) log(`  ⚠️  ${rel} 有 v0.1 無標記片段,無法自動移除 — 請手動刪除該段`);
+      continue;
+    }
+    const updated = cur.replace(/\n?<!-- flightwake:begin[\s\S]*?<!-- flightwake:end -->\n?/, '\n').replace(/^\n+/, '');
+    if (!updated.trim()) { rmSync(p); log(`  rm   ${rel}(移除片段後已空)`); }
+    else { writeFileSync(p, updated); log(`  edit ${rel} ← 移除片段`); }
+  }
+  // 4. .git/info/exclude 的標記區塊(--private 安裝的痕跡)
+  try {
+    const ep = excludePath();
+    if (existsSync(ep) && readFileSync(ep, 'utf8').includes('# flightwake:begin')) {
+      writeFileSync(ep, readFileSync(ep, 'utf8').replace(/# flightwake:begin[\s\S]*?# flightwake:end\n?/, ''));
+      log('  edit .git/info/exclude ← 移除 flightwake 區塊');
+    }
+  } catch {}
+  // 5. 使用者資料
+  if (PURGE) {
+    rm('.flightwake');
+    log('\n✅ uninstall 完成(--purge)。使用者資料(STATE/DECISIONS/TRAPS/records)已一併刪除;曾 commit 過的仍可從 git 歷史找回。');
+  } else {
+    log('\n✅ uninstall 完成。.flightwake/(STATE/DECISIONS/TRAPS/records)是使用者資料,已保留 — 確定不要可用 uninstall --purge 或自行刪除。');
+  }
+  process.exit(0);
+}
+
 // --private 模式收集要寫進 .git/info/exclude 的條目(相對 repo 根);null = 非 private
 const privateExcludes = PRIVATE ? ['.flightwake/'] : null;
 
@@ -165,15 +236,13 @@ if (privateExcludes) {
   const entries = [...new Set(privateExcludes)];
   const exBlock = `# flightwake:begin v${VERSION}\n${entries.join('\n')}\n# flightwake:end\n`;
   try {
-    let p;
-    try { p = git('rev-parse', '--git-path', 'info/exclude'); } catch { p = join('.git', 'info', 'exclude'); }
-    const excludePath = isAbsolute(p) ? p : join(TARGET, p);
-    mkdirSync(dirname(excludePath), { recursive: true });
-    const cur = existsSync(excludePath) ? readFileSync(excludePath, 'utf8') : '';
+    const ep = excludePath();
+    mkdirSync(dirname(ep), { recursive: true });
+    const cur = existsSync(ep) ? readFileSync(ep, 'utf8') : '';
     const next = cur.includes('# flightwake:begin')
       ? cur.replace(/# flightwake:begin[\s\S]*?# flightwake:end\n?/, exBlock)
       : cur + (cur && !cur.endsWith('\n') ? '\n' : '') + exBlock;
-    writeFileSync(excludePath, next);
+    writeFileSync(ep, next);
     log(`  add  .git/info/exclude ← ${entries.length} 條(本地忽略)`);
   } catch {
     log(`  ⚠️  寫入 .git/info/exclude 失敗 — 隱私未生效!請手動加入以下條目:\n     ${entries.join('\n     ')}`);
