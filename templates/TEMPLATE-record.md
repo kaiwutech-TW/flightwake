@@ -25,6 +25,8 @@ prod_changes: {{migrations/部署/資料操作,無則 none}}
 
 ## 驗證證據
 
+<!-- 去識別化:prod URL、客戶/內部代號、真實 ID、token/金鑰不落地(repo 可能公開)。證據用脫敏形式:數字結果、指標位置(「見 prod log YYYY-MM-DD」)。 -->
+
 - {{端到端驗證了什麼、怎麼驗的、結果}}
 
 ## 未完 / 交接

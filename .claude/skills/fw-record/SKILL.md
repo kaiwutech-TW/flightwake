@@ -23,3 +23,5 @@ description: flightwake 收尾記錄 — 寫飛行紀錄並更新 STATE。Use wh
 - 不認識這個專案的人讀 TL;DR 能知道發生什麼事嗎?
 - 有沒有用了只有這個 session 才懂的代號?(有 → 展開)
 - 驗證證據是「宣稱」還是「證據」?(要有數字/輸出/連結)
+- **去識別化**:record 裡有沒有 prod URL、客戶/內部代號、真實 ID、token/金鑰?(repo 可能公開;commit 前掃一次:
+  `grep -nEi 'https?://|token|secret|key|password' .flightwake/records/<本次檔名>`,命中逐一確認是否脫敏)
