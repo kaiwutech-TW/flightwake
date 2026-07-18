@@ -6,6 +6,8 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
+| 2026-07-18 | record 的 secret 防護採 fw-record 檢查清單 + grep 自查,不內建自動掃描器 | 祕密判定需語境(敏感範圍因專案而異);內建掃描器違反零依賴承諾;公開 repo 建議另配 gitleaks 類工具 | 實際發生 record 洩漏事故時 |
+| 2026-07-18 | 壓實義務併入 fw-coldstart 紅線與 fw-trap 步驟,不新增 fw-curate skill | 壓實的天然觸發點就在冷啟動(量測成本時)與登坑(發現取代時);維持 4-skill 最小表面 | 壓實頻率或複雜度成為痛點時 |
 | 2026-07-18 | 開源前缺口優先序定為:敏感資訊防護 > 記錄增長+時效管理 > 多平台安裝 > --private > uninstall > CI 端 STATE 檢查 > monorepo | 敏感資訊直接擋開源;時效偏差傷唯一品質指標(冷啟動成本);其餘按採用信任排 | 內部試跑(2 週)結束後重排 |
 | 2026-07-18 | TRAPS/DECISIONS 維持 append-only,但條目加 superseded 生命週期標記 + 觸發式壓實(由 skill 執行),不做框架自動改寫 | 功能合併後舊條目變成「看似有效的錯誤事實」,偏差風險比佔空間嚴重;自動改寫違反零執行期依賴,records 因有日期+只讀最新而天生免疫此問題 | 條目數超門檻或實測冷啟動 >5 分鐘 |
 | 2026-07-18 | 多平台安裝採「偵測既有指令檔(CLAUDE.md/AGENTS.md/GEMINI.md)+ --agents flag 覆寫」,不做 GSD 式互動選單;都沒有時建 AGENTS.md | 互動 prompt 違反零依賴/無 install script 承諾,且卡死 agent 與 CI 的非互動安裝;AGENTS.md 是跨工具相容面最廣的事實標準 | AGENTS.md 標準化格局變動 |
