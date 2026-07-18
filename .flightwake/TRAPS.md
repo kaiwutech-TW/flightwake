@@ -5,6 +5,19 @@
 # 坑 Registry
 
 ---
+name: dogfood-dual-copy-drift
+type: gotcha
+status: active
+tags: [dogfooding, hooks, release]
+discovered: 2026-07-18
+---
+
+**症狀**:修了 statusline/hook 的 bug,本機儀表變正常,但發版後使用者拿到的還是舊行為(或反過來:改了源頭,本機看不到效果)。
+**根因**:本 repo dogfood 自己——同一份 hook 存在兩處:`hooks/`(npm 發佈的源頭)與 `.flightwake/hooks/`(本 repo 的安裝副本)。改任一邊都不會自動同步另一邊。
+**解法/繞法**:改 hook/skill 時兩份都要動(`diff hooks/X .flightwake/hooks/X` 確認一致再 commit);已在其他 repo 裝過的副本(如 kaiwuweb)npm 發版前只能手動 cp。
+**佐證**:4b9abd8(context_window 修正,當下先改了安裝副本、diff 才發現源頭沒動)
+
+---
 name: {{kebab-case-slug}}
 type: trap          # trap | gotcha | constraint
 status: active      # active | superseded(過時不刪,改此欄並在內文指向 [[取代條目]] 或 record)

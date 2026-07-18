@@ -1,7 +1,7 @@
 ---
 updated: 2026-07-18
 updated_by: Claude(Fable 5)
-latest_record: records/260718-ab-workflow-handbook.md
+latest_record: records/260718-v082-field-fixes.md
 health: green
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
@@ -10,7 +10,7 @@ health: green
 
 # 現在在哪
 
-flightwake v0.8.1,**已開源上線(2026-07-18)**:公開 repo、npm 0.8.1(trusted publishing 連三次 Release 零失誤)、README 四語含 GSD 遷移指南、--statusline 儀表含下一步指令提示(本 repo 與 marketing_dashboard 實跑中)。缺口 1–7 全落地、兩 gate 全關、benchmarks n=2(非自我參照,零糾正)、宣傳素材全齊(三稿 + 三張截圖 + context 開銷故事線)。**GSD 全域已拆除(2026-07-18 晚,手冊 docs/cleanGSD.md);A/B 已量、開場底盤已分解到底(見 latest_record)**。新增 docs/workflow.md 分階段實戰手冊(四語 README 有入口)。剩:發宣傳(三稿需先改寫,見下)。定位:給強模型(Fable 5 級)的事後記錄框架,補持久性與紀律、不補智力。
+flightwake v0.8.2,**已開源上線(2026-07-18)**:公開 repo、npm 0.8.2(trusted publishing 連四次 Release 零失誤)、README 四語含遷移指南、--statusline 儀表含下一步指令提示與真實視窗大小(本 repo、marketing_dashboard、kaiwuweb 實跑中)。缺口 1–7 全落地、兩 gate 全關、benchmarks n=2(非自我參照,零糾正)、宣傳素材全齊(三稿 + 三張截圖 + context 開銷故事線)。**GSD 全域已拆除(2026-07-18 晚,手冊 docs/cleanGSD.md);A/B 已量、開場底盤已分解到底(見 latest_record)**。新增 docs/workflow.md 分階段實戰手冊(四語 README 有入口)。剩:發宣傳(三稿需先改寫,見下)。定位:給強模型(Fable 5 級)的事後記錄框架,補持久性與紀律、不補智力。
 
 # 進行中(未完成勿刪)
 
