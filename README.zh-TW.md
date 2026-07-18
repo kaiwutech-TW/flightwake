@@ -3,7 +3,7 @@
 
 > **記錄是工作飛過後自然留下的航跡,不是起飛前必須申報的飛行計畫。**
 
-[![npm](https://img.shields.io/npm/v/flightwake)](https://www.npmjs.com/package/flightwake)
+[![npm](https://img.shields.io/npm/v/flightwake)](https://www.npmjs.com/package/flightwake) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/kaiwutech-TW/flightwake/badge)](https://scorecard.dev/viewer/?uri=github.com/kaiwutech-TW/flightwake)
 
 🌐 [English](README.md) · **繁體中文** · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 

@@ -3,7 +3,7 @@
 
 > **Records are the contrail your work naturally leaves behind — not a flight plan you must file before takeoff.**
 
-[![npm](https://img.shields.io/npm/v/flightwake)](https://www.npmjs.com/package/flightwake)
+[![npm](https://img.shields.io/npm/v/flightwake)](https://www.npmjs.com/package/flightwake) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/kaiwutech-TW/flightwake/badge)](https://scorecard.dev/viewer/?uri=github.com/kaiwutech-TW/flightwake)
 
 🌐 **English** · [繁體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 

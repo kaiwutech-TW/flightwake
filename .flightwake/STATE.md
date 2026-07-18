@@ -1,7 +1,7 @@
 ---
 updated: 2026-07-18
 updated_by: Claude(Fable 5)
-latest_record: records/260718-oss-prep.md
+latest_record: records/260718-flip.md
 health: green
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
@@ -10,7 +10,7 @@ health: green
 
 # 現在在哪
 
-flightwake v0.7.1,內部測試中(kaiwutech-TW private)。**開源前缺口 1–7 全部落地 + 開源收殘完成**:MIT license、英文 README(README.en.md)、npm Trusted Publishing workflow(release.yml)、flip 日 runbook(docs/design.md)。5–7 回顧修了模式混用重複安裝的真 bug。剩:內部試跑、範例 repo、flip 日執行 runbook。定位已確立:給強模型(Fable 5 級)的事後記錄框架,刻意不做 GSD 式導航——強模型自己會開車。
+flightwake v0.7.1,**已開源上線(2026-07-18)**:公開 repo(乾淨歷史,舊 repo 封存 flightwake-archive)、npm `flightwake@0.7.1` 已發布、trusted publisher 已接 release.yml、PVR + branch protection 開啟、Scorecard 跑綠、README 四語(en 主版)。缺口 1–7 全落地。剩:gate 2(第二 repo 冷啟動實測)→ 發首個 GitHub Release 驗證自動發布鏈路 → 開始宣傳。定位:給強模型(Fable 5 級)的事後記錄框架,補持久性與紀律、不補智力。
 
 # 進行中(未完成勿刪)
 
@@ -30,10 +30,9 @@ flightwake v0.7.1,內部測試中(kaiwutech-TW private)。**開源前缺口 1–
 
 # 下一步入口
 
-1. **flip 判準(2026-07-18 改):兩個 gate 關掉即上,不等 8/1**(搶先機決策見 DECISIONS)——
-   gate 1 活範例指引 ✅(README 指向本 repo .flightwake/);gate 2 第二 repo 冷啟動實測(唯一未關)
-2. **gate 2 執行法**:挑一個內部真實 repo(最好有 GSD 歷史)→ `npx github:kaiwutech-TW/flightwake init` → 做一段真實工作收尾 → 下個 session 開場 /fw-coldstart 計時 + tools/session-cost.mjs --since 量 token → 數據進 benchmarks.md 第二筆
-3. gate 2 關掉 → 執行 flip runbook(docs/design.md);npm 已佔位 ✅(flightwake@0.7.1 手動發布,2026-07-18,registry 實裝驗證過;runbook 的 npm 步驟只剩 trusted publisher 登記)
+1. **gate 2 第二 repo 冷啟動實測(宣傳前唯一未關)**:挑一個內部真實 repo(最好有 GSD 歷史)→ `npx flightwake init` → 做一段真實工作收尾 → 下個 session 開場 /fw-coldstart 計時 + tools/session-cost.mjs --since 量 token → 數據進 benchmarks.md 第二筆
+2. gate 2 關掉 → 發首個 GitHub Release(順便驗證 trusted publishing 全鏈路 + `npm audit signatures`)→ 宣傳(HN/X;n=2 數據在手)
+3. 範例 repo 可再議(活範例已是 .flightwake/ 本身,獨立範例 repo 降為 nice-to-have)
 
 # 常備事實(這個 repo 的 3-5 條保命知識)
 
