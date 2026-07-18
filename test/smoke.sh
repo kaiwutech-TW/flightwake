@@ -82,6 +82,7 @@ out=$(echo '{}' | node .flightwake/hooks/state-check.mjs)
 echo "$out" | grep -q '"decision":"block"' || fail "落後 3 commits 時 hook 應該 block(got: $out)"
 node .flightwake/hooks/state-check.mjs --ci >/dev/null 2>&1 && fail "--ci 落後時應退出非零"
 node .flightwake/hooks/state-check.mjs --ci --threshold=99 >/dev/null 2>&1 || fail "--ci 未達門檻時應通過"
+node .flightwake/hooks/state-check.mjs --ci --threshold=abc >/dev/null 2>&1 && fail "--threshold 非法值應退回預設 3,不得靜默變成永不觸發"
 out=$(echo '{"stop_hook_active":true}' | node .flightwake/hooks/state-check.mjs)
 [ -z "$out" ] || fail "stop_hook_active 時應靜默(防循環)"
 echo "updated" >> .flightwake/STATE.md
@@ -172,6 +173,18 @@ node "$CLI" uninstall --purge >/dev/null
 [ -d .flightwake ] && fail "--purge 應刪 .flightwake/"
 [ -z "$(git status --porcelain)" ] || fail "--private 裝完再 uninstall --purge 後應無任何痕跡(got: $(git status --porcelain | tr '\n' ' '))"
 pass "uninstall --private/--purge"
+
+# 14. 模式混用不重複:--private 裝過再跑預設 init,片段與 hook 都不得裝第二份
+REPO7="$TMP/repo7"
+mkdir -p "$REPO7" && cd "$REPO7"
+git init -q && git config user.email t@t.t && git config user.name t
+echo "# c" > CLAUDE.md && git add CLAUDE.md && git commit -qm base
+node "$CLI" init --private >/dev/null
+node "$CLI" init >/dev/null
+grep -q 'flightwake:begin' CLAUDE.md && fail "混用後片段被重複貼進 CLAUDE.md"
+[ "$(grep -c 'flightwake:begin' CLAUDE.local.md)" = 1 ] || fail "混用後 CLAUDE.local.md 片段應仍恰好一份"
+grep -q 'state-check' .claude/settings.json 2>/dev/null && fail "混用後 hook 被重複裝進 settings.json"
+pass "模式混用不重複"
 
 # 13. monorepo 政策:子目錄跑 init/uninstall 應退出非零並指路 git root
 cd "$REPO3"

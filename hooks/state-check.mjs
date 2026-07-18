@@ -11,7 +11,8 @@ import { existsSync, readFileSync } from 'node:fs';
 
 const argv = process.argv.slice(2);
 const CI = argv.includes('--ci');
-const THRESHOLD = Number(argv.find((a) => a.startsWith('--threshold='))?.slice('--threshold='.length) ?? 3);
+const t = Number(argv.find((a) => a.startsWith('--threshold='))?.slice('--threshold='.length));
+const THRESHOLD = Number.isFinite(t) && t > 0 ? t : 3; // 非法值退回預設,不得靜默變成永不觸發
 const STATE = '.flightwake/STATE.md';
 
 let input = {};

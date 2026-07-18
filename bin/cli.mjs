@@ -103,7 +103,10 @@ if (cmd === 'uninstall') {
       log('  edit .git/info/exclude ← 移除 flightwake 區塊');
     }
   } catch {}
-  // 5. 使用者資料
+  // 5. 清掉移除後已空的目錄(非空 = 使用者有自己的東西,rmdir 自然失敗跳過)
+  try { rmdirSync(join(TARGET, '.claude', 'skills')); } catch {}
+  try { rmdirSync(join(TARGET, '.claude')); } catch {}
+  // 6. 使用者資料
   if (PURGE) {
     rm('.flightwake');
     log('\n✅ uninstall 完成(--purge)。使用者資料(STATE/DECISIONS/TRAPS/records)已一併刪除;曾 commit 過的仍可從 git 歷史找回。');
@@ -157,6 +160,10 @@ for (const s of readdirSync(join(FW_SRC, 'skills'))) {
   const settingsPath = join(TARGET, ...settingsRel.split('/'));
   privateExcludes?.push(settingsRel);
   const HOOK_CMD = 'node "$CLAUDE_PROJECT_DIR/.flightwake/hooks/state-check.mjs"';
+  // 兩個 settings 檔互認:另一模式裝過 hook 就不重複(settings.json 與 local 會被 Claude Code 合併,重複 = Stop 提醒跳兩次)
+  const otherRel = PRIVATE ? '.claude/settings.json' : '.claude/settings.local.json';
+  const otherPath = join(TARGET, ...otherRel.split('/'));
+  const inOther = (() => { try { return existsSync(otherPath) && readFileSync(otherPath, 'utf8').includes('state-check.mjs'); } catch { return false; } })();
   let settings = {};
   let parseOk = true;
   if (existsSync(settingsPath)) {
@@ -166,7 +173,9 @@ for (const s of readdirSync(join(FW_SRC, 'skills'))) {
   if (parseOk) {
     settings.hooks ??= {};
     settings.hooks.Stop ??= [];
-    if (JSON.stringify(settings.hooks.Stop).includes('state-check.mjs')) {
+    if (inOther) {
+      log(`  skip Stop hook(${otherRel} 已設定 — 另一模式的安裝仍生效)`);
+    } else if (JSON.stringify(settings.hooks.Stop).includes('state-check.mjs')) {
       log(`  skip ${settingsRel} Stop hook(已設定)`);
     } else {
       settings.hooks.Stop.push({ hooks: [{ type: 'command', command: HOOK_CMD }] });
@@ -206,10 +215,10 @@ for (const s of readdirSync(join(FW_SRC, 'skills'))) {
     if (wanted ? !wanted.includes(name) : (!existing.length && !fallback)) continue;
     // --private:受 git 追蹤的檔案寫了必留痕跡(exclude 對已追蹤檔無效)。
     // claude 有本地等價檔 CLAUDE.local.md → 偵測仍看原候選、寫入改到本地檔;其他平台無等價物 → 遇追蹤檔跳過。
-    const writeFiles = (PRIVATE && name === 'claude')
-      ? [{ rel: 'CLAUDE.local.md', path: join(TARGET, 'CLAUDE.local.md') }]
-      : files;
-    const scan = [...existing, ...writeFiles.filter((f) => existsSync(f.path) && !existing.includes(f))];
+    const localFile = { rel: 'CLAUDE.local.md', path: join(TARGET, 'CLAUDE.local.md') };
+    const writeFiles = (PRIVATE && name === 'claude') ? [localFile] : files;
+    // 標記掃描兩種模式互認(claude 群組永遠含 CLAUDE.local.md):--private 裝過再跑預設 init 不得重複貼片段
+    const scan = (name === 'claude' ? [...files, localFile] : files).filter((f) => existsSync(f.path));
     const withMarker = scan.find((f) => readFileSync(f.path, 'utf8').includes(BEGIN));
     const withLegacy = scan.find((f) => readFileSync(f.path, 'utf8').includes(LEGACY));
     if (withMarker) {
