@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# flightwake 安裝器煙霧測試 — 在 temp git repo 跑 init 三次(初裝/重跑/--force),驗證冪等與資料安全。
+# flightwake installer smoke test — runs init in temp git repos (fresh/rerun/--force/lang/update),
+# verifying idempotency and user-data safety.
 set -euo pipefail
+
+# Keep tests deterministic and offline: never let the statusline spawn a background update check
+export FLIGHTWAKE_NO_UPDATE_CHECK=1
 
 FW="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
@@ -12,7 +16,7 @@ pass() { echo "  ok: $1"; }
 # 複製一份源碼來測(這樣可以安全地塞 .DS_Store 模擬 macOS 垃圾檔)
 SRC="$TMP/fw-src"
 cp -R "$FW" "$SRC"
-touch "$SRC/skills/.DS_Store" "$SRC/skills/fw-record/.DS_Store"
+touch "$SRC/skills/.DS_Store" "$SRC/skills/en/fw-record/.DS_Store" "$SRC/skills/zh-TW/fw-record/.DS_Store"
 CLI="$SRC/bin/cli.mjs"
 
 REPO="$TMP/repo"
@@ -38,10 +42,18 @@ done
 [ -d .flightwake/records ] || fail "缺 records/"
 pass "初裝檔案齊全"
 
-# 1b. 敏感資訊防護:模板與 fw-record skill 帶去識別化提醒
-grep -q '去識別化' .flightwake/TEMPLATE-record.md || fail "record 模板缺去識別化提醒"
-grep -q '去識別化' .claude/skills/fw-record/SKILL.md || fail "fw-record skill 缺去識別化檢查"
+# 1b. 敏感資訊防護:模板與 fw-record skill 帶去識別化提醒(英文預設)
+grep -q 'De-identification' .flightwake/TEMPLATE-record.md || fail "record 模板缺去識別化提醒"
+grep -q 'De-identification' .claude/skills/fw-record/SKILL.md || fail "fw-record skill 缺去識別化檢查"
 pass "去識別化提醒到位"
+
+# 1c. 英文預設 + marker 帶 lang + hook 蓋章(LANG/FW_VERSION)
+grep -q 'Where we are' .flightwake/STATE.md || fail "預設應裝英文模板"
+grep -q 'lang=en' CLAUDE.md || fail "marker 應帶 lang=en"
+grep -q "const LANG = 'en'" .flightwake/hooks/state-check.mjs || fail "state-check 應蓋 LANG=en"
+FWV=$(node -e "console.log(require('$SRC/package.json').version)")
+grep -q "const FW_VERSION = '$FWV'" .flightwake/hooks/statusline.mjs || fail "statusline 應蓋 FW_VERSION=$FWV"
+pass "英文預設與蓋章"
 
 # 2. 不夾帶垃圾檔
 find .claude/skills -name '.DS_Store' | grep -q . && fail ".DS_Store 被裝進 skills"
@@ -214,9 +226,49 @@ cd "$REPO3"
 mkdir -p sub
 cd sub
 out=$(node "$CLI" init 2>&1) && fail "子目錄 init 應退出非零"
-echo "$out" | grep -q '單 repo 一份' || fail "子目錄 init 應說明 monorepo 政策(got: $out)"
+echo "$out" | grep -q 'one install per repo' || fail "子目錄 init 應說明 monorepo 政策(got: $out)"
 node "$CLI" uninstall >/dev/null 2>&1 && fail "子目錄 uninstall 也應擋下"
 pass "monorepo 政策:子目錄擋下指路"
+
+# 17. --lang=zh-TW:中文模板/skill/片段、marker 帶 lang、CLI 輸出中文
+REPO10="$TMP/repo10"
+mkdir -p "$REPO10" && cd "$REPO10"
+git init -q && git config user.email t@t.t && git config user.name t
+echo "# c" > CLAUDE.md
+out=$(node "$CLI" init --lang=zh-TW --statusline)
+grep -q '現在在哪' .flightwake/STATE.md || fail "--lang=zh-TW 應裝中文模板"
+grep -q '冷啟動' .claude/skills/fw-coldstart/SKILL.md || fail "--lang=zh-TW 應裝中文 skill"
+grep -q 'flightwake 工作紀律' CLAUDE.md || fail "--lang=zh-TW 應貼中文片段"
+grep -q 'lang=zh-TW' CLAUDE.md || fail "marker 應帶 lang=zh-TW"
+echo "$out" | grep -q '使用者資料不覆蓋\|下一步' || fail "--lang=zh-TW CLI 輸出應為中文"
+grep -q "const LANG = 'zh-TW'" .flightwake/hooks/statusline.mjs || fail "statusline 應蓋 LANG=zh-TW"
+echo '{}' | node .flightwake/hooks/statusline.mjs | grep -q '開工先 /fw-coldstart' || fail "zh-TW 儀表提示應為中文"
+node "$CLI" init --lang=nonsense >/dev/null 2>&1 && fail "--lang 不認得的值應退出非零"
+pass "--lang=zh-TW 中文安裝"
+
+# 18. update:偵測既有選項(lang/statusline)、force 刷新框架檔、不動使用者資料、沿用 marker 語言
+echo "OLD-SKILL" >> .claude/skills/fw-record/SKILL.md
+echo "SENTINEL-U" >> .flightwake/STATE.md
+out=$(node "$CLI" update)
+grep -q OLD-SKILL .claude/skills/fw-record/SKILL.md && fail "update 應刷新 skill"
+grep -q SENTINEL-U .flightwake/STATE.md || fail "update 不應動使用者資料"
+grep -q '冷啟動' .claude/skills/fw-coldstart/SKILL.md || fail "update 應沿用 zh-TW(不得換成英文)"
+grep -q 'lang=zh-TW' CLAUDE.md || fail "update 後 marker 應保留 lang=zh-TW"
+node -e "const s=require('./.claude/settings.json'); if(!String(s.statusLine.command).includes('statusline.mjs')) process.exit(1)" \
+  || fail "update 應保留 statusline 安裝"
+echo "$out" | grep -q '已更新到' || fail "update 收尾應報版本(zh-TW)"
+pass "update 就地更新(zh-TW 沿用)"
+
+# 19. 舊版 marker(無 lang 屬性)→ update 視為 zh-TW;未安裝的 repo update 應退出非零
+node -e "const fs=require('fs');fs.writeFileSync('CLAUDE.md',fs.readFileSync('CLAUDE.md','utf8').replace(/flightwake:begin v[^\s]+ lang=zh-TW/,'flightwake:begin v0.8.2'))"
+node "$CLI" update >/dev/null
+grep -q '冷啟動' .claude/skills/fw-coldstart/SKILL.md || fail "無 lang 舊 marker 應視為 zh-TW"
+grep -q 'lang=zh-TW' CLAUDE.md || fail "update 後 marker 應補上 lang=zh-TW"
+REPO11="$TMP/repo11"
+mkdir -p "$REPO11" && cd "$REPO11"
+git init -q && git config user.email t@t.t && git config user.name t
+node "$CLI" update >/dev/null 2>&1 && fail "未安裝的 repo 跑 update 應退出非零"
+pass "舊 marker 相容與 update 防呆"
 
 echo ""
 echo "✅ smoke 全過"

@@ -1,149 +1,151 @@
-# 開發流程手冊 — 你在哪個階段該做什麼、該對模型說什麼
+# The stage-by-stage playbook — what you do, and what to say to the model
 
-> 給誰看:會寫程式、但剛開始跟 Fable 5 級的強模型協作的開發者。
-> 每個階段的「⚙ 進階」摺疊給已經熟 Claude Code 的人,主線可以完全跳過它。
+> Who this is for: developers who can code but are new to working with a Fable 5-class model.
+> Each stage has a collapsible "⚙ Advanced" section for people already fluent in Claude Code; the main line never depends on it.
+> 繁體中文版:[workflow.zh-TW.md](workflow.zh-TW.md)
 >
-> 前提認知:**模型的能力不是瓶頸,你的瓶頸是「現在該做什麼、該說什麼」。**
-> 你負責方向盤(要什麼、算不算完成、值不值得繼續),模型負責開車(怎麼做、動手、驗證)。
-> 這份手冊就是方向盤的使用說明。義務的完整定義見 README 的
-> [trigger-driven 義務表](../README.md#core-principle-records-follow-work--they-dont-lead-it),此處不重抄。
+> The premise: **the model's capability is no longer the bottleneck. Your bottleneck is knowing what to do now, and what to say.**
+> You own the steering wheel (what to build, what counts as done, whether it's worth continuing); the model does the driving
+> (how to build it, doing it, verifying it). This playbook is the steering wheel's manual. The formal definition of every
+> obligation lives in the README's [trigger-obligation table](../README.md#core-principle-records-follow-work--they-dont-lead-it) — not re-copied here.
 
-## 一頁地圖
+## The one-page map
 
-| 階段 | 你做什麼 | 對模型說什麼 |
+| Stage | You do | You say |
 |---|---|---|
-| 0. 首次安裝 | 裝好後讓模型寫第一份 STATE | 「initialize STATE with /fw-record」 |
-| 1. 開工/接手 | **什麼都別做**,先聽狀態回報 | `/fw-coldstart` |
-| 2. 決定做什麼 | 說清楚**要什麼**,不說怎麼做 | 「先別動 code,給我 2-3 個做法和取捨」 |
-| 3. 實作中 | 放手;只在被問決策時回答 | (方向錯才喊停:「停,因為…」) |
-| 4. 驗收 | 只認證據,不認口頭報告 | 「跑測試+typecheck,把輸出貼給我」 |
-| 5. 收尾或停手 | 決定「做完了」還是「下次繼續」 | 「收尾」(record)/「交接」(handoff) |
-| 6. 出事了 | 先修 health,不疊新工作 | 「先把 yellow 的部分處理掉再繼續」 |
+| 0. First install | Do nothing — let the model write the first STATE | "initialize STATE with /fw-record" |
+| 1. Opening / taking over | **Nothing.** Listen to the status report first | `/fw-coldstart` |
+| 2. Deciding what to build | Say **what** you want, never how | "Don't touch the code yet — give me 2-3 approaches and the trade-offs" |
+| 3. While it works | Hands off; answer only when asked to decide | (Interrupt only when the direction is wrong: "stop, because…") |
+| 4. Acceptance | Trust evidence, never verbal reports | "Run the tests and typecheck; paste the output" |
+| 5. Wrap up or stop | Decide: "done" or "continuing later" | "wrap up" (record) / "handoff" |
+| 6. Something's wrong | Fix health first; no new work on top | "Handle the yellow items before anything else" |
 
 ---
 
-## 1. 開工/接手:先恢復狀態,再談工作
+## 1. Opening / taking over: restore state before discussing work
 
-每個 session 的第一句話固定是:
+The first thing you type in every session, always:
 
 ```
 /fw-coldstart
 ```
 
-模型會讀 `STATE.md` 和最近一份飛行紀錄,然後回報三件事:上次到哪、這次從哪接、有沒有未驗證的變更。**回報完之前不要下任務**——你多等一分鐘,換來的是模型不會在錯誤的認知上開工。
+The model reads `STATE.md` and the latest flight record, then reports three things: where the last session got to, where this one plans to pick up, and whether any changes are unverified. **Don't assign work until the report is done** — the minute you wait buys you a model that isn't working from a wrong picture.
 
-你在這個階段唯一的工作:看回報裡的 health 顏色。綠色就放行;黃色或紅色,先讓模型把爛攤子處理掉(見階段 6)。
+Your only job at this stage: check the health color in the report. Green — wave it through. Yellow or red — have the model clean up first (see stage 6).
 
 <details>
-<summary>⚙ 進階</summary>
+<summary>⚙ Advanced</summary>
 
-- 冷啟動是整個框架唯一的品質指標:新 session 到「安全接手」超過 5 分鐘,代表你的記錄在劣化,該壓實了。處方也是一句話的事:「這次冷啟動花了 X 分鐘,診斷慢在哪並壓實」——模型會帶著診斷和逐條清單(哪條標 superseded、哪些合併)回來,你一個字放行。給事實、不給情緒:「超過 5 分鐘下個 session 會接錯手」比「這很嚴重」有用。
-- STATE 落後幾個 commit 可以量:`git rev-list --count "$(git log -1 --format=%H -- .flightwake/STATE.md)"..HEAD`,≥1 表示上個 session 沒收尾。
-- 裝了 [status line](../README.md#status-line-optional) 的話,落後與 context 用量會直接顯示在儀表上,含下一步指令提示。
+- Cold start is the framework's single quality metric: if a fresh session needs more than 5 minutes to take over safely, your records are degrading and it's time to compact. The prescription is one sentence: "this cold start took X minutes — diagnose what's slow and compact." The model returns with a diagnosis and an item-by-item plan (which entries to mark superseded, which to merge); you approve with one word. Facts over pressure: "over 5 minutes means the next session fumbles the takeover" works; "this is serious!" doesn't.
+- The lag is measurable: `git rev-list --count "$(git log -1 --format=%H -- .flightwake/STATE.md)"..HEAD` — ≥1 means the last session never wrapped up.
+- With the [status line](../README.md#status-line-optional) installed, lag and context usage sit at the bottom of the screen, with the next command suggested.
 </details>
 
-## 2. 決定做什麼:說 what,不說 how
+## 2. Deciding what to build: say what, not how
 
-這是你價值最高的一句話。講清楚三件事:**要什麼、為什麼要、什麼算做完**。不要指定實作方式——那是模型的事,你指定得越細,越容易把它鎖進次優解。
+This is your highest-value sentence of the session. Make three things clear: **what you want, why you want it, what counts as done.** Don't specify the implementation — that's the model's job, and the tighter you specify it, the more likely you lock it into a mediocre solution.
 
-不確定怎麼做才對的時候,先要方案再放行:
+When you're not sure the approach is settled, ask for options before releasing the brake:
 
 ```
-我要讓使用者能匯出報表成 CSV。先別動 code,
-給我 2-3 個做法和各自的取捨,推薦一個。
+I want users to be able to export reports as CSV. Don't touch the code yet —
+give me 2-3 approaches with trade-offs, and recommend one.
 ```
 
-小事(改文案、修 typo、加個 log)不用這套,直接說「做 X」就好。判斷標準:**做錯了重來會不會心痛**——會,就先要方案;不會,就直接做。
+Small things (copy tweaks, typo fixes, adding a log line) don't need the ceremony — just say "do X". The test: **would a wrong first attempt hurt?** If yes, ask for approaches first; if no, just let it run.
 
 <details>
-<summary>⚙ 進階</summary>
+<summary>⚙ Advanced</summary>
 
-- 選定方案的同時,其他選項就被關掉了——這就是 DECISIONS 的觸發點,模型會自己 append 一行(含 why)。你要做的只是確認那行的 why 是你真正的理由,而不是事後編的。
-- 大變更可以用 Claude Code 的 plan mode(先出完整計畫、你核准才動手)。但 flightwake 的預設相反:**一切直接動手,只有跨 session 的建設才升級成 phase**(escalation rule,見 README)。別把每件事都儀式化。
-- 需求講不清楚的時候,反過來要求:「先複述你理解的需求和驗收標準,我確認了再開工。」
+- Choosing an approach closes the others — that's exactly what DECISIONS is for, and the model appends the line (with the why) itself. Your only job: check the recorded *why* is your real reason, not a plausible reconstruction.
+- Claude Code's plan mode (full plan first, you approve, then it executes) exists for big changes. flightwake's default is the opposite: **everything starts immediately; only multi-session construction escalates to a phase** (the escalation rule in the README). Don't ritualize everything.
+- When you can't articulate the requirement, flip it: "Restate the requirement and acceptance criteria as you understand them; I'll confirm before you start."
 </details>
 
-## 3. 實作中:放手,但保留喊停權
+## 3. While it works: hands off, veto rights on
 
-模型動手之後,你的紀律是**不打斷**。中途問「做得怎樣了」除了打斷它什麼也得不到。它遇到需要你決定的事會停下來問;它沒問,就讓它跑完。
+Once the model is moving, your discipline is **don't interrupt**. Asking "how's it going" mid-run buys you nothing but a broken stride. It will stop and ask when it hits a decision that's yours; if it didn't ask, let it finish.
 
-唯二要出手的時機:
+The only two reasons to step in:
 
-- **方向錯了**:喊停要給理由——「停,這個做法會動到 prod 的 schema,我不要」。有理由的喊停會變成 DECISIONS 的一行,沒理由的喊停只是噪音。
-- **它明顯在鬼打牆**:同一個錯誤試了三種方式都不過,說「停,把目前的症狀和你試過的方法整理給我」,人看一眼常常就破案。
+- **The direction is wrong**: interrupt with a reason — "stop: this approach touches the prod schema, and I don't want that." A reasoned stop becomes a DECISIONS line; an unreasoned stop is just noise.
+- **It's clearly going in circles**: same error, three approaches, none landed — say "stop; summarize the symptom and what you've tried." A human glance often cracks it instantly.
 
-過程中挖到非顯而易見的坑(錯誤訊息騙人、vendor 的怪癖、編碼陷阱),模型會自己 `/fw-trap` 登記。你看到它登記時瞄一眼就好——那是寫給下一個 session 的,不是寫給你的。
+When it hits a non-obvious trap mid-run (lying error messages, vendor quirks, encoding gotchas), the model files a `/fw-trap` on its own. Glance at it and move on — it's written for the next session, not for you.
 
 <details>
-<summary>⚙ 進階</summary>
+<summary>⚙ Advanced</summary>
 
-- 放手的前提是硬防護在:測試綠 + typecheck 乾淨才算完成、破壞性操作先確認——這些是安裝時就寫進指令檔的,與模型自覺無關。
-- trap 的判準是「**非顯而易見**」:查文件查得到的不算,要的是「症狀與根因之間有誤導」的那種。登太多會稀釋,active 條目 >20 就該壓實。
-- 互不相依的任務可以直接說「這三件事沒有相依,並行做」。
+- Hands-off works because the hard guards are in place: tests green + typecheck clean before "done" counts, destructive operations confirmed first — installed into the instruction file on day one, independent of model self-discipline.
+- The TRAPS bar is "**non-obvious**": anything documented doesn't qualify; what you want is "the symptom misleads about the root cause." Over-filing dilutes the registry — >20 active entries means it's time to compact.
+- Independent tasks: say "these three don't depend on each other — run them in parallel."
 </details>
 
-## 4. 驗收:只認證據
+## 4. Acceptance: evidence only
 
-模型說「做完了」的時候,你要的不是同意,是證據:
+When the model says "done", what you want isn't agreement — it's evidence:
 
 ```
-跑測試和 typecheck,把輸出貼給我。然後給我 diff 摘要,標出你覺得最有風險的地方。
+Run the tests and typecheck, paste the output. Then give me a diff summary
+and flag the riskiest spot yourself.
 ```
 
-親眼看 diff 這件事沒有捷徑。你不需要逐行讀,但要看**它動了哪些檔案**——動到你預期之外的地方,就是問題。
+There is no shortcut around looking at the diff. You don't have to read every line — but you check **which files it touched**. Anything outside what you expected is the finding.
 
 <details>
-<summary>⚙ 進階</summary>
+<summary>⚙ Advanced</summary>
 
-- 動到 prod 的變更,驗證證據必須留在飛行紀錄裡(指令輸出、對帳數字),這是硬防護,不是禮貌。
-- 測試綠不等於功能對:「/verify——實際跑起來操作一遍受影響的流程」比測試更接近真相。
-- 想要更嚴的把關:「/code-review」讓另一組眼睛看 diff。CI 端可以加 [state-check](../README.md#ci-side-wrap-up-check-optional),把「收尾了沒」變成機器擋的門。
+- Changes that touch prod must leave verification evidence in the flight record (command output, reconciliation numbers). That's a hard guard, not a courtesy.
+- Green tests don't mean the feature works: "/verify — actually drive the affected flow" gets closer to the truth than the suite does.
+- Want harder gates? "/code-review" puts a second pair of eyes on the diff. On the CI side, [state-check](../README.md#ci-side-wrap-up-check-optional) turns "did you wrap up?" into a machine-enforced door.
 </details>
 
-## 5. 收尾或停手:兩個出口,別走錯
+## 5. Wrap up or stop: two exits, don't take the wrong one
 
-session 要結束時,只有一個判斷:**這件事做完了嗎?**
+When a session is ending, there's exactly one question: **is this piece of work done?**
 
-- **做完了** → 說「**收尾**」。模型跑 `/fw-record`:寫飛行紀錄、更新 STATE、跑敏感資訊自查。
-- **沒做完、之後要繼續** → 說「**交接**」。模型跑 `/fw-handoff`,把「做到哪、卡在哪、下一步從哪進」寫成 CONTEXT。
+- **Done** → say "**wrap up**". The model runs `/fw-record`: flight record, STATE update, sensitive-info self-check.
+- **Not done, continuing later** → say "**handoff**". The model runs `/fw-handoff`, writing where it got to, where it's stuck, and where the next session enters — the CONTEXT.
 
-最常見的錯誤是兩個都不做就關視窗。忘了也有網:STATE 落後 ≥3 commits 時,Stop hook 會在 session 結束前擋一次提醒你。但把安全網當日常是壞習慣——**網是給忘記的人,不是給偷懶的人**。
+The classic mistake is doing neither and closing the window. There's a net for forgetting: when STATE lags ≥3 commits, the Stop hook blocks once before the session ends. But treating the net as routine is a bad habit — **the net is for forgetting, not for skipping**.
 
 <details>
-<summary>⚙ 進階</summary>
+<summary>⚙ Advanced</summary>
 
-- record 的觸發不只是 session 結束:動了 schema、動了 prod、距上次 record ≥3 commits,任一成立就該收。
-- handoff 寫在**停手前**,不是開工前——這是 flightwake 與 stage-driven 框架的根本差異:計畫是事後留下的路標,不是事前的關卡。
-- record 寫完順手 commit,狀態才真正進 git、其他 agent 與同事才看得到。
+- Records aren't only for session-end: touched schema, touched prod, or ≥3 commits since the last record — any one of these means wrap up now.
+- A handoff is written **before stopping, not before starting** — the root difference between flightwake and stage-driven frameworks: the plan is a road sign left after contact with reality, not a gate before it.
+- Commit right after the record — state only truly exists once it's in git, where other agents and teammates can see it.
 </details>
 
-## 6. 出事了:先止血,再開工
+## 6. Something's wrong: stop the bleeding first
 
-冷啟動回報 health 是黃色或紅色時,規則只有一條:**不疊新工作**。
+When the cold-start report says health is yellow or red, there's one rule: **no new work on top.**
 
 ```
-先把 STATE 裡 yellow/red 的部分處理掉——該驗證的驗證、該回滾的回滾,
-恢復綠色之後我們再談新需求。
+Deal with the yellow/red items in STATE first — verify what needs verifying,
+roll back what needs rolling back. We'll talk new features when it's green.
 ```
 
-另一種常見狀況:STATE 太舊(超過 7 天)但 git log 有新 commit——代表中間有人(或某個 session)沒守紀律。這時先讓模型補一份 record(「考古趁記憶還在 git message 裡」),再開工。
+The other common case: STATE is stale (>7 days) while git log shows fresh commits — someone (or some session) broke discipline in between. Have the model backfill a record first ("archaeology is cheapest while the memory is still in the commit messages"), then start.
 
 <details>
-<summary>⚙ 進階</summary>
+<summary>⚙ Advanced</summary>
 
-- health 的語義:green = 可安全疊加;yellow = 有未驗證的變更;red = 已知壞掉。誠實標色比綠色好看重要——騙儀表板的人最後騙到自己。
-- 接手一個完全陌生、沒有 flightwake 的 repo?先裝再考古:`npx flightwake init`,然後「用 /fw-record 把這個 repo 的現況考古出來寫成第一份 STATE」。
+- Health semantics: green = safe to build on; yellow = unverified changes exist; red = known broken. An honest color beats a pretty one — dashboards lie to their owners last.
+- Taking over a repo that never had flightwake? Install, then excavate: `npx flightwake init`, then "archaeologize this repo's current state into the first STATE with /fw-record".
 </details>
 
 ---
 
-## 常用指令速查
+## Command cheat sheet
 
 ```
-/fw-coldstart   開工第一句,恢復狀態
-「收尾」         → /fw-record,飛行紀錄 + 更新 STATE
-「交接」         → /fw-handoff,沒做完要停手時
-/fw-trap        登記非顯而易見的坑(通常模型自己觸發)
+/fw-coldstart   first thing every session — restore state
+"wrap up"        → /fw-record: flight record + STATE update
+"handoff"        → /fw-handoff: stopping mid-build
+/fw-trap        register a non-obvious trap (usually the model's own call)
 ```
 
-最後一件事:這套流程裡**你要背的只有一條**——開工先 `/fw-coldstart`。其他所有義務,模型會照指令檔自己觸發;你的工作從「記流程」變成「做判斷」。這正是強模型時代人的位置。
+One last thing: in this whole flow **you memorize exactly one line** — open with `/fw-coldstart`. Every other obligation triggers itself from the instruction file; your job shifts from remembering process to making judgment calls. That's the human's seat in the strong-model era.

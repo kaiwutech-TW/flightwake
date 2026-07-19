@@ -1,16 +1,23 @@
 #!/usr/bin/env node
 /**
- * flightwake statusline(選配)— Claude Code 底部常駐儀表:
- * health 顏色 · STATE 落後 · context 用量,並依狀態直接提示下一個指令
- * (剛開場 → /fw-coldstart;落後 ≥3 → /fw-record;context 快滿 → record→clear→coldstart)。
- * stdin 收 Claude Code 的 session JSON;任何錯誤都靜默降級,絕不讓儀表變噪音。
- * 安裝:`npx flightwake init --statusline`(偵測到其他 statusline 時不覆蓋)。
+ * flightwake statusline (opt-in) — a persistent gauge at the bottom of Claude Code:
+ * health color · STATE lag · context usage, plus the next command for the current state
+ * (session just opened → /fw-coldstart; lag ≥3 → /fw-record; context running hot → record→clear→coldstart;
+ * a newer flightwake on npm → npx flightwake update, shown only when nothing more urgent is up).
+ * stdin receives Claude Code's session JSON; every error degrades silently — the gauge must never become noise.
+ * Install: `npx flightwake init --statusline` (never overwrites an existing statusline).
+ * LANG and FW_VERSION are stamped by the installer.
  */
-import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
-// stdin 是 TTY(手動執行沒接 pipe)時不讀 — readFileSync(0) 會因 stdin 不關閉而永久阻塞
+const LANG = 'zh-TW';
+const FW_VERSION = '0.9.0';
+const M = (en, zh) => (LANG === 'zh-TW' ? zh : en);
+
+// Skip stdin when it's a TTY (run by hand without a pipe) — readFileSync(0) blocks forever on an open TTY
 let j = {};
 if (!process.stdin.isTTY) {
   try { j = JSON.parse(readFileSync(0, 'utf8')); } catch {}
@@ -18,13 +25,13 @@ if (!process.stdin.isTTY) {
 const dir = j.workspace?.project_dir ?? process.cwd();
 const git = (...a) => execFileSync('git', a, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 
-let health = null; // null = 沒有 .flightwake
+let health = null; // null = no .flightwake here
 let behindN = null;
 let stateDirty = false;
 let pct = null;
 let msgs = 0;
 
-// health(STATE frontmatter)+ 落後量(與 state-check.mjs 同一套 rev-list 判斷)
+// health (STATE frontmatter) + lag (same rev-list rule as state-check.mjs)
 try {
   const state = join(dir, '.flightwake', 'STATE.md');
   if (existsSync(state)) {
@@ -40,8 +47,9 @@ try {
   }
 } catch {}
 
-// context 用量:優先用 Claude Code stdin 的 context_window(帶真實視窗大小,1M 模型不會高估);
-// 舊版無此欄位時退回解析 transcript 最後一筆 usage(視窗保守以 200k 計)。訊息量照數(判斷剛開場)。
+// Context usage: prefer Claude Code's context_window on stdin (carries the real window size —
+// no over-reporting on 1M models); older Claude Code without the field falls back to the transcript's
+// last usage entry against a conservative 200k. Message count doubles as the "just opened" signal.
 try {
   const cw = j.context_window;
   if (typeof cw?.used_percentage === 'number') {
@@ -69,10 +77,36 @@ try {
   }
 } catch {}
 
+// Update check (opt out: FLIGHTWAKE_NO_UPDATE_CHECK=1). Rendering never touches the network:
+// it reads a tmpdir cache; a cache older than 24h spawns one detached background refresh
+// (the cache timestamp is touched first, so concurrent renders don't spawn duplicates).
+let updateTo = null;
+try {
+  if (!process.env.FLIGHTWAKE_NO_UPDATE_CHECK && FW_VERSION !== '0.0.0') {
+    const cachePath = join(tmpdir(), 'flightwake-update-check.json');
+    let cache = null;
+    try { cache = JSON.parse(readFileSync(cachePath, 'utf8')); } catch {}
+    if (!cache || Date.now() - cache.checked > 24 * 3600 * 1000) {
+      try { writeFileSync(cachePath, JSON.stringify({ checked: Date.now(), latest: cache?.latest ?? null })); } catch {}
+      const script = `fetch('https://registry.npmjs.org/flightwake/latest').then(r=>r.json()).then(v=>require('node:fs').writeFileSync(${JSON.stringify(cachePath)},JSON.stringify({checked:Date.now(),latest:v.version}))).catch(()=>{})`;
+      spawn(process.execPath, ['-e', script], { detached: true, stdio: 'ignore' }).unref();
+    }
+    const newer = (a, b) => {
+      const pa = String(a).split('.').map(Number);
+      const pb = String(b).split('.').map(Number);
+      for (let i = 0; i < 3; i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0);
+      return false;
+    };
+    if (cache?.latest && newer(cache.latest, FW_VERSION)) updateTo = cache.latest;
+  }
+} catch {}
+
 const parts = ['✈️ flightwake'];
 if (health !== null) {
   const color = { green: '\x1b[32m', yellow: '\x1b[33m', red: '\x1b[31m' }[health] ?? '';
-  const lag = stateDirty ? ' · STATE 更新中' : behindN === null ? '' : behindN > 0 ? ` · STATE 落後 ${behindN}c` : ' · STATE 同步';
+  const lag = stateDirty
+    ? M(' · STATE updating', ' · STATE 更新中')
+    : behindN === null ? '' : behindN > 0 ? M(` · STATE ${behindN}c behind`, ` · STATE 落後 ${behindN}c`) : M(' · STATE in sync', ' · STATE 同步');
   parts.push(`${color}●${health}\x1b[0m${lag}`);
 }
 if (pct !== null) {
@@ -81,12 +115,13 @@ if (pct !== null) {
   parts.push(`${color}${'▓'.repeat(filled)}${'░'.repeat(10 - filled)} ${pct}%\x1b[0m`);
 }
 
-// 下一步指令提示:單一則、依優先序;一切正常時安靜
+// Next-command hint: a single one, by priority; silence when everything is fine
 let hint = '';
-if (health === 'yellow' || health === 'red') hint = '先處理未驗證項再疊新工作(讀 STATE)';
-else if (pct !== null && pct >= 80) hint = '/fw-record 收尾 → /clear → /fw-coldstart 接手';
-else if (behindN !== null && behindN >= 3) hint = '/fw-record 收尾';
-else if (health !== null && msgs <= 2) hint = '開工先 /fw-coldstart';
+if (health === 'yellow' || health === 'red') hint = M('handle unverified items before stacking new work (read STATE)', '先處理未驗證項再疊新工作(讀 STATE)');
+else if (pct !== null && pct >= 80) hint = M('/fw-record → /clear → /fw-coldstart', '/fw-record 收尾 → /clear → /fw-coldstart 接手');
+else if (behindN !== null && behindN >= 3) hint = M('/fw-record to wrap up', '/fw-record 收尾');
+else if (health !== null && msgs <= 2) hint = M('start with /fw-coldstart', '開工先 /fw-coldstart');
+else if (updateTo) hint = M(`v${updateTo} available: npx flightwake update`, `可更新 v${updateTo}:npx flightwake update`);
 if (hint) parts.push(`\x1b[36m→ ${hint}\x1b[0m`);
 
 console.log(parts.join(' │ '));

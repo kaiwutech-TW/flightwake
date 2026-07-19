@@ -13,12 +13,11 @@ An ultra-lightweight work-recording framework for strong AI coding agents (Claud
 
 ```bash
 cd your-repo
-npx flightwake init        # upgrade an existing install: add --force
+npx flightwake init             # English by default; 繁體中文: --lang=zh-TW
+npx flightwake update           # upgrade an existing install in place (keeps your options: lang/statusline/private)
 ```
 
-init creates `.flightwake/` (templates + Stop hook), copies 4 skills into `.claude/skills/`, merges the Stop hook into `.claude/settings.json`, and appends the trigger-obligation table (wrapped in `<!-- flightwake:begin/end -->` markers) to **detected agent instruction files** (CLAUDE.md / AGENTS.md / GEMINI.md — whichever exist; if none, it creates AGENTS.md; `--agents=claude,codex,gemini` selects explicitly). **Pure file copying, zero runtime dependencies** (Node ≥18 used only at install time and by the hook). User data (STATE/DECISIONS/TRAPS) is never overwritten; `--force` only updates framework-owned files.
-
-> Note: the CLI output and the installed templates/skills are currently in Traditional Chinese (the team dogfooding it works in zh-TW). Full English defaults are planned — the framework mechanics are language-independent, and your agent reads either just fine.
+init creates `.flightwake/` (templates + Stop hook), copies 4 skills into `.claude/skills/`, merges the Stop hook into `.claude/settings.json`, and appends the trigger-obligation table (wrapped in `<!-- flightwake:begin/end -->` markers) to **detected agent instruction files** (CLAUDE.md / AGENTS.md / GEMINI.md — whichever exist; if none, it creates AGENTS.md; `--agents=claude,codex,gemini` selects explicitly). **Pure file copying, zero runtime dependencies** (Node ≥18 used only at install time and by the hooks). User data (STATE/DECISIONS/TRAPS) is never overwritten; `--force` only updates framework-owned files. `--lang=en|zh-TW` picks the language of the installed templates/skills and all CLI/hook output; `update` re-detects what you installed and refreshes it from the latest version.
 
 ## How to use
 
@@ -59,7 +58,7 @@ This repo dogfoods its own framework: [`.flightwake/`](.flightwake/) contains th
 
 ### Stage-by-stage playbook
 
-New to working with a strong model? [docs/workflow.md](docs/workflow.md) is a stage map of what **you** do and what to say to the model at each point — beginner main line, advanced folds for Claude Code veterans. (zh-TW for now; English lands with the v0.9 i18n pass.)
+New to working with a strong model? [docs/workflow.md](docs/workflow.md) is a stage map of what **you** do and what to say to the model at each point — beginner main line, advanced folds for Claude Code veterans. (繁體中文版:[workflow.zh-TW.md](docs/workflow.zh-TW.md))
 
 ## Why this project exists
 
@@ -137,6 +136,8 @@ Wrap up your current milestone first, then:
 Health color (the one thing you watch), STATE staleness (same rev-list logic as the Stop hook — but as a live gauge instead of an exit-time reminder), and context usage. The gauge also tells you **the next command for the current state** — session just started → `→ 開工先 /fw-coldstart`; STATE ≥3 commits behind → `→ /fw-record`; context running hot → `→ /fw-record → /clear → /fw-coldstart`; all healthy → silence. It never overwrites an existing statusline (a single-value setting), and repo-level config takes precedence over user-level, so it coexists with tools that set a global one.
 
 Note: a plain `npx flightwake init` does **not** install the gauge — it's opt-in. Already ran init without it? Running `npx flightwake init --statusline` again just adds the gauge (everything else is skipped as already installed); the bar appears in the next Claude Code session.
+
+The gauge also tells you when a newer flightwake exists (`→ v0.9.1 available: npx flightwake update`) — shown only when nothing more urgent is up. The check is an anonymous GET to the npm registry at most once per 24h, cached in the OS temp dir, always in a background process (rendering never waits on the network). Opt out with `FLIGHTWAKE_NO_UPDATE_CHECK=1`.
 
 ### CI-side wrap-up check (optional)
 

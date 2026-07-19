@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /**
- * flightwake CLI — `npx flightwake init [--force]`(或 `npx github:kaiwutech-TW/flightwake init`)
- * 在目標 repo 根目錄執行:安裝 .flightwake/ 模板 + 4 個 skill + Stop hook,
- * 並把觸發義務表貼進偵測到的 agent 指令檔(CLAUDE.md/AGENTS.md/GEMINI.md;--agents 可指定)。
- * 純檔案複製,跨平台(Node ≥18)。使用者資料(STATE/DECISIONS/TRAPS)永不覆蓋;
- * 框架擁有的檔案(skills/hook/TEMPLATE/CLAUDE.md 片段)預設不覆蓋,--force 才更新。
+ * flightwake CLI — `npx flightwake init [--force] [--lang=en|zh-TW]` (or `npx github:kaiwutech-TW/flightwake init`)
+ * Run at the target repo root: installs .flightwake/ templates + 4 skills + Stop hook,
+ * and appends the trigger-obligation table to detected agent instruction files
+ * (CLAUDE.md/AGENTS.md/GEMINI.md; override with --agents).
+ * Pure file copying, cross-platform (Node ≥18). User data (STATE/DECISIONS/TRAPS) is never overwritten;
+ * framework-owned files (skills/hooks/TEMPLATE/CLAUDE.md snippet) are not overwritten by default — --force updates them.
+ * `update` = re-detect the existing install's options (lang/statusline/private) and force-refresh framework files.
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, copyFileSync, readdirSync, statSync, rmSync, rmdirSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, statSync, rmSync, rmdirSync } from 'node:fs';
 import { join, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -15,31 +17,40 @@ const FW_SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = process.cwd();
 const args = process.argv.slice(2);
 const cmd = args.find((a) => !a.startsWith('-')) ?? 'init';
-const FORCE = args.includes('--force');
-const PRIVATE = args.includes('--private');
-const STATUSLINE = args.includes('--statusline');
+const IS_UPDATE = cmd === 'update';
+const FORCE = args.includes('--force') || IS_UPDATE;
+const PRIVATE_FLAG = args.includes('--private');
+const STATUSLINE_FLAG = args.includes('--statusline');
 const VERSION = JSON.parse(readFileSync(join(FW_SRC, 'package.json'), 'utf8')).version;
+const LANGS = ['en', 'zh-TW'];
 
 const log = (s) => console.log(s);
 const noJunk = (src) => !/(^|[\\/])\.(DS_Store|AppleDouble)$/.test(src);
 
-if ((cmd !== 'init' && cmd !== 'uninstall') || args.includes('--help') || args.includes('-h')) {
-  log('flightwake — 用法: npx flightwake init [--force] [--private] [--statusline] [--agents=claude,codex,gemini] | uninstall [--purge]\n  在目標 repo 根目錄執行;--force 更新既有 skill/hook/片段;--private 紀錄只留本機不進 git(.git/info/exclude + settings.local.json);--statusline 裝底部儀表(health/STATE 落後/context 用量;不覆蓋既有 statusline);--agents 指定要貼觸發義務表的平台指令檔(預設自動偵測)\n  uninstall 反向清除框架檔與標記區塊;預設保留 .flightwake/ 使用者資料,--purge 才連同刪除');
-  process.exit(cmd === 'init' || cmd === 'uninstall' || cmd === 'help' ? 0 : 1);
+if (!['init', 'update', 'uninstall'].includes(cmd) || args.includes('--help') || args.includes('-h')) {
+  log(`flightwake — usage: npx flightwake init [--force] [--lang=en|zh-TW] [--private] [--statusline] [--agents=claude,codex,gemini] | update | uninstall [--purge]
+  Run at the target repo root.
+  init        install; --force updates existing skills/hooks/snippets; --lang picks the language of installed content
+              and CLI output (default en); --private keeps records local, out of git (.git/info/exclude + settings.local.json);
+              --statusline installs the bottom gauge (health / STATE lag / context usage; never overwrites an existing statusline);
+              --agents picks which platform instruction files get the obligation table (auto-detected by default)
+  update      re-install with the options detected from the existing install (lang / statusline / private) — the in-place upgrade
+  uninstall   reverse-remove framework files and marker blocks; keeps .flightwake/ user data unless --purge`);
+  process.exit(['init', 'update', 'uninstall', 'help'].includes(cmd) ? 0 : 1);
 }
 
 const git = (...a) => execFileSync('git', a, { cwd: TARGET, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 const isTracked = (rel) => { try { return git('ls-files', '--', rel) !== ''; } catch { return false; } };
 
-// .git 用 existsSync:worktree/submodule 的 .git 是檔案不是目錄
+// .git checked with existsSync: in worktrees/submodules .git is a file, not a directory
 if (!existsSync(join(TARGET, '.git'))) {
   let root = null;
   try { root = git('rev-parse', '--show-toplevel'); } catch {}
   if (root) {
-    // monorepo 政策:單 repo 一份 — session 跨目錄工作,記錄跟著 session 走,不跟目錄
-    log(`⚠️  flightwake 政策:單 repo 一份,裝在 git root。\n    請到 ${root} 執行(submodule 有自己的 .git,視為獨立 repo 各裝各的)。`);
+    // Monorepo policy: one install per repo, at the git root — sessions cross directories, so records follow the session, not the directory
+    log(`⚠️  flightwake policy: one install per repo, at the git root.\n    Run this in ${root} (a submodule has its own .git and counts as its own repo).`);
   } else {
-    log(`⚠️  目前目錄不是 git repo(${TARGET})— flightwake 依賴 git 作為記錄底層。先 git init。`);
+    log(`⚠️  Not a git repo (${TARGET}) — flightwake relies on git as its recording substrate. Run git init first.`);
   }
   process.exit(1);
 }
@@ -49,31 +60,75 @@ const excludePath = () => {
   return isAbsolute(p) ? p : join(TARGET, p);
 };
 
-// ── uninstall:反向清除 init 的固定寫入範圍;.flightwake/ 使用者資料預設保留,--purge 才刪 ──
+// ── Detect the existing install (marker version/lang, statusline, private) — drives `update` and lang defaults ──
+const INSTRUCTION_CANDIDATES = ['.claude/CLAUDE.md', 'CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', 'GEMINI.md'];
+const detectMarker = () => {
+  for (const rel of INSTRUCTION_CANDIDATES) {
+    const p = join(TARGET, ...rel.split('/'));
+    if (!existsSync(p)) continue;
+    const m = /<!-- flightwake:begin v(\d+\.\d+\.\d+[^\s]*)(?:\s+lang=([\w-]+))?\s*-->/.exec(readFileSync(p, 'utf8'));
+    // Pre-0.9 markers carry no lang attribute — every install back then was zh-TW
+    if (m) return { version: m[1], lang: m[2] ?? 'zh-TW' };
+  }
+  return null;
+};
+const detectStatusline = () => {
+  for (const rel of ['.claude/settings.json', '.claude/settings.local.json']) {
+    const p = join(TARGET, ...rel.split('/'));
+    try { if (existsSync(p) && JSON.stringify(JSON.parse(readFileSync(p, 'utf8')).statusLine ?? null).includes('statusline.mjs')) return true; } catch {}
+  }
+  return false;
+};
+const detectPrivate = () => {
+  try { const ep = excludePath(); return existsSync(ep) && readFileSync(ep, 'utf8').includes('# flightwake:begin'); } catch { return false; }
+};
+
+const marker = detectMarker();
+const langArg = args.find((a) => a.startsWith('--lang='))?.slice('--lang='.length);
+if (langArg && !LANGS.includes(langArg)) {
+  log(`⚠️  --lang not recognized: ${langArg} (available: ${LANGS.join(', ')})`);
+  process.exit(1);
+}
+// Language: explicit flag > existing install's language > English
+const LANG = langArg ?? marker?.lang ?? 'en';
+const PRIVATE = PRIVATE_FLAG || (IS_UPDATE && detectPrivate());
+const STATUSLINE = STATUSLINE_FLAG || (IS_UPDATE && detectStatusline());
+// M(): bilingual CLI output — English default, zh-TW when the install (or --lang) says so
+const M = (en, zh) => (LANG === 'zh-TW' ? zh : en);
+
+if (IS_UPDATE && !marker && !existsSync(join(TARGET, '.flightwake'))) {
+  log(M(
+    '⚠️  No flightwake install detected here — run `npx flightwake init` first.',
+    '⚠️  這裡偵測不到 flightwake 安裝 — 請先跑 `npx flightwake init`。',
+  ));
+  process.exit(1);
+}
+
+// ── uninstall: reverse-remove init's fixed write set; .flightwake/ user data kept unless --purge ──
 if (cmd === 'uninstall') {
   const PURGE = args.includes('--purge');
-  log(`flightwake uninstall v${VERSION}${PURGE ? '(--purge)' : ''} → ${TARGET}\n`);
+  log(`flightwake uninstall v${VERSION}${PURGE ? ' (--purge)' : ''} → ${TARGET}\n`);
   const rm = (rel) => {
     const p = join(TARGET, ...rel.split('/'));
     if (!existsSync(p)) return;
     rmSync(p, { recursive: true });
     log(`  rm   ${rel}`);
   };
-  // 1. skills + .flightwake/ 裡的框架檔(hooks/ 清空後移除,留下使用者自己放的東西)
-  for (const s of readdirSync(join(FW_SRC, 'skills'))) {
-    if (statSync(join(FW_SRC, 'skills', s)).isDirectory()) rm(`.claude/skills/${s}`);
+  // 1. Skills + framework files inside .flightwake/ (hooks/ removed once emptied; anything the user put there stays)
+  for (const s of readdirSync(join(FW_SRC, 'skills', 'en'))) {
+    if (statSync(join(FW_SRC, 'skills', 'en', s)).isDirectory()) rm(`.claude/skills/${s}`);
   }
   rm('.flightwake/TEMPLATE-record.md');
   rm('.flightwake/hooks/state-check.mjs');
   rm('.flightwake/hooks/statusline.mjs');
   try { rmdirSync(join(TARGET, '.flightwake', 'hooks')); } catch {}
-  // 2. settings:只摘 flightwake 的 Stop hook 與 statusLine,使用者其他設定原樣保留;摘完全空才刪檔
+  // 2. Settings: pluck only flightwake's Stop hook and statusLine, keep everything else; delete the file only if empty after
   for (const rel of ['.claude/settings.json', '.claude/settings.local.json']) {
     const p = join(TARGET, ...rel.split('/'));
     if (!existsSync(p)) continue;
     let s;
     try { s = JSON.parse(readFileSync(p, 'utf8')); }
-    catch { log(`  ⚠️  ${rel} 不是有效 JSON — 請手動移除 state-check.mjs 的 Stop hook 與 statusline.mjs 的 statusLine`); continue; }
+    catch { log(`  ⚠️  ${rel} is not valid JSON — remove the state-check.mjs Stop hook and statusline.mjs statusLine manually`); continue; }
     let changed = false;
     const stop = s.hooks?.Stop;
     if (Array.isArray(stop) && JSON.stringify(stop).includes('state-check.mjs')) {
@@ -86,89 +141,98 @@ if (cmd === 'uninstall') {
     }
     if (JSON.stringify(s.statusLine ?? null).includes('statusline.mjs')) { delete s.statusLine; changed = true; }
     if (!changed) continue;
-    if (!Object.keys(s).length) { rmSync(p); log(`  rm   ${rel}(移除後已空)`); }
-    else { writeFileSync(p, JSON.stringify(s, null, 2) + '\n'); log(`  edit ${rel} ← 移除 flightwake 設定`); }
+    if (!Object.keys(s).length) { rmSync(p); log(`  rm   ${rel} (empty after removal)`); }
+    else { writeFileSync(p, JSON.stringify(s, null, 2) + '\n'); log(`  edit ${rel} ← flightwake settings removed`); }
   }
-  // 3. 指令檔的標記區塊;移除後檔案全空(= 當初由 flightwake 建檔)才刪檔
-  for (const rel of ['.claude/CLAUDE.md', 'CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', 'GEMINI.md']) {
+  // 3. Marker blocks in instruction files; delete the file only if empty after (= flightwake created it)
+  for (const rel of INSTRUCTION_CANDIDATES) {
     const p = join(TARGET, ...rel.split('/'));
     if (!existsSync(p)) continue;
     const cur = readFileSync(p, 'utf8');
     if (!cur.includes('<!-- flightwake:begin')) {
-      if (cur.includes('flightwake 工作紀律')) log(`  ⚠️  ${rel} 有 v0.1 無標記片段,無法自動移除 — 請手動刪除該段`);
+      if (cur.includes('flightwake 工作紀律')) log(`  ⚠️  ${rel} has a v0.1 unmarked snippet that can't be removed automatically — delete that section by hand`);
       continue;
     }
     const updated = cur.replace(/\n?<!-- flightwake:begin[\s\S]*?<!-- flightwake:end -->\n?/, '\n').replace(/^\n+/, '');
-    if (!updated.trim()) { rmSync(p); log(`  rm   ${rel}(移除片段後已空)`); }
-    else { writeFileSync(p, updated); log(`  edit ${rel} ← 移除片段`); }
+    if (!updated.trim()) { rmSync(p); log(`  rm   ${rel} (empty after snippet removal)`); }
+    else { writeFileSync(p, updated); log(`  edit ${rel} ← snippet removed`); }
   }
-  // 4. .git/info/exclude 的標記區塊(--private 安裝的痕跡)
+  // 4. Marker block in .git/info/exclude (trace of a --private install)
   try {
     const ep = excludePath();
     if (existsSync(ep) && readFileSync(ep, 'utf8').includes('# flightwake:begin')) {
       writeFileSync(ep, readFileSync(ep, 'utf8').replace(/# flightwake:begin[\s\S]*?# flightwake:end\n?/, ''));
-      log('  edit .git/info/exclude ← 移除 flightwake 區塊');
+      log('  edit .git/info/exclude ← flightwake block removed');
     }
   } catch {}
-  // 5. 清掉移除後已空的目錄(非空 = 使用者有自己的東西,rmdir 自然失敗跳過)
+  // 5. Remove now-empty directories (non-empty = user has their own things there; rmdir fails silently, which is the point)
   try { rmdirSync(join(TARGET, '.claude', 'skills')); } catch {}
   try { rmdirSync(join(TARGET, '.claude')); } catch {}
-  // 6. 使用者資料
+  // 6. User data
   if (PURGE) {
     rm('.flightwake');
-    log('\n✅ uninstall 完成(--purge)。使用者資料(STATE/DECISIONS/TRAPS/records)已一併刪除;曾 commit 過的仍可從 git 歷史找回。');
+    log('\n✅ uninstall done (--purge). User data (STATE/DECISIONS/TRAPS/records) deleted too; anything ever committed is still recoverable from git history.');
   } else {
-    log('\n✅ uninstall 完成。.flightwake/(STATE/DECISIONS/TRAPS/records)是使用者資料,已保留 — 確定不要可用 uninstall --purge 或自行刪除。');
+    log('\n✅ uninstall done. .flightwake/ (STATE/DECISIONS/TRAPS/records) is user data and was kept — use uninstall --purge or delete it yourself if you are sure.');
   }
   process.exit(0);
 }
 
-// --private 模式收集要寫進 .git/info/exclude 的條目(相對 repo 根);null = 非 private
+// --private collects entries for .git/info/exclude (relative to repo root); null = not private
 const privateExcludes = PRIVATE ? ['.flightwake/'] : null;
 
-log(`flightwake init v${VERSION}${PRIVATE ? '(--private)' : ''} → ${TARGET}\n`);
+if (IS_UPDATE) {
+  log(`flightwake update v${marker?.version ?? '?'} → v${VERSION} (lang=${LANG}${STATUSLINE ? ', statusline' : ''}${PRIVATE ? ', private' : ''}) → ${TARGET}\n`);
+} else {
+  log(`flightwake init v${VERSION}${PRIVATE ? ' (--private)' : ''} (lang=${LANG}) → ${TARGET}\n`);
+}
 
-// 1. .flightwake/ 模板 — STATE/DECISIONS/TRAPS 是使用者資料,永不覆蓋(含 --force)
+// 1. .flightwake/ templates — STATE/DECISIONS/TRAPS are user data, never overwritten (even with --force)
 mkdirSync(join(TARGET, '.flightwake', 'records'), { recursive: true });
 mkdirSync(join(TARGET, '.flightwake', 'hooks'), { recursive: true });
 for (const f of ['STATE.md', 'DECISIONS.md', 'TRAPS.md']) {
   const dst = join(TARGET, '.flightwake', f);
-  if (existsSync(dst)) log(`  skip .flightwake/${f}(已存在,使用者資料不覆蓋)`);
-  else { copyFileSync(join(FW_SRC, 'templates', f), dst); log(`  add  .flightwake/${f}`); }
+  if (existsSync(dst)) log(`  skip .flightwake/${f}${M(' (exists — user data, never overwritten)', '(已存在,使用者資料不覆蓋)')}`);
+  else { writeFileSync(dst, readFileSync(join(FW_SRC, 'templates', LANG, f), 'utf8')); log(`  add  .flightwake/${f}`); }
 }
 
-// 2. 框架擁有的檔案:record 模板 + Stop hook(--force 可更新)
-for (const [src, rel] of [
-  [join(FW_SRC, 'templates', 'TEMPLATE-record.md'), join('.flightwake', 'TEMPLATE-record.md')],
-  [join(FW_SRC, 'hooks', 'state-check.mjs'), join('.flightwake', 'hooks', 'state-check.mjs')],
-  [join(FW_SRC, 'hooks', 'statusline.mjs'), join('.flightwake', 'hooks', 'statusline.mjs')],
+// 2. Framework-owned files: record template + hooks (--force updates them).
+//    Hooks are stamped at copy time: LANG picks their message language, FW_VERSION feeds the statusline update check.
+const stamp = (src) => readFileSync(src, 'utf8')
+  .replace(/^const LANG = '[^']*';$/m, `const LANG = '${LANG}';`)
+  .replace(/^const FW_VERSION = '[^']*';$/m, `const FW_VERSION = '${VERSION}';`);
+for (const [read, rel] of [
+  [() => readFileSync(join(FW_SRC, 'templates', LANG, 'TEMPLATE-record.md'), 'utf8'), join('.flightwake', 'TEMPLATE-record.md')],
+  [() => stamp(join(FW_SRC, 'hooks', 'state-check.mjs')), join('.flightwake', 'hooks', 'state-check.mjs')],
+  [() => stamp(join(FW_SRC, 'hooks', 'statusline.mjs')), join('.flightwake', 'hooks', 'statusline.mjs')],
 ]) {
   const dst = join(TARGET, rel);
   const existed = existsSync(dst);
-  if (existed && !FORCE) { log(`  skip ${rel}(已存在,--force 可更新)`); continue; }
-  copyFileSync(src, dst);
+  if (existed && !FORCE) { log(`  skip ${rel}${M(' (exists — --force to update)', '(已存在,--force 可更新)')}`); continue; }
+  writeFileSync(dst, read());
   log(`  ${existed ? 'update' : 'add '} ${rel}`);
 }
 
-// 3. 四個 skill → .claude/skills/(只取目錄,過濾 .DS_Store 類垃圾;--force 可更新)
+// 3. The four skills → .claude/skills/ (directories only, junk filtered; --force updates)
 mkdirSync(join(TARGET, '.claude', 'skills'), { recursive: true });
-for (const s of readdirSync(join(FW_SRC, 'skills'))) {
-  if (!statSync(join(FW_SRC, 'skills', s)).isDirectory()) continue;
+for (const s of readdirSync(join(FW_SRC, 'skills', LANG))) {
+  if (!statSync(join(FW_SRC, 'skills', LANG, s)).isDirectory()) continue;
   privateExcludes?.push(`.claude/skills/${s}/`);
   const dst = join(TARGET, '.claude', 'skills', s);
   const existed = existsSync(dst);
-  if (existed && !FORCE) { log(`  skip .claude/skills/${s}(已存在,--force 可更新)`); continue; }
-  cpSync(join(FW_SRC, 'skills', s), dst, { recursive: true, force: true, filter: noJunk });
+  if (existed && !FORCE) { log(`  skip .claude/skills/${s}${M(' (exists — --force to update)', '(已存在,--force 可更新)')}`); continue; }
+  cpSync(join(FW_SRC, 'skills', LANG, s), dst, { recursive: true, force: true, filter: noJunk });
   log(`  ${existed ? 'update' : 'add '} .claude/skills/${s}`);
 }
 
-// 4. Stop hook 併入 .claude/settings.json(--private → settings.local.json,不進 repo)
+// 4. Stop hook merged into .claude/settings.json (--private → settings.local.json, stays out of the repo)
 {
   const settingsRel = PRIVATE ? '.claude/settings.local.json' : '.claude/settings.json';
   const settingsPath = join(TARGET, ...settingsRel.split('/'));
   privateExcludes?.push(settingsRel);
   const HOOK_CMD = 'node "$CLAUDE_PROJECT_DIR/.flightwake/hooks/state-check.mjs"';
-  // 兩個 settings 檔互認:另一模式裝過 hook 就不重複(settings.json 與 local 會被 Claude Code 合併,重複 = Stop 提醒跳兩次)
+  // The two settings files recognize each other: if the other mode already installed the hook, don't duplicate
+  // (Claude Code merges settings.json with local — a duplicate means the Stop reminder fires twice)
   const otherRel = PRIVATE ? '.claude/settings.json' : '.claude/settings.local.json';
   const otherPath = join(TARGET, ...otherRel.split('/'));
   const inOther = (() => { try { return existsSync(otherPath) && readFileSync(otherPath, 'utf8').includes('state-check.mjs'); } catch { return false; } })();
@@ -176,21 +240,21 @@ for (const s of readdirSync(join(FW_SRC, 'skills'))) {
   let parseOk = true;
   if (existsSync(settingsPath)) {
     try { settings = JSON.parse(readFileSync(settingsPath, 'utf8')); }
-    catch { parseOk = false; log(`  ⚠️  ${settingsRel} 不是有效 JSON,略過 hook 安裝 — 請手動在 hooks.Stop 加:${HOOK_CMD}`); }
+    catch { parseOk = false; log(`  ⚠️  ${settingsRel} is not valid JSON — skipping hook install; add to hooks.Stop manually: ${HOOK_CMD}`); }
   }
   if (parseOk) {
     settings.hooks ??= {};
     settings.hooks.Stop ??= [];
     if (inOther) {
-      log(`  skip Stop hook(${otherRel} 已設定 — 另一模式的安裝仍生效)`);
+      log(`  skip Stop hook${M(` (already set in ${otherRel} — the other mode's install still applies)`, `(${otherRel} 已設定 — 另一模式的安裝仍生效)`)}`);
     } else if (JSON.stringify(settings.hooks.Stop).includes('state-check.mjs')) {
-      log(`  skip ${settingsRel} Stop hook(已設定)`);
+      log(`  skip ${settingsRel} Stop hook${M(' (already set)', '(已設定)')}`);
     } else {
       settings.hooks.Stop.push({ hooks: [{ type: 'command', command: HOOK_CMD }] });
       writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
-      log(`  add  ${settingsRel} ← Stop hook(STATE 過期檢查)`);
+      log(`  add  ${settingsRel} ← Stop hook${M(' (STATE staleness check)', '(STATE 過期檢查)')}`);
     }
-    // --statusline:底部儀表(選配)。statusLine 是單值設定 — 他家既有設定絕不覆蓋
+    // --statusline: the bottom gauge (opt-in). statusLine is a single-value setting — never overwrite someone else's
     if (STATUSLINE) {
       const SL_CMD = 'node "$CLAUDE_PROJECT_DIR/.flightwake/hooks/statusline.mjs"';
       const slInOther = (() => {
@@ -198,11 +262,11 @@ for (const s of readdirSync(join(FW_SRC, 'skills'))) {
         catch { return false; }
       })();
       if (slInOther) {
-        log(`  skip statusLine(${otherRel} 已設定 — 另一模式的安裝仍生效)`);
+        log(`  skip statusLine${M(` (already set in ${otherRel} — the other mode's install still applies)`, `(${otherRel} 已設定 — 另一模式的安裝仍生效)`)}`);
       } else if (settings.statusLine && !JSON.stringify(settings.statusLine).includes('statusline.mjs')) {
-        log(`  ⚠️  ${settingsRel} 已有其他 statusLine,不覆蓋 — 要換請手動設 command 為:${SL_CMD}`);
+        log(`  ⚠️  ${settingsRel}${M(` already has another statusLine — not overwriting; to switch, set command to: ${SL_CMD}`, ` 已有其他 statusLine,不覆蓋 — 要換請手動設 command 為:${SL_CMD}`)}`);
       } else if (settings.statusLine) {
-        log(`  skip ${settingsRel} statusLine(已設定)`);
+        log(`  skip ${settingsRel} statusLine${M(' (already set)', '(已設定)')}`);
       } else {
         if (Array.isArray(settings.hooks?.Stop) && !settings.hooks.Stop.length) {
           delete settings.hooks.Stop;
@@ -210,22 +274,23 @@ for (const s of readdirSync(join(FW_SRC, 'skills'))) {
         }
         settings.statusLine = { type: 'command', command: SL_CMD };
         writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
-        log(`  add  ${settingsRel} ← statusLine(flightwake 儀表)`);
+        log(`  add  ${settingsRel} ← statusLine${M(' (flightwake gauge)', '(flightwake 儀表)')}`);
       }
     }
   }
 }
 
-// 5. 觸發義務片段 → 各 agent 指令檔。預設偵測既有檔(CLAUDE.md/AGENTS.md/GEMINI.md,有哪個貼哪個);
-//    --agents=claude,codex,gemini 指定平台(檔案不存在則建檔);全無指令檔且未指定 → 建 AGENTS.md(相容面最廣)。
+// 5. Trigger-obligation snippet → each agent instruction file. Default: detect existing files
+//    (CLAUDE.md/AGENTS.md/GEMINI.md — whichever exists gets it); --agents=claude,codex,gemini targets platforms
+//    (creating missing files); no instruction file at all and nothing specified → create AGENTS.md (widest compatibility).
 {
   const BEGIN = '<!-- flightwake:begin';
   const END = '<!-- flightwake:end -->';
   const LEGACY = 'flightwake 工作紀律';
-  const body = readFileSync(join(FW_SRC, 'snippets', 'CLAUDE-md-snippet.md'), 'utf8').replace(/^<!--[\s\S]*?-->\n?/, '');
-  const block = `${BEGIN} v${VERSION} -->\n${body.trimEnd()}\n${END}\n`;
-  // 平台群組:同群組的候選檔視為同一份(裝進第一個存在的;任一已有標記即不重複)。
-  // 群組最後一個候選是 --agents 指定但檔案不存在時的建檔目標。
+  const body = readFileSync(join(FW_SRC, 'snippets', LANG, 'CLAUDE-md-snippet.md'), 'utf8').replace(/^<!--[\s\S]*?-->\n?/, '');
+  const block = `${BEGIN} v${VERSION} lang=${LANG} -->\n${body.trimEnd()}\n${END}\n`;
+  // Platform groups: candidates in a group count as the same file (installed into the first that exists;
+  // a marker in any of them means no duplicate). The group's last candidate is the creation target for --agents.
   const GROUPS = {
     claude: ['.claude/CLAUDE.md', 'CLAUDE.md'],
     codex: ['AGENTS.md'],
@@ -235,20 +300,23 @@ for (const s of readdirSync(join(FW_SRC, 'skills'))) {
   const wanted = agentsArg ? agentsArg.slice('--agents='.length).split(',').map((s) => s.trim()).filter(Boolean) : null;
   if (wanted) {
     const bad = wanted.filter((w) => !GROUPS[w]);
-    if (bad.length) { log(`⚠️  --agents 不認得:${bad.join(', ')}(可用:${Object.keys(GROUPS).join(', ')})`); process.exit(1); }
+    if (bad.length) { log(`⚠️  --agents not recognized: ${bad.join(', ')} (available: ${Object.keys(GROUPS).join(', ')})`); process.exit(1); }
   }
   const anyInstructionFile = Object.values(GROUPS).flat().some((rel) => existsSync(join(TARGET, ...rel.split('/'))));
   for (const [name, rels] of Object.entries(GROUPS)) {
     const files = rels.map((rel) => ({ rel, path: join(TARGET, ...rel.split('/')) }));
     const existing = files.filter((f) => existsSync(f.path));
-    // 預設模式只裝進「已有指令檔」的平台;全無指令檔時 fallback 到 codex 群組建 AGENTS.md
+    // Default mode only installs into platforms that already have an instruction file;
+    // with none anywhere, fall back to the codex group and create AGENTS.md
     const fallback = !wanted && !anyInstructionFile && name === 'codex';
     if (wanted ? !wanted.includes(name) : (!existing.length && !fallback)) continue;
-    // --private:受 git 追蹤的檔案寫了必留痕跡(exclude 對已追蹤檔無效)。
-    // claude 有本地等價檔 CLAUDE.local.md → 偵測仍看原候選、寫入改到本地檔;其他平台無等價物 → 遇追蹤檔跳過。
+    // --private: writing to a git-tracked file always leaves a trace (exclude has no effect on tracked files).
+    // claude has a local equivalent, CLAUDE.local.md → detection still scans the originals, writes go to the local file;
+    // other platforms have no equivalent → skip tracked files.
     const localFile = { rel: 'CLAUDE.local.md', path: join(TARGET, 'CLAUDE.local.md') };
     const writeFiles = (PRIVATE && name === 'claude') ? [localFile] : files;
-    // 標記掃描兩種模式互認(claude 群組永遠含 CLAUDE.local.md):--private 裝過再跑預設 init 不得重複貼片段
+    // Marker scanning recognizes both modes (the claude group always includes CLAUDE.local.md):
+    // a --private install followed by a default init must not paste the snippet twice
     const scan = (name === 'claude' ? [...files, localFile] : files).filter((f) => existsSync(f.path));
     const withMarker = scan.find((f) => readFileSync(f.path, 'utf8').includes(BEGIN));
     const withLegacy = scan.find((f) => readFileSync(f.path, 'utf8').includes(LEGACY));
@@ -257,27 +325,27 @@ for (const s of readdirSync(join(FW_SRC, 'skills'))) {
       if (FORCE) {
         const updated = readFileSync(withMarker.path, 'utf8').replace(/<!-- flightwake:begin[\s\S]*?<!-- flightwake:end -->\n?/, block);
         writeFileSync(withMarker.path, updated);
-        log(`  update ${withMarker.rel} 片段`);
+        log(`  update ${withMarker.rel}${M(' snippet', ' 片段')}`);
       } else {
-        log(`  skip ${withMarker.rel} 片段(已安裝,--force 可更新)`);
+        log(`  skip ${withMarker.rel}${M(' snippet (installed — --force to update)', ' 片段(已安裝,--force 可更新)')}`);
       }
     } else if (withLegacy) {
-      log(`  skip ${withLegacy.rel} 片段(偵測到 v0.1 無標記版本 — 手動刪除該段後重跑即可升級)`);
+      log(`  skip ${withLegacy.rel}${M(' snippet (v0.1 unmarked version detected — delete that section by hand and rerun to upgrade)', ' 片段(偵測到 v0.1 無標記版本 — 手動刪除該段後重跑即可升級)')}`);
     } else {
       const writeExisting = writeFiles.filter((f) => existsSync(f.path));
       const dst = writeExisting[0] ?? writeFiles[writeFiles.length - 1];
       if (PRIVATE && existsSync(dst.path) && isTracked(dst.rel)) {
-        log(`  ⚠️  --private:${dst.rel} 受 git 追蹤,寫入會留下痕跡 — 跳過;觸發義務表請自行放到不進 git 的位置`);
+        log(`  ⚠️  --private: ${dst.rel}${M(' is git-tracked, writing would leave a trace — skipped; put the obligation table somewhere untracked yourself', ' 受 git 追蹤,寫入會留下痕跡 — 跳過;觸發義務表請自行放到不進 git 的位置')}`);
         continue;
       }
       appendFileSync(dst.path, (existsSync(dst.path) ? '\n' : '') + block);
       privateExcludes?.push(dst.rel);
-      log(`  add  ${dst.rel} ← 觸發義務表`);
+      log(`  add  ${dst.rel} ← ${M('obligation table', '觸發義務表')}`);
     }
   }
 }
 
-// 6. --private:條目寫進 .git/info/exclude(純本地,不進 repo;worktree 靠 git 解析真實路徑)
+// 6. --private: entries written to .git/info/exclude (purely local, never in the repo; worktrees resolved via git)
 if (privateExcludes) {
   const entries = [...new Set(privateExcludes)];
   const exBlock = `# flightwake:begin v${VERSION}\n${entries.join('\n')}\n# flightwake:end\n`;
@@ -289,22 +357,40 @@ if (privateExcludes) {
       ? cur.replace(/# flightwake:begin[\s\S]*?# flightwake:end\n?/, exBlock)
       : cur + (cur && !cur.endsWith('\n') ? '\n' : '') + exBlock;
     writeFileSync(ep, next);
-    log(`  add  .git/info/exclude ← ${entries.length} 條(本地忽略)`);
+    log(`  add  .git/info/exclude ← ${entries.length}${M(' entries (local ignore)', ' 條(本地忽略)')}`);
   } catch {
-    log(`  ⚠️  寫入 .git/info/exclude 失敗 — 隱私未生效!請手動加入以下條目:\n     ${entries.join('\n     ')}`);
+    log(`  ⚠️  ${M('Failed to write .git/info/exclude — privacy NOT in effect! Add these entries manually:', '寫入 .git/info/exclude 失敗 — 隱私未生效!請手動加入以下條目:')}\n     ${entries.join('\n     ')}`);
   }
   if (isTracked('.flightwake')) {
-    log('  ⚠️  .flightwake 已被 git 追蹤,exclude 對已追蹤檔案不生效 — 想轉私有需 git rm -r --cached .flightwake(歷史紀錄請自行處理)');
+    log(M(
+      '  ⚠️  .flightwake is already git-tracked; exclude has no effect on tracked files — going private needs git rm -r --cached .flightwake (history is yours to handle)',
+      '  ⚠️  .flightwake 已被 git 追蹤,exclude 對已追蹤檔案不生效 — 想轉私有需 git rm -r --cached .flightwake(歷史紀錄請自行處理)',
+    ));
   }
 }
 
-log(PRIVATE ? `
+if (IS_UPDATE) {
+  log(M(`\n✅ updated to v${VERSION}.`, `\n✅ 已更新到 v${VERSION}。`));
+} else {
+  log(PRIVATE ? M(`
+✅ done (--private). Records stay local; git does not track them. Costs and caveats:
+   - Records aren't shared with the repo: teammates and other machines can't see STATE/records (you give up flightwake's sharing value)
+   - .git/info/exclude is purely local: after a fresh clone, rerun init --private
+   - To go shared again: delete the flightwake block from .git/info/exclude, then git add .flightwake .claude
+   Next: edit .flightwake/STATE.md with the current situation (or have Claude initialize it with /fw-record)`, `
 ✅ done(--private)。紀錄只留本機,git 不追蹤。代價與注意:
    - 紀錄不隨 repo 共享:隊友與其他機器看不到 STATE/records(放棄 flightwake 的共享價值)
    - .git/info/exclude 純本地:重新 clone 後需重跑 init --private
    - 想改回共享:刪除 .git/info/exclude 的 flightwake 區塊,再 git add .flightwake .claude
-   下一步:編輯 .flightwake/STATE.md 填入現況(或讓 Claude 用 /fw-record 初始化)` : `
+   下一步:編輯 .flightwake/STATE.md 填入現況(或讓 Claude 用 /fw-record 初始化)`) : M(`
+✅ done. Next:
+   1. Edit .flightwake/STATE.md with the current situation (or have Claude initialize it with /fw-record)
+   2. git add .flightwake .claude CLAUDE.md && git commit`, `
 ✅ done。下一步:
    1. 編輯 .flightwake/STATE.md 填入現況(或讓 Claude 用 /fw-record 初始化)
-   2. git add .flightwake .claude CLAUDE.md && git commit`);
-if (!STATUSLINE) log('   ℹ️  底部儀表未裝(選配)— 要的話:npx flightwake init --statusline(health/STATE 落後/context 用量)');
+   2. git add .flightwake .claude CLAUDE.md && git commit`));
+  if (!STATUSLINE) log(M(
+    '   ℹ️  Bottom gauge not installed (opt-in) — if you want it: npx flightwake init --statusline (health / STATE lag / context usage)',
+    '   ℹ️  底部儀表未裝(選配)— 要的話:npx flightwake init --statusline(health/STATE 落後/context 用量)',
+  ));
+}
