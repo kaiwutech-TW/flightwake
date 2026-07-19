@@ -10,8 +10,11 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+// stdin 是 TTY(手動執行沒接 pipe)時不讀 — readFileSync(0) 會因 stdin 不關閉而永久阻塞
 let j = {};
-try { j = JSON.parse(readFileSync(0, 'utf8')); } catch {}
+if (!process.stdin.isTTY) {
+  try { j = JSON.parse(readFileSync(0, 'utf8')); } catch {}
+}
 const dir = j.workspace?.project_dir ?? process.cwd();
 const git = (...a) => execFileSync('git', a, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 
