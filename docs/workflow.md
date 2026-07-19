@@ -37,7 +37,7 @@
 <details>
 <summary>⚙ 進階</summary>
 
-- 冷啟動是整個框架唯一的品質指標:新 session 到「安全接手」超過 5 分鐘,代表你的記錄在劣化,該壓實了。
+- 冷啟動是整個框架唯一的品質指標:新 session 到「安全接手」超過 5 分鐘,代表你的記錄在劣化,該壓實了。處方也是一句話的事:「這次冷啟動花了 X 分鐘,診斷慢在哪並壓實」——模型會帶著診斷和逐條清單(哪條標 superseded、哪些合併)回來,你一個字放行。給事實、不給情緒:「超過 5 分鐘下個 session 會接錯手」比「這很嚴重」有用。
 - STATE 落後幾個 commit 可以量:`git rev-list --count "$(git log -1 --format=%H -- .flightwake/STATE.md)"..HEAD`,≥1 表示上個 session 沒收尾。
 - 裝了 [status line](../README.md#status-line-optional) 的話,落後與 context 用量會直接顯示在儀表上,含下一步指令提示。
 </details>

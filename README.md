@@ -51,6 +51,8 @@ Forgot to wrap up? When STATE lags ≥3 commits, the Stop hook blocks once befor
 
 Whether STATE's health is honest (green/yellow/red). The framework has a single quality metric: **how long it takes a fresh session to reach a safe takeover after `/fw-coldstart`** — if that takes more than 5 minutes, your records are degrading. Everything else — record count, format compliance — doesn't matter.
 
+When that light comes on, you don't do the maintenance yourself. Say: *"this cold start took X minutes — diagnose what's slow and compact."* The model comes back with a diagnosis (STATE too long? last session never wrapped up? stale TRAPS/DECISIONS entries?) and an item-by-item plan — which entries to mark superseded and why, which to merge — and you approve with one word. Facts work better than pressure: "over 5 minutes means the next session will fumble the takeover" is a prompt the model can reason about; "this is serious!" is not.
+
 ### See what it actually looks like
 
 This repo dogfoods its own framework: [`.flightwake/`](.flightwake/) contains the real STATE, DECISIONS, and records — every step from the gap list to the open-source launch is recorded there. That's exactly what will grow in your repo after installing.

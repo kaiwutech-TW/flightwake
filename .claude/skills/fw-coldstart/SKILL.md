@@ -25,3 +25,7 @@ description: flightwake 冷啟動 — 接手一個 repo 前先恢復狀態。Use
 - STATE 超過 7 天未更新且 git log 有新 commit → 先補一份 record 再開工(考古趁記憶還在 git message 裡)
 - TRAPS 的 active 條目 >20,或本次冷啟動實測 >5 分鐘 → 向使用者提議壓實
   (合併重複、把已不成立的條目標 superseded——壓實是改 status 與整併,永不刪行)
+  **提議必須具體到一個字能放行**:先給診斷(慢在哪:STATE 太長/太舊?上次沒收尾?
+  TRAPS/DECISIONS 過時條目太多?記錄用了外人看不懂的代號?),再列逐條處置清單
+  (哪條標 superseded、為什麼;哪些合併)。使用者確認前不動手——
+  「這條還成不成立」的判斷錯了會傳染給所有未來 session,確定權留給人,功課留給模型。

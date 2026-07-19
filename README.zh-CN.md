@@ -47,6 +47,8 @@ init 会:建 `.flightwake/`(模板 + Stop hook)、复制 4 个 skill 到 `.claud
 
 STATE 的 health 诚不诚实(green/yellow/red)。框架的质量指标只有一个:**新 session 从 `/fw-coldstart` 到安全接手花了多久**——超过 5 分钟,代表你的记录在退化。其他一切——记录多寡、格式合规——都不重要。
 
+灯亮了也不用你动手保养,说一句:「**这次冷启动花了 X 分钟,诊断慢在哪并压实**」。模型会带着诊断(STATE 太长?上次没收尾?TRAPS/DECISIONS 过时条目太多?)和逐条处置清单回来——哪条标 superseded、为什么、哪些合并——你一个字放行即可。提示的诀窍是给事实不给情绪:「超过 5 分钟代表下个 session 会接错手」模型能推理;「这很严重!」它只能表演紧张。
+
 ### 想看实际长相
 
 本 repo 自己就 dogfooding 这套框架:[`.flightwake/`](.flightwake/) 里是真实的 STATE、DECISIONS 与 records——框架从缺口清单到开源上线的每一步都记录在里面,那就是装进你 repo 后会自然长出的东西。
