@@ -1,7 +1,7 @@
 ---
 updated: 2026-07-19
 updated_by: Claude(Fable 5)
-latest_record: records/260719-metric-prescription.md
+latest_record: records/260719-v090-i18n-update.md
 health: green
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
@@ -10,7 +10,7 @@ health: green
 
 # 現在在哪
 
-flightwake v0.8.2,**已開源上線(2026-07-18)**:公開 repo、npm 0.8.2(trusted publishing 連四次 Release 零失誤)、README 四語含遷移指南、--statusline 儀表含下一步指令提示與真實視窗大小(本 repo、marketing_dashboard、kaiwuweb 實跑中)。缺口 1–7 全落地、兩 gate 全關、benchmarks n=2(非自我參照,零糾正)、宣傳素材全齊(三稿 + 三張截圖 + context 開銷故事線)。**GSD 全域已拆除(2026-07-18 晚,手冊 docs/cleanGSD.md);A/B 已量、開場底盤已分解到底**。新增 docs/workflow.md 分階段實戰手冊(四語 README 有入口);品質指標句已改寫並補齊「亮燈處方」(2026-07-19,見 latest_record)。剩:發宣傳(三稿最終版在使用者桌面)。定位:給強模型(Fable 5 級)的事後記錄框架,補持久性與紀律、不補智力。
+flightwake v0.9.0,**已開源上線(2026-07-18)、i18n 完成(2026-07-19)**:npm 0.9.0(trusted publishing 連五次 Release 零失誤)、英文預設 + `--lang=zh-TW`、`update` 就地升級、儀表含下一步提示/真實視窗/新版提示(本 repo、kaiwuweb、salesmartly_chain、marketing_dashboard 實跑中,前三者已 update 至 0.9.0)。HN 已發(Show HN,留言被 auto-flag 待版主回覆)。缺口 1–7 全落地、兩 gate 全關、benchmarks n=2(非自我參照,零糾正)、宣傳素材全齊(三稿 + 三張截圖 + context 開銷故事線)。**GSD 全域已拆除(2026-07-18 晚,手冊 docs/cleanGSD.md);A/B 已量、開場底盤已分解到底**。新增 docs/workflow.md 分階段實戰手冊(四語 README 有入口);品質指標句已改寫並補齊「亮燈處方」(2026-07-19,見 latest_record)。剩:發宣傳(三稿最終版在使用者桌面)。定位:給強模型(Fable 5 級)的事後記錄框架,補持久性與紀律、不補智力。
 
 # 進行中(未完成勿刪)
 
@@ -26,7 +26,7 @@ flightwake v0.8.2,**已開源上線(2026-07-18)**:公開 repo、npm 0.8.2(truste
 - [x] 開源收殘 ✅(MIT + 英文 README + release.yml + flip runbook;舊 objects 清理併入 runbook 第 1 步;v0.7.1)
 - [x] 冷啟動實測 ✅ 首筆有效樣本入 docs/benchmarks.md(2026-07-18;flightwake 邊際 ≈ 2.6K 讀 + 2K 出,接手零猶豫)
 - 已定案待觀察:慣例演進採讀取端容忍(見 DECISIONS 2026-07-18),容忍不了時再議遷移工具
-- v0.9 規劃:完整 i18n(CLI 輸出英文化 + `--lang` 模板語言;README 已四語但 CLI/skill/模板仍 zh-TW,英文 README 有註記;程式註解翻譯併入,不單獨做半套)。statusline 視窗項已提前完成(2026-07-18:改用 stdin `context_window` 官方欄位,舊版 fallback 200k)
+- v0.9 已全數出貨(2026-07-19:i18n 英文預設、update 子指令、儀表新版提示);zh-CN/ja 安裝內容待 issue 需求再擴(DECISIONS 重評條件)
 
 # 下一步入口
 
