@@ -1,7 +1,7 @@
 ---
 updated: 2026-07-19
 updated_by: Claude(Fable 5)
-latest_record: records/260719-v090-i18n-update.md
+latest_record: records/260719-scorecard-hardening.md
 health: green
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
@@ -31,7 +31,8 @@ flightwake v0.9.0,**已開源上線(2026-07-18)、i18n 完成(2026-07-19)**:npm 
 # 下一步入口
 
 1. **發宣傳**:三稿最終版(已改寫為不點名 GSD,含 HN 留言預備)在使用者桌面 `~/Desktop/flightwake-launch-copy.md`;截圖三張在使用者手上;HN 挑能盯留言的時段發
-2. 宣傳後:盯 issues/討論回饋;v0.9 見進行中清單;GSD 側對照實測待補(benchmarks 公平性);範例 repo 降為 nice-to-have
+2. HN 後續:等 hn@ycombinator.com 回覆(作者留言被 auto-flag)→ 解 flag 後補「v0.9.0 已兌現 English defaults」留言
+3. 宣傳後:盯 issues/討論回饋 + dependabot 升版 PR(PR 流程練習);GSD 側對照實測待補(benchmarks 公平性);範例 repo 降為 nice-to-have
 
 # 常備事實(這個 repo 的 3-5 條保命知識)
 
