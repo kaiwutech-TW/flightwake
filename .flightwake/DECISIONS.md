@@ -6,6 +6,7 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
+| 2026-07-19 | 冷啟動劣化的壓實維持「模型提議(診斷+逐條清單)→ 使用者一字放行」,不做 /fw-auto 自動壓實 | 壓實風險在判斷不在執行:標錯 superseded 會傳染給所有只信 active 的未來 session,「還成不成立」正是人腦 context 最有價值處;另守「只背一條指令」的極簡承諾 | 使用者實際放行率長期 ~100%(代表確認變成橡皮圖章)時再議自動化 |
 | 2026-07-18 | 宣傳文案不點名 GSD(context 開銷對比故事線不以 GSD 為靶;A/B 數據僅供內部理解) | 使用者對 GSD 社群有感謝之情——它在那個時期確實讓開發順暢;踩著別人做對比不符合想要的調性 | 若日後寫「框架設計取捨」類技術文,可匿名化為「某 stage-driven 框架」再議 |
 | 2026-07-18 | GSD 全域拆除提前執行(原定等所有 repo 轉完;.planning/ 資料保留,整包備份於 ~/.claude/backups/gsd-full-backup-20260718.tar.gz;手冊沉澱為 docs/cleanGSD.md) | 實測開場固定 context 40.4k tokens(20.2%),GSD 71 skill+34 agent 清單+7 類 hooks 是最大可移除項,等待成本每個 session 都在付 | 若他 repo 仍需 GSD 指令,從備份 tar 還原 |
 | 2026-07-18 | statusline 做成 opt-in flag(--statusline),絕不覆蓋既有 statusLine;內容只放 health/STATE 落後/context 三項 | statusLine 是單值設定,搶佔=破壞使用者環境(GSD 等工具裝在 user 層,repo 層自動優先即可並存);三項恰好是「路標+警示燈」的常駐化,多了就是噪音 | 使用者要求可配置欄位時 |
