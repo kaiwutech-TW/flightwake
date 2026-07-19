@@ -1,24 +1,39 @@
 # Security Policy
 
-## 回報漏洞
+## Reporting a vulnerability
 
-請透過 GitHub 的 **Private Vulnerability Reporting**(repo 的 Security 分頁 → Report a vulnerability)回報,
-不要開公開 issue。我們目標在 7 天內回應。
+Please report vulnerabilities through GitHub's **Private Vulnerability Reporting**:
+<https://github.com/kaiwutech-TW/flightwake/security/advisories/new> (repo → Security tab → Report a vulnerability).
+Do **not** open a public issue for security reports.
 
-## 支援版本
+- **Acknowledgement**: within 7 days
+- **Fix or mitigation plan**: within 30 days for confirmed issues; coordinated disclosure after the fix ships
 
-只有最新發布版本收安全修補。
+## Supported versions
 
-## 威脅模型(給評估者的快速事實)
+Only the latest released version receives security patches.
 
-flightwake 是純檔案複製的安裝器 + 一個本地 git 查詢 hook,攻擊面刻意極小:
+## Threat model (quick facts for reviewers)
 
-- **零 runtime 依賴**:`package.json` 無任何 dependencies;沒有 install scripts(無 postinstall)。
-- **無網路存取**:安裝器與 hook 都不發任何網路請求。
-- **寫入範圍固定**:`init` 只寫目標 repo 的 `.flightwake/`、`.claude/skills/fw-*`、
-  `.claude/settings.json`(併入一條 Stop hook)與 CLAUDE.md(附加標記片段)。不碰其他路徑、不執行 shell。
-- **hook 執行的是 repo 內的檔案**:`.flightwake/hooks/state-check.mjs` 進 git,
-  能 commit 的人就能改它——這與任何 repo-local hook/設定相同,Claude Code 會在載入 repo 設定時要求使用者確認。
-  hook 本身只用 `execFileSync('git', …)`(無 shell)做唯讀查詢,任何錯誤靜默放行。
-- **發布完整性**(開源後):透過 npm Trusted Publishing 發布並附 provenance attestation;
-  使用者可用 `npm audit signatures` 驗證。
+flightwake is a pure file-copying installer plus local git-query hooks; the attack surface is deliberately tiny:
+
+- **Zero runtime dependencies**: `package.json` has no dependencies and no install scripts (no postinstall).
+- **Network access**: the installer and hooks make no network requests, with one opt-out exception —
+  the statusline's update check performs an anonymous `GET https://registry.npmjs.org/flightwake/latest`
+  at most once per 24h in a detached background process (cache in the OS temp dir; disable with `FLIGHTWAKE_NO_UPDATE_CHECK=1`).
+- **Fixed write scope**: `init` writes only the target repo's `.flightwake/`, `.claude/skills/fw-*`,
+  `.claude/settings.json` (merging in one Stop hook), and the instruction file (appending a marked snippet).
+  No other paths, no shell execution.
+- **Hooks execute files inside the repo**: `.flightwake/hooks/*.mjs` are committed to git —
+  anyone who can commit can change them, same as any repo-local hook/config; Claude Code asks the user
+  to confirm when loading repo settings. The hooks use `execFileSync('git', …)` (no shell) for read-only
+  queries and degrade silently on any error.
+- **Release integrity**: published via npm Trusted Publishing with provenance attestation;
+  verify with `npm audit signatures`.
+
+---
+
+## 回報漏洞(繁體中文)
+
+請透過 GitHub 的 **Private Vulnerability Reporting** 回報(連結見上),不要開公開 issue。
+7 天內回應;確認的問題 30 天內給出修補或緩解方案。只有最新發布版本收安全修補。

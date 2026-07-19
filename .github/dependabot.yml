@@ -1,0 +1,7 @@
+# Keep pinned GitHub Actions SHAs fresh — runtime has zero dependencies, so actions are the only thing to watch
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
