@@ -45,7 +45,7 @@ init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claud
 
 ### 你唯一要盯的事
 
-STATE 的 health 誠不誠實(green/yellow/red)。框架的品質指標只有一個:**新 session 冷啟動多久能安全接手**(>5 分鐘 = 記錄在退化)。其他一切——記錄多寡、格式合規——都不重要。
+STATE 的 health 誠不誠實(green/yellow/red)。框架的品質指標只有一個:**新 session 從 `/fw-coldstart` 到安全接手花了多久**——超過 5 分鐘,代表你的記錄在退化。其他一切——記錄多寡、格式合規——都不重要。
 
 ### 想看實際長相
 

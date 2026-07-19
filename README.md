@@ -49,7 +49,7 @@ Forgot to wrap up? When STATE lags ≥3 commits, the Stop hook blocks once befor
 
 ### The only thing you need to watch
 
-Whether STATE's health is honest (green/yellow/red). The framework has a single quality metric: **how long a fresh session needs to take over safely** (>5 minutes = your records are degrading). Everything else — record count, format compliance — doesn't matter.
+Whether STATE's health is honest (green/yellow/red). The framework has a single quality metric: **how long it takes a fresh session to reach a safe takeover after `/fw-coldstart`** — if that takes more than 5 minutes, your records are degrading. Everything else — record count, format compliance — doesn't matter.
 
 ### See what it actually looks like
 
