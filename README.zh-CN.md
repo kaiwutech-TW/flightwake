@@ -42,7 +42,7 @@ init 会:建 `.flightwake/`(模板 + Stop hook)、复制 4 个 skill 到 `.claud
 模型:(/fw-record:写飞行记录、更新 STATE、敏感信息自查)
 ```
 
-忘了收尾也没关系:STATE 落后 ≥3 commits 时,Stop hook 会在 session 结束前拦一次提醒;CI 端用 `--ci` 把同一道关卡带给其他 agent 与人类协作者。要跨 session 停手的大工程,停手前说「交接」让模型跑 `/fw-handoff`。
+忘了收尾也没关系:STATE 落后 ≥3 commits 时,Stop hook 会在 session 结束前拦一次提醒(STATE 标 health=green 但最新 record 没有测试证据时,也会提醒);CI 端用 `--ci` 把同一道关卡带给其他 agent 与人类协作者。诚实标注这张网的边界:落后量用 commit 数计——零 commit 的 session(研究、ops 操作)或 squash/rebase 流程会从网下溜过;网接住的是「忘记」,不取代 session 结束时的义务。要跨 session 停手的大工程,停手前说「交接」让模型跑 `/fw-handoff`。
 
 ### 你唯一要盯的事
 
@@ -164,7 +164,7 @@ flightwake 不会把 workflow 写进你的 repo——`.github/workflows/` 权限
 
 ## 与邻近系统的分界
 
-**Claude Code 记忆功能**:持久记忆与 flightwake 同形(frontmatter + `[[链接]]`)但不同层——记忆是单机单人的;flightwake 的文件进 git,随 repo 共享给团队、CI 与任何 agent。分工规则:repo 的事实(坑、决策、状态)进 flightwake;个人偏好与跨项目习惯进记忆。同一件事不要双写。
+**Claude Code 记忆功能**:持久记忆与 flightwake 同形(frontmatter + `[[链接]]`)但不同层——记忆是单机单人的;flightwake 的文件进 git,随 repo 共享给团队、CI 与任何 agent。分工规则:repo 的事实(坑、决策、状态)进 flightwake;个人偏好与跨项目习惯进记忆。同一件事不要双写——唯一的刻意例外:**不是本 repo 特有的通用坑**(平台/语言层)两边都存,因为 repo 登记簿必须自足,而你的其他 repo 也需要这个警告(跨范畴各存是分工不是重复)。
 
 **[Google OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf)**:OKF 管**知识层**(系统事实:schema、指标口径、代码对照),flightwake 管**过程层**(发生了什么、为什么、现在在哪)。flightwake 的知识型产物采 OKF 惯例(YAML frontmatter + `[[链接]]`),两边在「纯 Markdown + frontmatter」底层天然兼容。
 

@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 /**
- * flightwake STATE staleness check — one rev-list rule, two modes:
- * - Stop hook (default): when STATE lags ≥ threshold, emit Claude Code's block JSON; always exit 0, never hard-block the session
- * - `--ci`: print a human-readable message and exit 1 when lagging (brings the wrap-up discipline outside Claude Code; CI needs fetch-depth: 0)
- *   `--threshold=N` tunes the threshold (default 3)
+ * flightwake STATE checks — two checks, two modes:
+ * 1. Staleness (rev-list): STATE lags ≥ threshold commits behind HEAD
+ * 2. Evidence: STATE claims health=green but the latest record's `tests:` frontmatter line is empty/missing
+ *    (only the *absence* of the line is flagged — no free-text judgement, so no prose-parsing false positives)
+ * - Stop hook (default): either check emits Claude Code's block JSON once; always exit 0, never hard-block the session
+ * - `--ci`: staleness prints a message and exits 1 (CI needs fetch-depth: 0); evidence is a warning only, never a gate
+ *   `--threshold=N` tunes the staleness threshold (default 3)
  * Any error (not a git repo, git missing from PATH, …) passes silently in both modes —
  * this is a discipline reminder, not a security gate; under-reporting beats false blocking.
  * LANG is stamped by the installer (`npx flightwake init --lang=…`).
@@ -33,16 +36,37 @@ const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['
 try {
   process.chdir(git('rev-parse', '--show-toplevel'));
   if (!existsSync(STATE)) process.exit(0);
-  if (git('status', '--porcelain', '--', STATE)) process.exit(0); // freshly updated, not yet committed → counts as fresh
-  const last = git('log', '-1', '--format=%H', '--', STATE);
-  if (!last) process.exit(0); // STATE never committed (just initialized) → stay quiet
-  const behind = Number(git('rev-list', '--count', `${last}..HEAD`));
+
+  // Check 2 — evidence: health=green is a claim; the latest record's `tests:` line is its evidence.
+  // Runs even when STATE is uncommitted (right after a wrap-up is exactly when the gap appears).
+  let evidence = '';
+  const fm = (f) => readFileSync(f, 'utf8').match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? '';
+  const sfm = fm(STATE);
+  if (/^health:\s*green\b/m.test(sfm)) {
+    const rec = sfm.match(/^latest_record:\s*(\S+)/m)?.[1];
+    const recPath = rec && `.flightwake/${rec}`;
+    if (recPath && existsSync(recPath) && !/^tests:\s*\S/m.test(fm(recPath))) {
+      evidence = M(
+        `flightwake: STATE claims health=green but the latest record (${rec}) carries no test evidence (\`tests:\` frontmatter is empty). Backfill the evidence, or set health honestly.`,
+        `flightwake:STATE 標 health=green,但最新 record(${rec})沒有測試證據(frontmatter 的 tests 欄空白)。請補上證據,或誠實調整 health。`,
+      );
+    }
+  }
+
+  // Check 1 — staleness: only measurable once STATE has a committed baseline
+  let behind = 0;
+  if (!git('status', '--porcelain', '--', STATE)) { // uncommitted update → counts as fresh
+    const last = git('log', '-1', '--format=%H', '--', STATE);
+    if (last) behind = Number(git('rev-list', '--count', `${last}..HEAD`)); // never committed → stay quiet
+  }
+
   if (behind >= THRESHOLD) {
     if (CI) {
       console.error(M(
         `❌ flightwake: ${STATE} lags ${behind} commits behind (threshold ${THRESHOLD}). Wrap up with /fw-record (flight record + STATE update), or at least make STATE reflect reality before pushing.`,
         `❌ flightwake:${STATE} 已落後 ${behind} 個 commit(門檻 ${THRESHOLD})。請補 /fw-record 收尾(寫飛行紀錄 + 更新 STATE),或至少讓 STATE 反映真實現況再推。`,
       ));
+      if (evidence) console.error(`⚠️  ${evidence}`);
       process.exit(1);
     }
     console.log(JSON.stringify({
@@ -50,13 +74,16 @@ try {
       reason: M(
         `flightwake: ${STATE} lags ${behind} commits behind. Run /fw-record to wrap up (flight record + update STATE's situation and health), or at least make STATE reflect reality before ending.`,
         `flightwake:${STATE} 已落後 ${behind} 個 commit。請跑 /fw-record 收尾(寫飛行紀錄 + 更新 STATE 的現況與 health),或至少讓 STATE 反映真實現況再結束。`,
-      ),
+      ) + (evidence ? `\n${evidence}` : ''),
     }));
   } else if (CI) {
     console.log(M(
       `✅ flightwake: STATE fresh (${behind} behind < threshold ${THRESHOLD})`,
       `✅ flightwake:STATE 新鮮(落後 ${behind} < 門檻 ${THRESHOLD})`,
     ));
+    if (evidence) console.error(`⚠️  ${evidence}`); // warning only — free-frontmatter detection must never gate CI
+  } else if (evidence) {
+    console.log(JSON.stringify({ decision: 'block', reason: evidence }));
   }
 } catch {}
 process.exit(0);

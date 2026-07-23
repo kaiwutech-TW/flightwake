@@ -44,7 +44,7 @@ Model: (/fw-record: writes the flight record, updates STATE, runs the
         sensitive-info self-check)
 ```
 
-Forgot to wrap up? When STATE lags ≥3 commits, the Stop hook blocks once before the session ends to remind you; `--ci` brings the same gate to other agents and human collaborators. For multi-session construction, say "handoff" before stopping so the model runs `/fw-handoff`.
+Forgot to wrap up? When STATE lags ≥3 commits, the Stop hook blocks once before the session ends to remind you (it also nags when STATE claims health=green but the latest record carries no test evidence); `--ci` brings the same gate to other agents and human collaborators. Honest edges of the net: the lag is counted in commits, so a session that commits nothing (research, ops work) or a squash/rebase flow slips under it — the net catches forgetting; it doesn't replace the session-end obligation. For multi-session construction, say "handoff" before stopping so the model runs `/fw-handoff`.
 
 ### The only thing you need to watch
 
@@ -166,7 +166,7 @@ flightwake will not write a workflow into your repo — `.github/workflows/` is 
 
 ## Boundaries with neighboring systems
 
-**Claude Code memory**: persistent memory has the same shape as flightwake (frontmatter + `[[links]]`) but lives on a different layer — memory is single-machine, single-person; flightwake's files go into git and travel with the repo to teammates, CI, and any agent. Repo facts (traps, decisions, state) go to flightwake; personal preferences and cross-project habits go to memory. Never write the same fact in both places.
+**Claude Code memory**: persistent memory has the same shape as flightwake (frontmatter + `[[links]]`) but lives on a different layer — memory is single-machine, single-person; flightwake's files go into git and travel with the repo to teammates, CI, and any agent. Repo facts (traps, decisions, state) go to flightwake; personal preferences and cross-project habits go to memory. Never write the same fact in both places — with one deliberate exception: a trap that isn't repo-specific (platform/language layer) lives in both, because the repo's registry must stay self-contained while your other repos need the warning too (one copy per scope is division of labor, not duplication).
 
 **[Google OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf)**: OKF manages the **knowledge layer** (system facts: schemas, metric definitions, code mappings); flightwake manages the **process layer** (what happened, why, where we are now). flightwake's knowledge-shaped artifacts adopt OKF conventions (YAML frontmatter + `[[links]]`) — naturally compatible on the shared "plain Markdown + frontmatter" substrate.
 

@@ -6,6 +6,9 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
+| 2026-07-23 | 多 agent 並行(worktree 同 repo 多 session)的 STATE/DECISIONS/TRAPS 衝突暫不設計,維持單線 session 假設 | 現行工作流是單線;「新條目加最上面」在並行 append 時必衝突,但需求未出現前的設計是猜測(beads 的 hash-ID + JSONL 是已知參考解) | worktree 並行 session 成為日常、或第一次真實 merge 衝突發生 |
+| 2026-07-23 | state-check 加第二檢查:health=green 但最新 record 無 tests 證據 → hook 擋一次提醒、CI 只警告不失敗 | green 是自我申報,「測試綠才算完成」硬防護原本與 health 無接線;只偵測 frontmatter tests 欄有無、不判讀內文,免費文字誤判——所以 CI 不敢當閘門 | 誤報(合理空欄場景)或漏報(有欄無實據)實測後調整 |
+| 2026-07-23 | 跨 repo 通用坑(平台/語言層)採「repo TRAPS 照登 + 使用者層記憶同存一份」雙寫,豁免單處去重原則 | repo 登記簿必須自足(接手者/CI 看不到個人記憶),但通用坑只記單一 repo 換個 repo 就重咬(hook-stdin-tty-block 已咬兩次);跨範疇各存是分工不是重複 | 平台級共享 TRAPS 機制出現時 |
 | 2026-07-19 | v0.9 i18n 三定案:CLI/儀表英文預設(--lang 可改)、安裝內容僅出 en+zh-TW 兩套、儀表更新檢查預設開(FLIGHTWAKE_NO_UPDATE_CHECK=1 可關);舊 marker 無 lang 屬性一律視為 zh-TW | 開源預設面向國際;四語安裝內容維護成本翻倍而 zh-CN/ja 使用者讀 README 即可;更新提示預設關形同不存在,匿名 GET+24h 快取+背景執行把成本壓到可接受 | 出現 zh-CN/ja 模板的實際需求(issue)再擴 |
 | 2026-07-19 | 冷啟動劣化的壓實維持「模型提議(診斷+逐條清單)→ 使用者一字放行」,不做 /fw-auto 自動壓實 | 壓實風險在判斷不在執行:標錯 superseded 會傳染給所有只信 active 的未來 session,「還成不成立」正是人腦 context 最有價值處;另守「只背一條指令」的極簡承諾 | 使用者實際放行率長期 ~100%(代表確認變成橡皮圖章)時再議自動化 |
 | 2026-07-18 | 宣傳文案不點名 GSD(context 開銷對比故事線不以 GSD 為靶;A/B 數據僅供內部理解) | 使用者對 GSD 社群有感謝之情——它在那個時期確實讓開發順暢;踩著別人做對比不符合想要的調性 | 若日後寫「框架設計取捨」類技術文,可匿名化為「某 stage-driven 框架」再議 |

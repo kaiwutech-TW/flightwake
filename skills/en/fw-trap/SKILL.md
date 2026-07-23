@@ -23,3 +23,7 @@ Purpose: any given trap gets stepped in exactly once per project (including futu
 4. Write it on the spot — trap details fade within half a day
 5. When a new trap **replaces or covers** an existing entry: set the old entry's frontmatter `status` to `superseded` and point its body at the [[new entry]] — never delete lines,
    so an "old md vs new md" conflict always has a clear direction
+6. Judge the trap's **scope**: if it isn't specific to this repo — any project would step in it (platform/language/tool layer, e.g. Node stdin behavior, shell expansion) —
+   still register it in TRAPS (the repo's registry must be self-contained: the next person or agent can't see your personal memory),
+   **and save a copy to your user-level memory** (e.g. Claude memory) so your other repos don't re-trip it.
+   One copy per scope is division of labor, not duplication: a generic trap recorded in only one repo bites again in the next repo

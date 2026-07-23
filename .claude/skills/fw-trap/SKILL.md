@@ -23,3 +23,7 @@ description: flightwake 登記坑 — 把非顯而易見的陷阱寫進 TRAPS re
 4. 當下就寫——坑的細節半天就忘
 5. 新坑**取代或涵蓋**既有條目時:舊條目 frontmatter 的 `status` 改 `superseded`、內文指向 [[新條目]]——不刪行,
    讓「舊 md vs 新 md」的衝突有明確方向邊
+6. 判斷坑的**範疇**:若坑不是本 repo 特有、任何專案都會踩(平台/語言/工具層,如 Node stdin 行為、shell 展開)——
+   TRAPS 照登(repo 登記簿必須自足:接手者與其他 agent 看不到你的個人記憶),
+   **另存一份到你的使用者層記憶**(如 Claude 記憶),防其他 repo 重犯。
+   跨範疇各存是分工不是重複:通用坑只記在單一 repo,換個 repo 就會再咬一次

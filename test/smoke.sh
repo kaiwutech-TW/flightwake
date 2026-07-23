@@ -102,6 +102,20 @@ out=$(echo '{}' | node .flightwake/hooks/state-check.mjs)
 [ -z "$out" ] || fail "STATE 有未 commit 更新時應視為新鮮"
 pass "Stop hook 行為正確"
 
+# 7b. health=green 需證據:最新 record 無 tests 欄 → hook 提醒;CI 只警告不失敗;補上 tests → 靜默
+printf -- '---\nrecord_id: 990101-t\ndate: 2026-01-01\n---\n# t\n' > .flightwake/records/990101-t.md
+node -e "const fs=require('fs');const f='.flightwake/STATE.md';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/latest_record: .*/,'latest_record: records/990101-t.md'))"
+git add -A && git commit -qm "record without tests"
+out=$(echo '{}' | node .flightwake/hooks/state-check.mjs)
+echo "$out" | grep -q '"decision":"block"' || fail "green 無 tests 證據時 hook 應提醒(got: $out)"
+node .flightwake/hooks/state-check.mjs --ci >/dev/null 2>"$TMP/warn.txt" || fail "證據缺口在 CI 只警告,不得失敗"
+grep -q 'tests' "$TMP/warn.txt" || fail "CI 應印出證據警告(got: $(cat "$TMP/warn.txt"))"
+printf -- '---\nrecord_id: 990101-t\ndate: 2026-01-01\ntests: 1 passed\n---\n# t\n' > .flightwake/records/990101-t.md
+git add -A && git commit -qm "add tests evidence"
+out=$(echo '{}' | node .flightwake/hooks/state-check.mjs)
+[ -z "$out" ] || fail "tests 已補時 hook 應靜默(got: $out)"
+pass "health=green 需測試證據"
+
 # 8. 多平台:無任何指令檔 → 建 AGENTS.md,重跑冪等
 REPO2="$TMP/repo2"
 mkdir -p "$REPO2" && cd "$REPO2"
