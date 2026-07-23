@@ -9,6 +9,10 @@
 
 給強模型(Claude Fable 5 世代起)的極輕量工作記錄框架。零執行期依賴、純 Markdown、一切進 git。
 
+![本 repo 的真實冷啟動:/fw-coldstart 讀 STATE 與最新 record,約 30 秒回報安全接手](https://raw.githubusercontent.com/kaiwutech-TW/flightwake/main/docs/demo.gif)
+
+*就在本 repo 實錄:一個指令、兩次讀檔,全新 session 準確回報上次做到哪、這次從哪接。*
+
 ## 安裝
 
 ```bash

@@ -9,6 +9,10 @@
 
 強いモデル(Claude Fable 5 世代以降)のための超軽量ワーク記録フレームワーク。ランタイム依存ゼロ、純粋な Markdown、すべて git に入る。
 
+![この repo での実際のコールドスタート:/fw-coldstart が STATE と最新 record を読み、約 30 秒で安全な引き継ぎを報告](https://raw.githubusercontent.com/kaiwutech-TW/flightwake/main/docs/demo.gif)
+
+*まさにこの repo でのライブ録画(zh-TW インストール):コマンド 1 つ、ファイル読み込み 2 回で、新しいセッションが前回の到達点と今回の入口を正確に報告する。*
+
 ## インストール
 
 ```bash

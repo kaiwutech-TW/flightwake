@@ -9,6 +9,10 @@
 
 An ultra-lightweight work-recording framework for strong AI coding agents (Claude Fable 5 generation and beyond). Zero runtime dependencies, pure Markdown, everything lives in git.
 
+![A real cold start on this repo: /fw-coldstart reads STATE + the latest record and reports a safe takeover in ~30 seconds](https://raw.githubusercontent.com/kaiwutech-TW/flightwake/main/docs/demo.gif)
+
+*A real cold start on this very repo (recorded live, zh-TW install): one command, two file reads, and a fresh session reports exactly where the last one left off.*
+
 ## Install
 
 ```bash
