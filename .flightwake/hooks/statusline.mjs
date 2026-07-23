@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const LANG = 'zh-TW';
-const FW_VERSION = '0.9.0';
+const FW_VERSION = '0.10.1';
 const M = (en, zh) => (LANG === 'zh-TW' ? zh : en);
 
 // Skip stdin when it's a TTY (run by hand without a pipe) — readFileSync(0) blocks forever on an open TTY
@@ -101,7 +101,7 @@ try {
   }
 } catch {}
 
-const parts = ['✈️ flightwake'];
+const parts = [`✈️ flightwake${FW_VERSION !== '0.0.0' ? ` \x1b[2mv${FW_VERSION}\x1b[0m` : ''}`];
 if (health !== null) {
   const color = { green: '\x1b[32m', yellow: '\x1b[33m', red: '\x1b[31m' }[health] ?? '';
   const lag = stateDirty

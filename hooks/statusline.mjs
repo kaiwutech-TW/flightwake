@@ -101,7 +101,7 @@ try {
   }
 } catch {}
 
-const parts = ['✈️ flightwake'];
+const parts = [`✈️ flightwake${FW_VERSION !== '0.0.0' ? ` \x1b[2mv${FW_VERSION}\x1b[0m` : ''}`];
 if (health !== null) {
   const color = { green: '\x1b[32m', yellow: '\x1b[33m', red: '\x1b[31m' }[health] ?? '';
   const lag = stateDirty
