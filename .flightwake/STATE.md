@@ -1,7 +1,7 @@
 ---
 updated: 2026-07-23
 updated_by: Claude(Fable 5)
-latest_record: records/260723-v0100-release.md
+latest_record: records/260723-v0101-version-gauge.md
 health: green
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->

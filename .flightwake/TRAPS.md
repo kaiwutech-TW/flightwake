@@ -5,6 +5,19 @@
 # 坑 Registry
 
 ---
+name: gh-active-account-drift
+type: gotcha
+status: active
+tags: [gh, github, multi-account]
+discovered: 2026-07-23
+---
+
+**症狀**:`gh release create` 失敗說 "workflow scope may be required";或 `git push` 403 denied to 另一個帳號——明明這個 session 剛 `gh auth switch` 成功過。
+**根因**:gh 的 active account 是**全域狀態**,其他 session/終端切帳號會直接影響本 session;且錯誤訊息誤導——說缺 workflow scope,實際是 active 帳號對 repo 無權限。
+**解法/繞法**:本 repo 任何 gh 或 push 操作**前**先 `gh auth switch -u kaiwutech-TW`(別信上次的切換還在);看到 workflow scope 錯誤先 `gh auth status` 查 active 帳號,不要急著 `gh auth refresh` 加 scope。
+**佐證**:[[260723-v0100-release]](push main 成功後、開 Release 前被切回 kaiwu-aideamed)
+
+---
 name: hook-stdin-tty-block
 type: trap
 status: active
