@@ -1,7 +1,7 @@
 ---
 updated: 2026-07-23
 updated_by: Claude(Fable 5)
-latest_record: records/260723-eval-driven-hardening.md
+latest_record: records/260723-v0100-release.md
 health: green
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
@@ -10,7 +10,7 @@ health: green
 
 # 現在在哪
 
-flightwake v0.9.0,**已開源上線(2026-07-18)、i18n 完成(2026-07-19)**:npm 0.9.0(trusted publishing 連五次 Release 零失誤)、英文預設 + `--lang=zh-TW`、`update` 就地升級、儀表含下一步提示/真實視窗/新版提示(本 repo、kaiwuweb、salesmartly_chain、marketing_dashboard 實跑中,前三者已 update 至 0.9.0)。HN 已發(Show HN,留言被 auto-flag 待版主回覆)。缺口 1–7 全落地、兩 gate 全關、benchmarks n=2(非自我參照,零糾正)、宣傳素材全齊(三稿 + 三張截圖 + context 開銷故事線)。**GSD 全域已拆除(2026-07-18 晚,手冊 docs/cleanGSD.md);A/B 已量、開場底盤已分解到底**。新增 docs/workflow.md 分階段實戰手冊(四語 README 有入口)。**2026-07-23 外部評測後補強落地(見 latest_record):同類專案掃描確認差異化象限無人佔據;v0.10.0 已 bump 未發**(fw-trap 跨 repo 坑雙寫、state-check health=green 證據檢查、hook 盲區文件化)。**Demo GIF 已上 README 首屏(2026-07-23 晚:本 repo 實錄 /fw-coldstart,docs/demo.gif 244KB,四語嵌入)**。剩:發 v0.10.0 Release、發宣傳(三稿最終版在使用者桌面)。定位:給強模型(Fable 5 級)的事後記錄框架,補持久性與紀律、不補智力。
+flightwake v0.10.0,**已開源上線(2026-07-18)、i18n 完成(2026-07-19)**:trusted publishing 連六次 Release 零失誤、英文預設 + `--lang=zh-TW`、`update` 就地升級、儀表含下一步提示/真實視窗/新版提示(本 repo、kaiwuweb、salesmartly_chain、marketing_dashboard 實跑中,前三者已 update 至 0.9.0)。HN 已發(Show HN,留言被 auto-flag 待版主回覆)。缺口 1–7 全落地、兩 gate 全關、benchmarks n=2(非自我參照,零糾正)、宣傳素材全齊(三稿 + 三張截圖 + context 開銷故事線)。**GSD 全域已拆除(2026-07-18 晚,手冊 docs/cleanGSD.md);A/B 已量、開場底盤已分解到底**。新增 docs/workflow.md 分階段實戰手冊(四語 README 有入口)。**2026-07-23 外部評測後補強 → v0.10.0 已發佈**(fw-trap 跨 repo 坑雙寫、state-check health=green 證據檢查、hook 盲區文件化;同類專案掃描確認差異化象限無人佔據)。**Demo GIF 已上 README 首屏**(本 repo 實錄 /fw-coldstart,docs/demo.gif 244KB,四語嵌入)。npm 0.10.0 已上(驗證證據見 latest_record)。剩:發宣傳(三稿最終版在使用者桌面)。定位:給強模型(Fable 5 級)的事後記錄框架,補持久性與紀律、不補智力。
 
 # 進行中(未完成勿刪)
 
@@ -30,10 +30,10 @@ flightwake v0.9.0,**已開源上線(2026-07-18)、i18n 完成(2026-07-19)**:npm 
 
 # 下一步入口
 
-1. **發 v0.10.0 Release**(版本已 bump、smoke 全綠;GH Release 觸發 trusted publishing;其他已裝 repo 之後 `npx flightwake update`)
-2. **發宣傳**:三稿最終版(已改寫為不點名 GSD,含 HN 留言預備)在使用者桌面 `~/Desktop/flightwake-launch-copy.md`;截圖三張在使用者手上;HN 挑能盯留言的時段發
-3. HN 後續:等 hn@ycombinator.com 回覆(作者留言被 auto-flag)→ 解 flag 後補「v0.9.0 已兌現 English defaults」留言
-4. 宣傳後:盯 issues/討論回饋 + dependabot 升版 PR(PR 流程練習);GSD 側對照實測待補(benchmarks 公平性);範例 repo 降為 nice-to-have
+1. **發宣傳**:三稿最終版(已改寫為不點名 GSD,含 HN 留言預備)在使用者桌面 `~/Desktop/flightwake-launch-copy.md`;截圖三張在使用者手上;HN 挑能盯留言的時段發
+2. HN 後續:等 hn@ycombinator.com 回覆(作者留言被 auto-flag)→ 解 flag 後補「v0.9.0 已兌現 English defaults」留言
+3. 宣傳後:盯 issues/討論回饋 + dependabot 升版 PR(PR 流程練習);GSD 側對照實測待補(benchmarks 公平性);範例 repo 降為 nice-to-have
+4. 擇時:其他已裝 repo(kaiwuweb、salesmartly_chain、marketing_dashboard)`npx flightwake update` 到 0.10.0
 
 # 常備事實(這個 repo 的 3-5 條保命知識)
 
