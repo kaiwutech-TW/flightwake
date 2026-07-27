@@ -28,6 +28,10 @@
     "type": "git",
     "url": "git+https://github.com/kaiwutech-TW/flightwake.git"
   },
+  "homepage": "https://github.com/kaiwutech-TW/flightwake#readme",
+  "bugs": {
+    "url": "https://github.com/kaiwutech-TW/flightwake/issues"
+  },
   "author": "kaiwutech-TW",
   "license": "MIT"
 }

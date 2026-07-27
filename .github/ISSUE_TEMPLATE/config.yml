@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/kaiwutech-TW/flightwake/security/advisories/new
+    about: Report privately — please don't open a public issue.
+  - name: How flightwake is meant to be used
+    url: https://github.com/kaiwutech-TW/flightwake/blob/main/docs/workflow.md
+    about: The stage-by-stage playbook, before filing a "how do I …" issue.

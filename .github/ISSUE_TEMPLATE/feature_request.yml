@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a change to how flightwake works
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before writing: flightwake ships **four** skills on purpose, has **zero dependencies**, and never
+        overwrites user data. Several proposals have already been weighed and declined with reasons in
+        [`.flightwake/DECISIONS.md`](https://github.com/kaiwutech-TW/flightwake/blob/main/.flightwake/DECISIONS.md) —
+        worth a look first. If your idea reverses one of those decisions, say which; that argument is welcome.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you hitting
+      description: The situation that made you want this, not the solution. This is the part that decides the outcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: Roughly what it would look like in use.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do today instead
+      description: How you work around it now, and why that isn't enough.

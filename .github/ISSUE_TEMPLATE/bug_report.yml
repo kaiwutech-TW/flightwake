@@ -1,0 +1,75 @@
+name: Bug report
+description: Something in flightwake doesn't behave as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. The status line prints the installed version — if you have it, the first
+        field (`✈️ flightwake v0.10.0 …`) answers the version question below.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: |
+        Exact commands where possible. If a hook misbehaved, the output of running it by hand helps:
+        `echo '{}' | node .flightwake/hooks/state-check.mjs`
+      placeholder: |
+        1. npx flightwake init --statusline
+        2. …
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: flightwake version
+      placeholder: "0.10.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent platform
+      description: Where flightwake is installed. The Stop hook and status line are Claude Code features; other platforms get the skills and templates only.
+      options:
+        - Claude Code
+        - Codex / AGENTS.md
+        - Gemini CLI
+        - Other (say which below)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-lang
+    attributes:
+      label: Install language
+      options:
+        - English (default)
+        - "--lang=zh-TW"
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: OS and Node version
+      placeholder: "macOS 15.2, Node 22.11"
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Whether the repo is a monorepo, whether `--private` was used, any relevant output.

@@ -1,0 +1,9 @@
+# flightwake has zero dependencies (runtime and dev) — a lockfile here would record nothing but its own
+# existence. If you ran `npm install` locally, keep the generated lockfile out of the repo.
+node_modules/
+package-lock.json
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
