@@ -6,6 +6,7 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
+| 2026-07-27 | STATE 落後量只數人的 commit,bot(`\[bot\]` 後綴)一律不計;state-check 與 statusline 同步改,不採「調高門檻」繞過 | 閘門要量的是「會讓 STATE 過時的工作」,依賴升版不會;且 bot 的 PR 無法自己補 STATE——不可能滿足的 check 會訓練所有人忽略紅燈。調門檻只延後同樣的誤判。符合腳本自述原則「誤放行優於誤阻擋」 | 出現「bot commit 確實改變專案方向」的情境(如 bot 自動改 schema) |
 | 2026-07-27 | dependabot 加 `groups` 把 `github/codeql-action*` 併成單一 PR;不改用「按序合併紅 PR」繞過 | 三個子 action 拆 PR 時每個都撞版本不一致而紅(見 TRAPS codeql-action-version-lockstep),按序合併等於每週手動排雷且 main 會短暫紅;group 是修根因、且不放寬釘 SHA 的安全決策 | 其他 action 出現同類 lockstep 需求時擴充 patterns |
 | 2026-07-23 | 儀表常駐顯示版本號(暗色小字),放寬 2026-07-18「內容只放三項」為四項;不加 /fw-update skill,update 維持 CLI 子指令 | 使用者要求看得到目前版本(該條重評條件「使用者要求」成立);版本號是 update 提示的前置認知。skill 只會是包 bash 的殼,義務表/儀表已指路,且守 4-skill 最小表面 | 再有欄位需求時議可配置化 |
 | 2026-07-23 | 多 agent 並行(worktree 同 repo 多 session)的 STATE/DECISIONS/TRAPS 衝突暫不設計,維持單線 session 假設 | 現行工作流是單線;「新條目加最上面」在並行 append 時必衝突,但需求未出現前的設計是猜測(beads 的 hash-ID + JSONL 是已知參考解) | worktree 並行 session 成為日常、或第一次真實 merge 衝突發生 |

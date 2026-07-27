@@ -48,7 +48,7 @@ Model: (/fw-record: writes the flight record, updates STATE, runs the
         sensitive-info self-check)
 ```
 
-Forgot to wrap up? When STATE lags ≥3 commits, the Stop hook blocks once before the session ends to remind you (it also nags when STATE claims health=green but the latest record carries no test evidence); `--ci` brings the same gate to other agents and human collaborators. Honest edges of the net: the lag is counted in commits, so a session that commits nothing (research, ops work) or a squash/rebase flow slips under it — the net catches forgetting; it doesn't replace the session-end obligation. For multi-session construction, say "handoff" before stopping so the model runs `/fw-handoff`.
+Forgot to wrap up? When STATE lags ≥3 commits, the Stop hook blocks once before the session ends to remind you (it also nags when STATE claims health=green but the latest record carries no test evidence); `--ci` brings the same gate to other agents and human collaborators. Honest edges of the net: the lag counts *human* commits only — bot commits (`dependabot[bot]`, `renovate[bot]`, …) are excluded, because a dependency bump never makes STATE wrong and the bot's own PR could never satisfy the gate. A session that commits nothing (research, ops work) or a squash/rebase flow slips under it — the net catches forgetting; it doesn't replace the session-end obligation. For multi-session construction, say "handoff" before stopping so the model runs `/fw-handoff`.
 
 ### The only thing you need to watch
 

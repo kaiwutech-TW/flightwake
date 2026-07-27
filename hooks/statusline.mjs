@@ -31,7 +31,7 @@ let stateDirty = false;
 let pct = null;
 let msgs = 0;
 
-// health (STATE frontmatter) + lag (same rev-list rule as state-check.mjs)
+// health (STATE frontmatter) + lag (same rev-list rule as state-check.mjs, bot commits excluded)
 try {
   const state = join(dir, '.flightwake', 'STATE.md');
   if (existsSync(state)) {
@@ -41,7 +41,11 @@ try {
         stateDirty = true;
       } else {
         const last = git('log', '-1', '--format=%H', '--', '.flightwake/STATE.md');
-        if (last) behindN = Number(git('rev-list', '--count', `${last}..HEAD`));
+        if (last) {
+          const range = `${last}..HEAD`;
+          const bots = Number(git('rev-list', '--count', '--author=\\[bot\\]', range));
+          behindN = Math.max(0, Number(git('rev-list', '--count', range)) - bots);
+        }
       }
     } catch {}
   }

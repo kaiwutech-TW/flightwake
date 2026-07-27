@@ -102,6 +102,20 @@ out=$(echo '{}' | node .flightwake/hooks/state-check.mjs)
 [ -z "$out" ] || fail "STATE 有未 commit 更新時應視為新鮮"
 pass "Stop hook 行為正確"
 
+# 7a. bot commit 不計入落後:依賴升版不會讓 STATE 過時,且 bot 的 PR 無法自己補 STATE
+git add -A && git commit -qm "state update"
+for i in 4 5 6; do
+  echo "$i" > "f$i.txt" && git add "f$i.txt"
+  git -c user.name='dependabot[bot]' -c user.email='49699333+dependabot[bot]@users.noreply.github.com' \
+    commit -qm "chore(deps): bump $i"
+done
+out=$(echo '{}' | node .flightwake/hooks/state-check.mjs)
+[ -z "$out" ] || fail "3 個 bot commit 不該觸發落後提醒(got: $out)"
+node .flightwake/hooks/state-check.mjs --ci >/dev/null 2>&1 || fail "--ci 面對純 bot commit 應通過"
+echo "human" > f7.txt && git add f7.txt && git commit -qm "human work"
+node .flightwake/hooks/state-check.mjs --ci --threshold=1 >/dev/null 2>&1 && fail "人的 commit 仍須計入(門檻 1 應觸發)"
+pass "bot commit 不計入落後、人的 commit 仍計入"
+
 # 7b. health=green 需證據:最新 record 無 tests 欄 → hook 提醒;CI 只警告不失敗;補上 tests → 靜默
 printf -- '---\nrecord_id: 990101-t\ndate: 2026-01-01\n---\n# t\n' > .flightwake/records/990101-t.md
 node -e "const fs=require('fs');const f='.flightwake/STATE.md';fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/latest_record: .*/,'latest_record: records/990101-t.md'))"

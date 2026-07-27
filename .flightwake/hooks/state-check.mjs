@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * flightwake STATE checks — two checks, two modes:
- * 1. Staleness (rev-list): STATE lags ≥ threshold commits behind HEAD
+ * 1. Staleness (rev-list): STATE lags ≥ threshold *human* commits behind HEAD (bot commits excluded)
  * 2. Evidence: STATE claims health=green but the latest record's `tests:` frontmatter line is empty/missing
  *    (only the *absence* of the line is flagged — no free-text judgement, so no prose-parsing false positives)
  * - Stop hook (default): either check emits Claude Code's block JSON once; always exit 0, never hard-block the session
@@ -54,10 +54,17 @@ try {
   }
 
   // Check 1 — staleness: only measurable once STATE has a committed baseline
+  // Bot commits (dependabot[bot], renovate[bot], …) are excluded: a dependency bump never makes STATE
+  // wrong, and the bot's own PR can't satisfy the gate — an unsatisfiable check trains everyone to
+  // ignore red. Match on the `[bot]` account suffix, not a vendor name, so any bot counts.
   let behind = 0;
   if (!git('status', '--porcelain', '--', STATE)) { // uncommitted update → counts as fresh
     const last = git('log', '-1', '--format=%H', '--', STATE);
-    if (last) behind = Number(git('rev-list', '--count', `${last}..HEAD`)); // never committed → stay quiet
+    if (last) { // never committed → stay quiet
+      const range = `${last}..HEAD`;
+      const bots = Number(git('rev-list', '--count', '--author=\\[bot\\]', range));
+      behind = Math.max(0, Number(git('rev-list', '--count', range)) - bots);
+    }
   }
 
   if (behind >= THRESHOLD) {

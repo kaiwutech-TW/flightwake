@@ -46,7 +46,7 @@ init 会:建 `.flightwake/`(模板 + Stop hook)、复制 4 个 skill 到 `.claud
 模型:(/fw-record:写飞行记录、更新 STATE、敏感信息自查)
 ```
 
-忘了收尾也没关系:STATE 落后 ≥3 commits 时,Stop hook 会在 session 结束前拦一次提醒(STATE 标 health=green 但最新 record 没有测试证据时,也会提醒);CI 端用 `--ci` 把同一道关卡带给其他 agent 与人类协作者。诚实标注这张网的边界:落后量用 commit 数计——零 commit 的 session(研究、ops 操作)或 squash/rebase 流程会从网下溜过;网接住的是「忘记」,不取代 session 结束时的义务。要跨 session 停手的大工程,停手前说「交接」让模型跑 `/fw-handoff`。
+忘了收尾也没关系:STATE 落后 ≥3 commits 时,Stop hook 会在 session 结束前拦一次提醒(STATE 标 health=green 但最新 record 没有测试证据时,也会提醒);CI 端用 `--ci` 把同一道关卡带给其他 agent 与人类协作者。诚实标注这张网的边界:落后量只数**人**的 commit——bot 的 commit(`dependabot[bot]`、`renovate[bot]` 等)不计入,因为依赖升版不会让 STATE 变错,而 bot 的 PR 也永远无法自己补 STATE。零 commit 的 session(研究、ops 操作)或 squash/rebase 流程会从网下溜过;网接住的是「忘记」,不取代 session 结束时的义务。要跨 session 停手的大工程,停手前说「交接」让模型跑 `/fw-handoff`。
 
 ### 你唯一要盯的事
 
