@@ -32,7 +32,7 @@ flightwake v0.10.0,**已開源上線(2026-07-18)、i18n 完成(2026-07-19)**:tru
 
 1. **發宣傳**:三稿最終版(已改寫為不點名 GSD,含 HN 留言預備)在使用者桌面 `~/Desktop/flightwake-launch-copy.md`;截圖三張在使用者手上;HN 挑能盯留言的時段發
 2. HN 後續:等 hn@ycombinator.com 回覆(作者留言被 auto-flag)→ 解 flag 後補「v0.9.0 已兌現 English defaults」留言
-3. **合三個 dependabot PR**:#6(codeql-action 群組 4.37.1→4.37.3,CI 綠)、#3(scorecard-action 2.4.3→2.4.4)、#2(checkout 7.0.0→7.0.1)——首批已排除 codeql-action 拆 PR 的坑,見 [[260727-dependabot-codeql-group]]
+3. **dependabot 首批**:#6(codeql-action 群組 4.37.3)、#3(scorecard-action 2.4.4)已合;剩 #2(checkout 7.0.0→7.0.1)待 rebase 後合。坑與修法見 [[260727-dependabot-codeql-group]]。**已知摩擦**:合 dependabot PR 會把 state-check 的落後計數推過門檻,逼出「更新 STATE → rebase → 合」的來回;是否讓 state-check 忽略 dependabot commit 待議
 4. 宣傳後:盯 issues/討論回饋;GSD 側對照實測待補(benchmarks 公平性);範例 repo 降為 nice-to-have
 5. 擇時:其他已裝 repo(kaiwuweb、salesmartly_chain、marketing_dashboard)`npx flightwake update` 到 0.10.0
 
