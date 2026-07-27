@@ -17,9 +17,22 @@
 
 ```bash
 cd your-repo
-npx flightwake init --lang=zh-TW   # 中文安裝(預設為英文)
-npx flightwake update              # 就地升級,沿用你裝過的選項(lang/statusline/private)
+npx flightwake init --lang=zh-TW --statusline   # 繁體中文 + 底部儀表
+npx flightwake update                           # 就地升級,沿用你裝過的選項(lang/statusline/private)
 ```
+
+**選你的語言** — 安裝的模板、skill 與所有 CLI/儀表輸出都跟著它走。**刻意不做自動偵測**:終端的 `LANG` 與作業系統語系經常不一致(實測過:系統是 zh_TW,終端卻回報 `en_US.UTF-8`),猜錯又講得很有自信,比明講預設更糟。直接複製你要的那行:
+
+| 語言 | 全新安裝 | 已經裝成其他語言 |
+|---|---|---|
+| 繁體中文 | `npx flightwake init --lang=zh-TW --statusline` | `npx flightwake init --lang=zh-TW --force --statusline` |
+| 简体中文 | `npx flightwake init --lang=zh-CN --statusline` | `npx flightwake init --lang=zh-CN --force --statusline` |
+| 日本語 | `npx flightwake init --lang=ja --statusline` | `npx flightwake init --lang=ja --force --statusline` |
+| English | `npx flightwake init --statusline` | `npx flightwake init --lang=en --force --statusline` |
+
+切語言是安全的:`--force` 只換框架擁有的檔案(模板、skill、hook、marker 區塊),你的 STATE / DECISIONS / TRAPS / records **完全不動**,維持你當初寫下的語言。不要儀表的話,把 `--statusline` 拿掉即可。
+
+**不要手動翻譯裝好的檔案。** marker 記著你裝的是哪個語言,下次 `update` 會用那個語言的來源刷新,你的修改會消失。要換語言請重跑 init 加 `--lang`;若已經手改過,現在 init/update 會逐檔列出它覆蓋了什麼。
 
 init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claude/skills/`、把 Stop hook 併入 `.claude/settings.json`、把觸發義務表(含 `<!-- flightwake:begin/end -->` 標記)附加到**偵測到的 agent 指令檔**(CLAUDE.md / AGENTS.md / GEMINI.md,有哪個貼哪個;全都沒有就建 AGENTS.md;`--agents=claude,codex,gemini` 可明確指定)。**純檔案複製,零執行期依賴**(Node ≥18 只在安裝與 hook 時用)。使用者資料(STATE/DECISIONS/TRAPS)任何情況下都不覆蓋;`--force` 只更新框架擁有的檔案。
 

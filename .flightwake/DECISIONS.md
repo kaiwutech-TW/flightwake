@@ -6,6 +6,8 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
+| 2026-07-27 | 安裝內容擴到四語(en/zh-TW/zh-CN/ja),取代 2026-07-19「僅出 en+zh-TW」該條(重評條件為「出現 zh-CN/ja 實際需求」,實際是使用者在推廣前主動要求,非 issue);同時明確**不做語言自動偵測** | README 已四語卻只能裝兩語,推廣時是明顯斷點;M() 由位置參數改為 key 查表(四語下位置參數改一個就會靜默錯位)。不自動偵測因訊號不可靠:實測本機終端 `LANG=en_US.UTF-8` 而系統語系為 zh_TW,猜錯又講得有自信比明講預設更糟;讀真實系統語系需 shell 呼叫且僅 macOS,違反零依賴 | 維護四語成本實際咬到人時(例如某語言長期落後),考慮降級為社群維護 |
+| 2026-07-27 | init/update 覆蓋框架檔時逐檔點名本地修改,但只在「版本與語言都相同」時判定 | 無聲覆蓋手改內容是這個設計最像 bug 的地方(使用者實際踩過:手動翻譯後被 update 清空);跨版本/跨語言內容本來就會變,那時判定必然誤報——寧可少報不可錯報,與 state-check 同一原則 | 出現「同版本同語言但內容合理不同」的情境 |
 | 2026-07-27 | main 分支保護開 required status checks(smoke ×2 / state-fresh / analyze),但 `enforce_admins: false`、`strict: false`;CoC 回報沿用既有 GitHub 私密管道,不公開信箱 | 閘門的價值在擋住 PR 路徑(外部貢獻與 dependabot 走這裡);約束管理員會讓單人專案每次收尾都多一輪 PR,速度代價大於紀律收益(代價:Scorecard `Code-Review` 維持 0)。`strict: true` 會逼每個 PR 合併前 rebase,本 session 已實測過那支舞不值得。公開信箱不可撤回且會被爬蟲收走 | 出現第二個常態貢獻者時重評 enforce_admins |
 | 2026-07-27 | STATE 落後量只數人的 commit,bot(`\[bot\]` 後綴)一律不計;state-check 與 statusline 同步改,不採「調高門檻」繞過 | 閘門要量的是「會讓 STATE 過時的工作」,依賴升版不會;且 bot 的 PR 無法自己補 STATE——不可能滿足的 check 會訓練所有人忽略紅燈。調門檻只延後同樣的誤判。符合腳本自述原則「誤放行優於誤阻擋」 | 出現「bot commit 確實改變專案方向」的情境(如 bot 自動改 schema) |
 | 2026-07-27 | dependabot 加 `groups` 把 `github/codeql-action*` 併成單一 PR;不改用「按序合併紅 PR」繞過 | 三個子 action 拆 PR 時每個都撞版本不一致而紅(見 TRAPS codeql-action-version-lockstep),按序合併等於每週手動排雷且 main 會短暫紅;group 是修根因、且不放寬釘 SHA 的安全決策 | 其他 action 出現同類 lockstep 需求時擴充 patterns |

@@ -15,7 +15,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 
 const LANG = 'zh-TW';
-const M = (en, zh) => (LANG === 'zh-TW' ? zh : en);
+// Message table lookup. Keyed rather than positional: with four languages, positional args silently
+// swap when one is edited. Any missing key falls back to English rather than printing undefined.
+const M = (m) => m[LANG] ?? m.en;
 
 const argv = process.argv.slice(2);
 const CI = argv.includes('--ci');
@@ -46,10 +48,12 @@ try {
     const rec = sfm.match(/^latest_record:\s*(\S+)/m)?.[1];
     const recPath = rec && `.flightwake/${rec}`;
     if (recPath && existsSync(recPath) && !/^tests:\s*\S/m.test(fm(recPath))) {
-      evidence = M(
-        `flightwake: STATE claims health=green but the latest record (${rec}) carries no test evidence (\`tests:\` frontmatter is empty). Backfill the evidence, or set health honestly.`,
-        `flightwake:STATE 標 health=green,但最新 record(${rec})沒有測試證據(frontmatter 的 tests 欄空白)。請補上證據,或誠實調整 health。`,
-      );
+      evidence = M({
+        en: `flightwake: STATE claims health=green but the latest record (${rec}) carries no test evidence (\`tests:\` frontmatter is empty). Backfill the evidence, or set health honestly.`,
+        'zh-TW': `flightwake:STATE 標 health=green,但最新 record(${rec})沒有測試證據(frontmatter 的 tests 欄空白)。請補上證據,或誠實調整 health。`,
+        'zh-CN': `flightwake:STATE 标 health=green,但最新 record(${rec})没有测试证据(frontmatter 的 tests 栏空白)。请补上证据,或诚实调整 health。`,
+        ja: `flightwake:STATE は health=green と主張しているが、最新の record(${rec})にテスト証拠が無い(frontmatter の tests が空)。証拠を補うか、health を正直に直してください。`,
+      });
     }
   }
 
@@ -69,25 +73,31 @@ try {
 
   if (behind >= THRESHOLD) {
     if (CI) {
-      console.error(M(
-        `❌ flightwake: ${STATE} lags ${behind} commits behind (threshold ${THRESHOLD}). Wrap up with /fw-record (flight record + STATE update), or at least make STATE reflect reality before pushing.`,
-        `❌ flightwake:${STATE} 已落後 ${behind} 個 commit(門檻 ${THRESHOLD})。請補 /fw-record 收尾(寫飛行紀錄 + 更新 STATE),或至少讓 STATE 反映真實現況再推。`,
-      ));
+      console.error(M({
+        en: `❌ flightwake: ${STATE} lags ${behind} commits behind (threshold ${THRESHOLD}). Wrap up with /fw-record (flight record + STATE update), or at least make STATE reflect reality before pushing.`,
+        'zh-TW': `❌ flightwake:${STATE} 已落後 ${behind} 個 commit(門檻 ${THRESHOLD})。請補 /fw-record 收尾(寫飛行紀錄 + 更新 STATE),或至少讓 STATE 反映真實現況再推。`,
+        'zh-CN': `❌ flightwake:${STATE} 已落后 ${behind} 个 commit(阈值 ${THRESHOLD})。请补 /fw-record 收尾(写飞行记录 + 更新 STATE),或至少让 STATE 反映真实现况再推。`,
+        ja: `❌ flightwake:${STATE} が ${behind} コミット遅れています(しきい値 ${THRESHOLD})。/fw-record で締めて(飛行記録 + STATE 更新)ください。少なくとも STATE を現状に合わせてから push を。`,
+      }));
       if (evidence) console.error(`⚠️  ${evidence}`);
       process.exit(1);
     }
     console.log(JSON.stringify({
       decision: 'block',
-      reason: M(
-        `flightwake: ${STATE} lags ${behind} commits behind. Run /fw-record to wrap up (flight record + update STATE's situation and health), or at least make STATE reflect reality before ending.`,
-        `flightwake:${STATE} 已落後 ${behind} 個 commit。請跑 /fw-record 收尾(寫飛行紀錄 + 更新 STATE 的現況與 health),或至少讓 STATE 反映真實現況再結束。`,
-      ) + (evidence ? `\n${evidence}` : ''),
+      reason: M({
+        en: `flightwake: ${STATE} lags ${behind} commits behind. Run /fw-record to wrap up (flight record + update STATE's situation and health), or at least make STATE reflect reality before ending.`,
+        'zh-TW': `flightwake:${STATE} 已落後 ${behind} 個 commit。請跑 /fw-record 收尾(寫飛行紀錄 + 更新 STATE 的現況與 health),或至少讓 STATE 反映真實現況再結束。`,
+        'zh-CN': `flightwake:${STATE} 已落后 ${behind} 个 commit。请跑 /fw-record 收尾(写飞行记录 + 更新 STATE 的现况与 health),或至少让 STATE 反映真实现况再结束。`,
+        ja: `flightwake:${STATE} が ${behind} コミット遅れています。/fw-record で締めて(飛行記録 + STATE の現状と health を更新)ください。少なくとも STATE を現状に合わせてから終了を。`,
+      }) + (evidence ? `\n${evidence}` : ''),
     }));
   } else if (CI) {
-    console.log(M(
-      `✅ flightwake: STATE fresh (${behind} behind < threshold ${THRESHOLD})`,
-      `✅ flightwake:STATE 新鮮(落後 ${behind} < 門檻 ${THRESHOLD})`,
-    ));
+    console.log(M({
+      en: `✅ flightwake: STATE fresh (${behind} behind < threshold ${THRESHOLD})`,
+      'zh-TW': `✅ flightwake:STATE 新鮮(落後 ${behind} < 門檻 ${THRESHOLD})`,
+      'zh-CN': `✅ flightwake:STATE 新鲜(落后 ${behind} < 阈值 ${THRESHOLD})`,
+      ja: `✅ flightwake:STATE は最新(遅れ ${behind} < しきい値 ${THRESHOLD})`,
+    }));
     if (evidence) console.error(`⚠️  ${evidence}`); // warning only — free-frontmatter detection must never gate CI
   } else if (evidence) {
     console.log(JSON.stringify({ decision: 'block', reason: evidence }));

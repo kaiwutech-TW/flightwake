@@ -17,11 +17,30 @@ An ultra-lightweight work-recording framework for strong AI coding agents (Claud
 
 ```bash
 cd your-repo
-npx flightwake init             # English by default; 繁體中文: --lang=zh-TW
-npx flightwake update           # upgrade an existing install in place (keeps your options: lang/statusline/private)
+npx flightwake init --statusline    # English (default) + the bottom gauge
+npx flightwake update               # upgrade an existing install in place (keeps your options: lang/statusline/private)
 ```
 
-init creates `.flightwake/` (templates + Stop hook), copies 4 skills into `.claude/skills/`, merges the Stop hook into `.claude/settings.json`, and appends the trigger-obligation table (wrapped in `<!-- flightwake:begin/end -->` markers) to **detected agent instruction files** (CLAUDE.md / AGENTS.md / GEMINI.md — whichever exist; if none, it creates AGENTS.md; `--agents=claude,codex,gemini` selects explicitly). **Pure file copying, zero runtime dependencies** (Node ≥18 used only at install time and by the hooks). User data (STATE/DECISIONS/TRAPS) is never overwritten; `--force` only updates framework-owned files. `--lang=en|zh-TW` picks the language of the installed templates/skills and all CLI/hook output; `update` re-detects what you installed and refreshes it from the latest version.
+**Pick your language** — installed templates, skills, and all CLI/gauge output follow it. There is no
+auto-detection: a terminal's `LANG` and the OS locale routinely disagree, and a confident wrong guess is
+worse than a stated default. Copy the line you want:
+
+| Language | Fresh install | Already installed in another language |
+|---|---|---|
+| English | `npx flightwake init --statusline` | `npx flightwake init --lang=en --force --statusline` |
+| 繁體中文 | `npx flightwake init --lang=zh-TW --statusline` | `npx flightwake init --lang=zh-TW --force --statusline` |
+| 简体中文 | `npx flightwake init --lang=zh-CN --statusline` | `npx flightwake init --lang=zh-CN --force --statusline` |
+| 日本語 | `npx flightwake init --lang=ja --statusline` | `npx flightwake init --lang=ja --force --statusline` |
+
+Switching languages is safe: `--force` replaces only framework-owned files (templates, skills, hooks, the
+marker block). Your STATE / DECISIONS / TRAPS / records are never touched — they stay in whatever language you
+wrote them. Drop `--statusline` from any line if you don't want the gauge.
+
+**Don't hand-translate the installed files.** The marker records which language you installed, so the next
+`update` refreshes them from that language's source and your edits disappear. Rerun init with `--lang` instead;
+if you already did hand-edit, init/update will now name each file it overwrote.
+
+init creates `.flightwake/` (templates + Stop hook), copies 4 skills into `.claude/skills/`, merges the Stop hook into `.claude/settings.json`, and appends the trigger-obligation table (wrapped in `<!-- flightwake:begin/end -->` markers) to **detected agent instruction files** (CLAUDE.md / AGENTS.md / GEMINI.md — whichever exist; if none, it creates AGENTS.md; `--agents=claude,codex,gemini` selects explicitly). **Pure file copying, zero runtime dependencies** (Node ≥18 used only at install time and by the hooks). User data (STATE/DECISIONS/TRAPS) is never overwritten; `--force` only updates framework-owned files. `update` re-detects what you installed and refreshes it from the latest version.
 
 ## How to use
 

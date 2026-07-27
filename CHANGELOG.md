@@ -10,6 +10,15 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ### Added
 
+- **Installed content now ships in four languages** — `--lang=en|zh-TW|zh-CN|ja`. Templates, the four skills,
+  the CLAUDE.md snippet, the status-line gauge, and all CLI/hook output follow the chosen language; previously
+  only English and Traditional Chinese were installable while the README already existed in four.
+  There is deliberately **no auto-detection**: a terminal's `LANG` and the OS locale routinely disagree, and a
+  confident wrong guess is worse than a stated default. `init` now points at the alternatives when it defaults
+  to English, and every README's install section carries a copy-paste table.
+- **Overwritten local edits are named.** When `--force`/`update` replaces a framework-owned file that was
+  edited locally, each file is listed instead of vanishing silently. Flagged only when the install is already
+  at the same version *and* language — across a version or language change content legitimately differs.
 - The status line shows the installed flightwake version, in dim text, as its first field
   (hidden when running from an unstamped source checkout).
 

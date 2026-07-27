@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * flightwake CLI — `npx flightwake init [--force] [--lang=en|zh-TW]` (or `npx github:kaiwutech-TW/flightwake init`)
+ * flightwake CLI — `npx flightwake init [--force] [--lang=en|zh-TW|zh-CN|ja]` (or `npx github:kaiwutech-TW/flightwake init`)
  * Run at the target repo root: installs .flightwake/ templates + 4 skills + Stop hook,
  * and appends the trigger-obligation table to detected agent instruction files
  * (CLAUDE.md/AGENTS.md/GEMINI.md; override with --agents).
@@ -22,13 +22,13 @@ const FORCE = args.includes('--force') || IS_UPDATE;
 const PRIVATE_FLAG = args.includes('--private');
 const STATUSLINE_FLAG = args.includes('--statusline');
 const VERSION = JSON.parse(readFileSync(join(FW_SRC, 'package.json'), 'utf8')).version;
-const LANGS = ['en', 'zh-TW'];
+const LANGS = ['en', 'zh-TW', 'zh-CN', 'ja'];
 
 const log = (s) => console.log(s);
 const noJunk = (src) => !/(^|[\\/])\.(DS_Store|AppleDouble)$/.test(src);
 
 if (!['init', 'update', 'uninstall'].includes(cmd) || args.includes('--help') || args.includes('-h')) {
-  log(`flightwake — usage: npx flightwake init [--force] [--lang=en|zh-TW] [--private] [--statusline] [--agents=claude,codex,gemini] | update | uninstall [--purge]
+  log(`flightwake — usage: npx flightwake init [--force] [--lang=en|zh-TW|zh-CN|ja] [--private] [--statusline] [--agents=claude,codex,gemini] | update | uninstall [--purge]
   Run at the target repo root.
   init        install; --force updates existing skills/hooks/snippets; --lang picks the language of installed content
               and CLI output (default en); --private keeps records local, out of git (.git/info/exclude + settings.local.json);
@@ -93,14 +93,18 @@ if (langArg && !LANGS.includes(langArg)) {
 const LANG = langArg ?? marker?.lang ?? 'en';
 const PRIVATE = PRIVATE_FLAG || (IS_UPDATE && detectPrivate());
 const STATUSLINE = STATUSLINE_FLAG || (IS_UPDATE && detectStatusline());
-// M(): bilingual CLI output — English default, zh-TW when the install (or --lang) says so
-const M = (en, zh) => (LANG === 'zh-TW' ? zh : en);
+// M(): localized CLI output, keyed by language. English default; the install's language (or --lang) picks
+// the rest. Keyed rather than positional — with four languages, positional args silently swap on edit.
+// A missing key falls back to English rather than printing undefined.
+const M = (m) => m[LANG] ?? m.en;
 
 if (IS_UPDATE && !marker && !existsSync(join(TARGET, '.flightwake'))) {
-  log(M(
-    '⚠️  No flightwake install detected here — run `npx flightwake init` first.',
-    '⚠️  這裡偵測不到 flightwake 安裝 — 請先跑 `npx flightwake init`。',
-  ));
+  log(M({
+    en: '⚠️  No flightwake install detected here — run `npx flightwake init` first.',
+    'zh-TW': '⚠️  這裡偵測不到 flightwake 安裝 — 請先跑 `npx flightwake init`。',
+    'zh-CN': '⚠️  这里检测不到 flightwake 安装 — 请先跑 `npx flightwake init`。',
+    ja: '⚠️  ここに flightwake のインストールが見つかりません — まず `npx flightwake init` を実行してください。',
+  }));
   process.exit(1);
 }
 
@@ -192,9 +196,36 @@ mkdirSync(join(TARGET, '.flightwake', 'records'), { recursive: true });
 mkdirSync(join(TARGET, '.flightwake', 'hooks'), { recursive: true });
 for (const f of ['STATE.md', 'DECISIONS.md', 'TRAPS.md']) {
   const dst = join(TARGET, '.flightwake', f);
-  if (existsSync(dst)) log(`  skip .flightwake/${f}${M(' (exists — user data, never overwritten)', '(已存在,使用者資料不覆蓋)')}`);
+  if (existsSync(dst)) log(`  skip .flightwake/${f}${M({
+    en: ' (exists — user data, never overwritten)',
+    'zh-TW': '(已存在,使用者資料不覆蓋)',
+    'zh-CN': '(已存在,用户资料不覆盖)',
+    ja: '(既存 — ユーザーデータは上書きしない)',
+  })}`);
   else { writeFileSync(dst, readFileSync(join(FW_SRC, 'templates', LANG, f), 'utf8')); log(`  add  .flightwake/${f}`); }
 }
+
+// Local-modification guard. Framework-owned files are overwritten by --force/update, by design — but silently
+// losing someone's hand-edits (most often a hand-translated skill) is what makes that design feel like a bug.
+// Only claim a local edit when the install is already at this exact version *and* language: then the shipped
+// bytes should match exactly, so any difference is the user's. Across a version or language change content
+// legitimately differs, so say nothing rather than cry wolf.
+const SAME_SPEC = !!marker && marker.version === VERSION && marker.lang === LANG;
+const clobbered = [];
+const noteClobber = (dst, rel, next) => {
+  if (!SAME_SPEC || !existsSync(dst)) return;
+  try { if (readFileSync(dst, 'utf8') !== next) clobbered.push(rel); } catch {}
+};
+const noteClobberDir = (srcDir, dstDir, relBase) => {
+  if (!SAME_SPEC || !existsSync(dstDir)) return;
+  for (const f of readdirSync(srcDir)) {
+    if (!noJunk(f)) continue;
+    const s = join(srcDir, f);
+    const d = join(dstDir, f);
+    if (statSync(s).isDirectory()) { noteClobberDir(s, d, `${relBase}/${f}`); continue; }
+    try { if (!existsSync(d) || readFileSync(d, 'utf8') !== readFileSync(s, 'utf8')) clobbered.push(`${relBase}/${f}`); } catch {}
+  }
+};
 
 // 2. Framework-owned files: record template + hooks (--force updates them).
 //    Hooks are stamped at copy time: LANG picks their message language, FW_VERSION feeds the statusline update check.
@@ -208,8 +239,15 @@ for (const [read, rel] of [
 ]) {
   const dst = join(TARGET, rel);
   const existed = existsSync(dst);
-  if (existed && !FORCE) { log(`  skip ${rel}${M(' (exists — --force to update)', '(已存在,--force 可更新)')}`); continue; }
-  writeFileSync(dst, read());
+  if (existed && !FORCE) { log(`  skip ${rel}${M({
+    en: ' (exists — --force to update)',
+    'zh-TW': '(已存在,--force 可更新)',
+    'zh-CN': '(已存在,--force 可更新)',
+    ja: '(既存 — --force で更新)',
+  })}`); continue; }
+  const next = read();
+  noteClobber(dst, rel, next);
+  writeFileSync(dst, next);
   log(`  ${existed ? 'update' : 'add '} ${rel}`);
 }
 
@@ -220,7 +258,13 @@ for (const s of readdirSync(join(FW_SRC, 'skills', LANG))) {
   privateExcludes?.push(`.claude/skills/${s}/`);
   const dst = join(TARGET, '.claude', 'skills', s);
   const existed = existsSync(dst);
-  if (existed && !FORCE) { log(`  skip .claude/skills/${s}${M(' (exists — --force to update)', '(已存在,--force 可更新)')}`); continue; }
+  if (existed && !FORCE) { log(`  skip .claude/skills/${s}${M({
+    en: ' (exists — --force to update)',
+    'zh-TW': '(已存在,--force 可更新)',
+    'zh-CN': '(已存在,--force 可更新)',
+    ja: '(既存 — --force で更新)',
+  })}`); continue; }
+  noteClobberDir(join(FW_SRC, 'skills', LANG, s), dst, `.claude/skills/${s}`);
   cpSync(join(FW_SRC, 'skills', LANG, s), dst, { recursive: true, force: true, filter: noJunk });
   log(`  ${existed ? 'update' : 'add '} .claude/skills/${s}`);
 }
@@ -246,13 +290,23 @@ for (const s of readdirSync(join(FW_SRC, 'skills', LANG))) {
     settings.hooks ??= {};
     settings.hooks.Stop ??= [];
     if (inOther) {
-      log(`  skip Stop hook${M(` (already set in ${otherRel} — the other mode's install still applies)`, `(${otherRel} 已設定 — 另一模式的安裝仍生效)`)}`);
+      log(`  skip Stop hook${M({
+        en: ` (already set in ${otherRel} — the other mode's install still applies)`,
+        'zh-TW': `(${otherRel} 已設定 — 另一模式的安裝仍生效)`,
+        'zh-CN': `(${otherRel} 已设定 — 另一模式的安装仍生效)`,
+        ja: `(${otherRel} に設定済 — もう一方のモードのインストールが有効)`,
+      })}`);
     } else if (JSON.stringify(settings.hooks.Stop).includes('state-check.mjs')) {
-      log(`  skip ${settingsRel} Stop hook${M(' (already set)', '(已設定)')}`);
+      log(`  skip ${settingsRel} Stop hook${M({ en: ' (already set)', 'zh-TW': '(已設定)', 'zh-CN': '(已设定)', ja: '(設定済)' })}`);
     } else {
       settings.hooks.Stop.push({ hooks: [{ type: 'command', command: HOOK_CMD }] });
       writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
-      log(`  add  ${settingsRel} ← Stop hook${M(' (STATE staleness check)', '(STATE 過期檢查)')}`);
+      log(`  add  ${settingsRel} ← Stop hook${M({
+        en: ' (STATE staleness check)',
+        'zh-TW': '(STATE 過期檢查)',
+        'zh-CN': '(STATE 过期检查)',
+        ja: '(STATE 遅れチェック)',
+      })}`);
     }
     // --statusline: the bottom gauge (opt-in). statusLine is a single-value setting — never overwrite someone else's
     if (STATUSLINE) {
@@ -262,11 +316,21 @@ for (const s of readdirSync(join(FW_SRC, 'skills', LANG))) {
         catch { return false; }
       })();
       if (slInOther) {
-        log(`  skip statusLine${M(` (already set in ${otherRel} — the other mode's install still applies)`, `(${otherRel} 已設定 — 另一模式的安裝仍生效)`)}`);
+        log(`  skip statusLine${M({
+        en: ` (already set in ${otherRel} — the other mode's install still applies)`,
+        'zh-TW': `(${otherRel} 已設定 — 另一模式的安裝仍生效)`,
+        'zh-CN': `(${otherRel} 已设定 — 另一模式的安装仍生效)`,
+        ja: `(${otherRel} に設定済 — もう一方のモードのインストールが有効)`,
+      })}`);
       } else if (settings.statusLine && !JSON.stringify(settings.statusLine).includes('statusline.mjs')) {
-        log(`  ⚠️  ${settingsRel}${M(` already has another statusLine — not overwriting; to switch, set command to: ${SL_CMD}`, ` 已有其他 statusLine,不覆蓋 — 要換請手動設 command 為:${SL_CMD}`)}`);
+        log(`  ⚠️  ${settingsRel}${M({
+          en: ` already has another statusLine — not overwriting; to switch, set command to: ${SL_CMD}`,
+          'zh-TW': ` 已有其他 statusLine,不覆蓋 — 要換請手動設 command 為:${SL_CMD}`,
+          'zh-CN': ` 已有其他 statusLine,不覆盖 — 要换请手动设 command 为:${SL_CMD}`,
+          ja: ` に別の statusLine が設定済 — 上書きしません。切り替えるには command を次に設定:${SL_CMD}`,
+        })}`);
       } else if (settings.statusLine) {
-        log(`  skip ${settingsRel} statusLine${M(' (already set)', '(已設定)')}`);
+        log(`  skip ${settingsRel} statusLine${M({ en: ' (already set)', 'zh-TW': '(已設定)', 'zh-CN': '(已设定)', ja: '(設定済)' })}`);
       } else {
         if (Array.isArray(settings.hooks?.Stop) && !settings.hooks.Stop.length) {
           delete settings.hooks.Stop;
@@ -274,7 +338,7 @@ for (const s of readdirSync(join(FW_SRC, 'skills', LANG))) {
         }
         settings.statusLine = { type: 'command', command: SL_CMD };
         writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
-        log(`  add  ${settingsRel} ← statusLine${M(' (flightwake gauge)', '(flightwake 儀表)')}`);
+        log(`  add  ${settingsRel} ← statusLine${M({ en: ' (flightwake gauge)', 'zh-TW': '(flightwake 儀表)', 'zh-CN': '(flightwake 仪表)', ja: '(flightwake ゲージ)' })}`);
       }
     }
   }
@@ -325,22 +389,37 @@ for (const s of readdirSync(join(FW_SRC, 'skills', LANG))) {
       if (FORCE) {
         const updated = readFileSync(withMarker.path, 'utf8').replace(/<!-- flightwake:begin[\s\S]*?<!-- flightwake:end -->\n?/, block);
         writeFileSync(withMarker.path, updated);
-        log(`  update ${withMarker.rel}${M(' snippet', ' 片段')}`);
+        log(`  update ${withMarker.rel}${M({ en: ' snippet', 'zh-TW': ' 片段', 'zh-CN': ' 片段', ja: ' スニペット' })}`);
       } else {
-        log(`  skip ${withMarker.rel}${M(' snippet (installed — --force to update)', ' 片段(已安裝,--force 可更新)')}`);
+        log(`  skip ${withMarker.rel}${M({
+          en: ' snippet (installed — --force to update)',
+          'zh-TW': ' 片段(已安裝,--force 可更新)',
+          'zh-CN': ' 片段(已安装,--force 可更新)',
+          ja: ' スニペット(インストール済 — --force で更新)',
+        })}`);
       }
     } else if (withLegacy) {
-      log(`  skip ${withLegacy.rel}${M(' snippet (v0.1 unmarked version detected — delete that section by hand and rerun to upgrade)', ' 片段(偵測到 v0.1 無標記版本 — 手動刪除該段後重跑即可升級)')}`);
+      log(`  skip ${withLegacy.rel}${M({
+        en: ' snippet (v0.1 unmarked version detected — delete that section by hand and rerun to upgrade)',
+        'zh-TW': ' 片段(偵測到 v0.1 無標記版本 — 手動刪除該段後重跑即可升級)',
+        'zh-CN': ' 片段(检测到 v0.1 无标记版本 — 手动删除该段后重跑即可升级)',
+        ja: ' スニペット(マーカー無しの v0.1 を検出 — その節を手で消して再実行すれば更新されます)',
+      })}`);
     } else {
       const writeExisting = writeFiles.filter((f) => existsSync(f.path));
       const dst = writeExisting[0] ?? writeFiles[writeFiles.length - 1];
       if (PRIVATE && existsSync(dst.path) && isTracked(dst.rel)) {
-        log(`  ⚠️  --private: ${dst.rel}${M(' is git-tracked, writing would leave a trace — skipped; put the obligation table somewhere untracked yourself', ' 受 git 追蹤,寫入會留下痕跡 — 跳過;觸發義務表請自行放到不進 git 的位置')}`);
+        log(`  ⚠️  --private: ${dst.rel}${M({
+          en: ' is git-tracked, writing would leave a trace — skipped; put the obligation table somewhere untracked yourself',
+          'zh-TW': ' 受 git 追蹤,寫入會留下痕跡 — 跳過;觸發義務表請自行放到不進 git 的位置',
+          'zh-CN': ' 受 git 追踪,写入会留下痕迹 — 跳过;触发义务表请自行放到不进 git 的位置',
+          ja: ' は git 管理下のため、書き込むと痕跡が残る — スキップ。義務表は git に入らない場所へご自分で置いてください',
+        })}`);
         continue;
       }
       appendFileSync(dst.path, (existsSync(dst.path) ? '\n' : '') + block);
       privateExcludes?.push(dst.rel);
-      log(`  add  ${dst.rel} ← ${M('obligation table', '觸發義務表')}`);
+      log(`  add  ${dst.rel} ← ${M({ en: 'obligation table', 'zh-TW': '觸發義務表', 'zh-CN': '触发义务表', ja: '義務表' })}`);
     }
   }
 }
@@ -357,40 +436,101 @@ if (privateExcludes) {
       ? cur.replace(/# flightwake:begin[\s\S]*?# flightwake:end\n?/, exBlock)
       : cur + (cur && !cur.endsWith('\n') ? '\n' : '') + exBlock;
     writeFileSync(ep, next);
-    log(`  add  .git/info/exclude ← ${entries.length}${M(' entries (local ignore)', ' 條(本地忽略)')}`);
+    log(`  add  .git/info/exclude ← ${entries.length}${M({ en: ' entries (local ignore)', 'zh-TW': ' 條(本地忽略)', 'zh-CN': ' 条(本地忽略)', ja: ' 件(ローカル ignore)' })}`);
   } catch {
-    log(`  ⚠️  ${M('Failed to write .git/info/exclude — privacy NOT in effect! Add these entries manually:', '寫入 .git/info/exclude 失敗 — 隱私未生效!請手動加入以下條目:')}\n     ${entries.join('\n     ')}`);
+    log(`  ⚠️  ${M({
+      en: 'Failed to write .git/info/exclude — privacy NOT in effect! Add these entries manually:',
+      'zh-TW': '寫入 .git/info/exclude 失敗 — 隱私未生效!請手動加入以下條目:',
+      'zh-CN': '写入 .git/info/exclude 失败 — 隐私未生效!请手动加入以下条目:',
+      ja: '.git/info/exclude の書き込みに失敗 — プライバシーは有効になっていません!以下を手動で追加してください:',
+    })}\n     ${entries.join('\n     ')}`);
   }
   if (isTracked('.flightwake')) {
-    log(M(
-      '  ⚠️  .flightwake is already git-tracked; exclude has no effect on tracked files — going private needs git rm -r --cached .flightwake (history is yours to handle)',
-      '  ⚠️  .flightwake 已被 git 追蹤,exclude 對已追蹤檔案不生效 — 想轉私有需 git rm -r --cached .flightwake(歷史紀錄請自行處理)',
-    ));
+    log(M({
+      en: '  ⚠️  .flightwake is already git-tracked; exclude has no effect on tracked files — going private needs git rm -r --cached .flightwake (history is yours to handle)',
+      'zh-TW': '  ⚠️  .flightwake 已被 git 追蹤,exclude 對已追蹤檔案不生效 — 想轉私有需 git rm -r --cached .flightwake(歷史紀錄請自行處理)',
+      'zh-CN': '  ⚠️  .flightwake 已被 git 追踪,exclude 对已追踪文件不生效 — 想转私有需 git rm -r --cached .flightwake(历史记录请自行处理)',
+      ja: '  ⚠️  .flightwake は既に git 管理下です。exclude は追跡済ファイルに効きません — private にするには git rm -r --cached .flightwake(履歴の扱いはご自身で)',
+    }));
   }
 }
 
+// Local edits to framework files were just replaced — name them, so nobody discovers it three versions later.
+if (clobbered.length) {
+  log(`\n  ⚠️  ${M({
+    en: `${clobbered.length} framework file(s) had local edits and were overwritten (framework files are flightwake-owned; your STATE/DECISIONS/TRAPS/records were untouched). Recover with git diff if you need them:`,
+    'zh-TW': `${clobbered.length} 個框架檔有本地修改、已被覆蓋(框架檔歸 flightwake 所有;你的 STATE/DECISIONS/TRAPS/records 未被動)。需要救回請看 git diff:`,
+    'zh-CN': `${clobbered.length} 个框架档有本地修改、已被覆盖(框架档归 flightwake 所有;你的 STATE/DECISIONS/TRAPS/records 未被动)。需要救回请看 git diff:`,
+    ja: `${clobbered.length} 個のフレームワークファイルにローカルの変更があり、上書きしました(フレームワークファイルは flightwake の管理下。STATE/DECISIONS/TRAPS/records には触れていません)。戻したい場合は git diff を:`,
+  })}\n     ${clobbered.join('\n     ')}`);
+  log(`     ${M({
+    en: 'Want a different language? Reinstall with --lang instead of hand-editing: npx flightwake init --lang=<lang> --force',
+    'zh-TW': '想換語言的話,用 --lang 重裝而不是手改:npx flightwake init --lang=<語言> --force',
+    'zh-CN': '想换语言的话,用 --lang 重装而不是手改:npx flightwake init --lang=<语言> --force',
+    ja: '言語を変えたい場合は手で書き換えず --lang で入れ直す:npx flightwake init --lang=<言語> --force',
+  })}`);
+}
+
 if (IS_UPDATE) {
-  log(M(`\n✅ updated to v${VERSION}.`, `\n✅ 已更新到 v${VERSION}。`));
+  log(M({
+    en: `\n✅ updated to v${VERSION}.`,
+    'zh-TW': `\n✅ 已更新到 v${VERSION}。`,
+    'zh-CN': `\n✅ 已更新到 v${VERSION}。`,
+    ja: `\n✅ v${VERSION} に更新しました。`,
+  }));
 } else {
-  log(PRIVATE ? M(`
+  log(PRIVATE ? M({
+    en: `
 ✅ done (--private). Records stay local; git does not track them. Costs and caveats:
    - Records aren't shared with the repo: teammates and other machines can't see STATE/records (you give up flightwake's sharing value)
    - .git/info/exclude is purely local: after a fresh clone, rerun init --private
    - To go shared again: delete the flightwake block from .git/info/exclude, then git add .flightwake .claude
-   Next: edit .flightwake/STATE.md with the current situation (or have Claude initialize it with /fw-record)`, `
+   Next: edit .flightwake/STATE.md with the current situation (or have Claude initialize it with /fw-record)`,
+    'zh-TW': `
 ✅ done(--private)。紀錄只留本機,git 不追蹤。代價與注意:
    - 紀錄不隨 repo 共享:隊友與其他機器看不到 STATE/records(放棄 flightwake 的共享價值)
    - .git/info/exclude 純本地:重新 clone 後需重跑 init --private
    - 想改回共享:刪除 .git/info/exclude 的 flightwake 區塊,再 git add .flightwake .claude
-   下一步:編輯 .flightwake/STATE.md 填入現況(或讓 Claude 用 /fw-record 初始化)`) : M(`
+   下一步:編輯 .flightwake/STATE.md 填入現況(或讓 Claude 用 /fw-record 初始化)`,
+    'zh-CN': `
+✅ done(--private)。记录只留本机,git 不追踪。代价与注意:
+   - 记录不随 repo 共享:队友与其他机器看不到 STATE/records(放弃 flightwake 的共享价值)
+   - .git/info/exclude 纯本地:重新 clone 后需重跑 init --private
+   - 想改回共享:删除 .git/info/exclude 的 flightwake 区块,再 git add .flightwake .claude
+   下一步:编辑 .flightwake/STATE.md 填入现况(或让 Claude 用 /fw-record 初始化)`,
+    ja: `
+✅ 完了(--private)。記録はローカルのみ、git は追跡しません。代償と注意:
+   - 記録は repo と共有されない:チームメイトや別のマシンから STATE/records が見えない(flightwake の共有価値を手放す)
+   - .git/info/exclude は純粋にローカル:clone し直したら init --private を再実行
+   - 共有に戻すには:.git/info/exclude の flightwake ブロックを削除し、git add .flightwake .claude
+   次:.flightwake/STATE.md に現状を書く(または Claude に /fw-record で初期化させる)`,
+  }) : M({
+    en: `
 ✅ done. Next:
    1. Edit .flightwake/STATE.md with the current situation (or have Claude initialize it with /fw-record)
-   2. git add .flightwake .claude CLAUDE.md && git commit`, `
+   2. git add .flightwake .claude CLAUDE.md && git commit`,
+    'zh-TW': `
 ✅ done。下一步:
    1. 編輯 .flightwake/STATE.md 填入現況(或讓 Claude 用 /fw-record 初始化)
-   2. git add .flightwake .claude CLAUDE.md && git commit`));
-  if (!STATUSLINE) log(M(
-    '   ℹ️  Bottom gauge not installed (opt-in) — if you want it: npx flightwake init --statusline (health / STATE lag / context usage)',
-    '   ℹ️  底部儀表未裝(選配)— 要的話:npx flightwake init --statusline(health/STATE 落後/context 用量)',
-  ));
+   2. git add .flightwake .claude CLAUDE.md && git commit`,
+    'zh-CN': `
+✅ done。下一步:
+   1. 编辑 .flightwake/STATE.md 填入现况(或让 Claude 用 /fw-record 初始化)
+   2. git add .flightwake .claude CLAUDE.md && git commit`,
+    ja: `
+✅ 完了。次:
+   1. .flightwake/STATE.md に現状を書く(または Claude に /fw-record で初期化させる)
+   2. git add .flightwake .claude CLAUDE.md && git commit`,
+  }));
+  // Language was never chosen — English is the documented default, but the alternatives have to be discoverable.
+  // No auto-detection on purpose: terminal LANG and the OS locale routinely disagree, and a confident wrong
+  // guess is worse than a stated default (field-verified 2026-07-27: LANG=en_US.UTF-8 on a zh_TW machine).
+  if (!langArg && !marker) log(`   ℹ️  Installed in English. Other languages: ${LANGS.filter((l) => l !== 'en').join(', ')} — e.g. npx flightwake init --lang=zh-TW${STATUSLINE ? ' --statusline' : ''}
+       已安裝英文版,要中文/日文請加 --lang(繁中 zh-TW・简中 zh-CN・日本語 ja);已裝好也能改:同指令加 --force`);
+  if (!STATUSLINE) log(M({
+    en: '   ℹ️  Bottom gauge not installed (opt-in) — if you want it: npx flightwake init --statusline (health / STATE lag / context usage)',
+    'zh-TW': '   ℹ️  底部儀表未裝(選配)— 要的話:npx flightwake init --statusline(health/STATE 落後/context 用量)',
+    'zh-CN': '   ℹ️  底部仪表未装(选配)— 要的话:npx flightwake init --statusline(health/STATE 落后/context 用量)',
+    ja: '   ℹ️  下部ゲージは未インストール(オプトイン)— 欲しい場合:npx flightwake init --statusline(health / STATE の遅れ / context 使用量)',
+  }));
 }

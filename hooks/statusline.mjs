@@ -15,7 +15,9 @@ import { tmpdir } from 'node:os';
 
 const LANG = 'en';
 const FW_VERSION = '0.0.0';
-const M = (en, zh) => (LANG === 'zh-TW' ? zh : en);
+// Message table lookup. Keyed rather than positional: with four languages, positional args silently
+// swap when one is edited. Any missing key falls back to English rather than printing undefined.
+const M = (m) => m[LANG] ?? m.en;
 
 // Skip stdin when it's a TTY (run by hand without a pipe) — readFileSync(0) blocks forever on an open TTY
 let j = {};
@@ -109,8 +111,16 @@ const parts = [`✈️ flightwake${FW_VERSION !== '0.0.0' ? ` \x1b[2mv${FW_VERSI
 if (health !== null) {
   const color = { green: '\x1b[32m', yellow: '\x1b[33m', red: '\x1b[31m' }[health] ?? '';
   const lag = stateDirty
-    ? M(' · STATE updating', ' · STATE 更新中')
-    : behindN === null ? '' : behindN > 0 ? M(` · STATE ${behindN}c behind`, ` · STATE 落後 ${behindN}c`) : M(' · STATE in sync', ' · STATE 同步');
+    ? M({ en: ' · STATE updating', 'zh-TW': ' · STATE 更新中', 'zh-CN': ' · STATE 更新中', ja: ' · STATE 更新中' })
+    : behindN === null ? ''
+      : behindN > 0
+        ? M({
+            en: ` · STATE ${behindN}c behind`,
+            'zh-TW': ` · STATE 落後 ${behindN}c`,
+            'zh-CN': ` · STATE 落后 ${behindN}c`,
+            ja: ` · STATE ${behindN}c 遅れ`,
+          })
+        : M({ en: ' · STATE in sync', 'zh-TW': ' · STATE 同步', 'zh-CN': ' · STATE 同步', ja: ' · STATE 同期済' });
   parts.push(`${color}●${health}\x1b[0m${lag}`);
 }
 if (pct !== null) {
@@ -121,11 +131,36 @@ if (pct !== null) {
 
 // Next-command hint: a single one, by priority; silence when everything is fine
 let hint = '';
-if (health === 'yellow' || health === 'red') hint = M('handle unverified items before stacking new work (read STATE)', '先處理未驗證項再疊新工作(讀 STATE)');
-else if (pct !== null && pct >= 80) hint = M('/fw-record → /clear → /fw-coldstart', '/fw-record 收尾 → /clear → /fw-coldstart 接手');
-else if (behindN !== null && behindN >= 3) hint = M('/fw-record to wrap up', '/fw-record 收尾');
-else if (health !== null && msgs <= 2) hint = M('start with /fw-coldstart', '開工先 /fw-coldstart');
-else if (updateTo) hint = M(`v${updateTo} available: npx flightwake update`, `可更新 v${updateTo}:npx flightwake update`);
+if (health === 'yellow' || health === 'red') hint = M({
+  en: 'handle unverified items before stacking new work (read STATE)',
+  'zh-TW': '先處理未驗證項再疊新工作(讀 STATE)',
+  'zh-CN': '先处理未验证项再叠新工作(读 STATE)',
+  ja: '未検証の項目を片付けてから新しい作業を積む(STATE を読む)',
+});
+else if (pct !== null && pct >= 80) hint = M({
+  en: '/fw-record → /clear → /fw-coldstart',
+  'zh-TW': '/fw-record 收尾 → /clear → /fw-coldstart 接手',
+  'zh-CN': '/fw-record 收尾 → /clear → /fw-coldstart 接手',
+  ja: '/fw-record で締め → /clear → /fw-coldstart で引き継ぎ',
+});
+else if (behindN !== null && behindN >= 3) hint = M({
+  en: '/fw-record to wrap up',
+  'zh-TW': '/fw-record 收尾',
+  'zh-CN': '/fw-record 收尾',
+  ja: '/fw-record で締める',
+});
+else if (health !== null && msgs <= 2) hint = M({
+  en: 'start with /fw-coldstart',
+  'zh-TW': '開工先 /fw-coldstart',
+  'zh-CN': '开工先 /fw-coldstart',
+  ja: 'まず /fw-coldstart から',
+});
+else if (updateTo) hint = M({
+  en: `v${updateTo} available: npx flightwake update`,
+  'zh-TW': `可更新 v${updateTo}:npx flightwake update`,
+  'zh-CN': `可更新 v${updateTo}:npx flightwake update`,
+  ja: `v${updateTo} が利用可能:npx flightwake update`,
+});
 if (hint) parts.push(`\x1b[36m→ ${hint}\x1b[0m`);
 
 console.log(parts.join(' │ '));

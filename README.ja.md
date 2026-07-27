@@ -17,9 +17,22 @@
 
 ```bash
 cd your-repo
-npx flightwake init             # 既定は英語(--lang=zh-TW で繁體中文;テンプレートは現在 en/zh-TW の 2 種)
-npx flightwake update           # その場で更新。インストール時のオプション(lang/statusline/private)を引き継ぐ
+npx flightwake init --lang=ja --statusline   # 日本語 + 下部ゲージ
+npx flightwake update                        # その場で更新。インストール時のオプション(lang/statusline/private)を引き継ぐ
 ```
+
+**言語を選ぶ** — インストールされるテンプレート、skill、CLI/ゲージの出力すべてがこれに従う。**自動検出はあえてしない**:ターミナルの `LANG` と OS のロケールは日常的に食い違い(実測:OS は zh_TW なのにターミナルは `en_US.UTF-8` を報告)、自信たっぷりに間違えるほうが、既定を明示するより悪い。使いたい行をコピーしてください:
+
+| 言語 | 新規インストール | 既に別の言語で入れている場合 |
+|---|---|---|
+| 日本語 | `npx flightwake init --lang=ja --statusline` | `npx flightwake init --lang=ja --force --statusline` |
+| English | `npx flightwake init --statusline` | `npx flightwake init --lang=en --force --statusline` |
+| 繁體中文 | `npx flightwake init --lang=zh-TW --statusline` | `npx flightwake init --lang=zh-TW --force --statusline` |
+| 简体中文 | `npx flightwake init --lang=zh-CN --statusline` | `npx flightwake init --lang=zh-CN --force --statusline` |
+
+言語の切り替えは安全:`--force` が置き換えるのはフレームワーク所有のファイル(テンプレート、skill、hook、マーカーブロック)だけ。あなたの STATE / DECISIONS / TRAPS / records には**一切触れない**——書いたときの言語のまま残る。ゲージが不要なら `--statusline` を外すだけ。
+
+**インストールされたファイルを手で翻訳しないこと。** マーカーがどの言語で入れたかを記録しているため、次の `update` はその言語のソースから refresh し、手の入った箇所は消える。言語を変えたいときは `--lang` を付けて init を実行し直す。既に手で書き換えてしまった場合、init/update が上書きしたファイルを 1 つずつ名前で知らせるようになった。
 
 init が行うこと:`.flightwake/` の作成(テンプレート + Stop hook)、4 つの skill を `.claude/skills/` にコピー、Stop hook を `.claude/settings.json` にマージ、トリガー義務表(`<!-- flightwake:begin/end -->` マーカー付き)を**検出した agent 指示ファイル**(CLAUDE.md / AGENTS.md / GEMINI.md — 存在するものに追記;どれも無ければ AGENTS.md を作成;`--agents=claude,codex,gemini` で明示指定可)に追記。**純粋なファイルコピー、ランタイム依存ゼロ**(Node ≥18 はインストール時と hook のみ)。ユーザーデータ(STATE/DECISIONS/TRAPS)はいかなる場合も上書きしない;`--force` はフレームワーク所有ファイルのみ更新する。
 

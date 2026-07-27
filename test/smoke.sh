@@ -274,6 +274,45 @@ echo '{}' | node .flightwake/hooks/statusline.mjs | grep -q '開工先 /fw-colds
 node "$CLI" init --lang=nonsense >/dev/null 2>&1 && fail "--lang 不認得的值應退出非零"
 pass "--lang=zh-TW 中文安裝"
 
+# 17b. zh-CN / ja:模板、skill、片段、儀表、state-check 都要跟著語言走
+for L in zh-CN ja; do
+  D="$TMP/repo10-$L"
+  mkdir -p "$D" && cd "$D"
+  git init -q && git config user.email t@t.t && git config user.name t
+  echo "# c" > CLAUDE.md
+  node "$CLI" init --lang="$L" --statusline >/dev/null
+  grep -q "lang=$L" CLAUDE.md || fail "marker 應帶 lang=$L"
+  grep -q "const LANG = '$L'" .flightwake/hooks/statusline.mjs || fail "$L statusline 應蓋 LANG=$L"
+  grep -q "const LANG = '$L'" .flightwake/hooks/state-check.mjs || fail "$L state-check 應蓋 LANG=$L"
+  [ -s .claude/skills/fw-coldstart/SKILL.md ] || fail "$L 應裝 skill"
+done
+cd "$TMP/repo10-zh-CN"
+grep -q '现在在哪' .flightwake/STATE.md || fail "zh-CN 應裝简体模板"
+grep -q '开工先 /fw-coldstart' <(echo '{}' | node .flightwake/hooks/statusline.mjs) || fail "zh-CN 儀表應为简体"
+node .flightwake/hooks/state-check.mjs --ci 2>&1 | grep -q '新鲜' || fail "zh-CN state-check 輸出應为简体"
+cd "$TMP/repo10-ja"
+grep -q '今どこにいるか' .flightwake/STATE.md || fail "ja 應裝日文模板"
+grep -q 'まず /fw-coldstart から' <(echo '{}' | node .flightwake/hooks/statusline.mjs) || fail "ja 儀表應為日文"
+node .flightwake/hooks/state-check.mjs --ci 2>&1 | grep -q '最新' || fail "ja state-check 輸出應為日文"
+pass "zh-CN / ja 安裝內容與輸出"
+
+# 17c. 手改框架檔後重裝 → 逐檔點名被覆蓋;使用者資料不列入
+cd "$TMP/repo10-ja"
+printf '\nMANUAL-EDIT\n' >> .claude/skills/fw-coldstart/SKILL.md
+echo "USER-DATA" >> .flightwake/STATE.md
+out=$(node "$CLI" init --lang=ja --force --statusline)
+# 只取警告區塊本身(到空行為止)——init 其餘輸出也提到 STATE.md,整段抓會誤判
+warn=$(echo "$out" | awk '/ローカルの変更/{f=1} f&&/^$/{exit} f')
+echo "$warn" | grep -q 'fw-coldstart/SKILL.md' || fail "覆蓋本地修改應點名該檔(got: $out)"
+echo "$warn" | grep -q 'STATE.md' && fail "使用者資料不該出現在覆蓋清單"
+grep -q USER-DATA .flightwake/STATE.md || fail "使用者資料不得被覆蓋"
+# 版本/語言不同時內容本來就會變,不得誤報
+cd "$TMP/repo10-zh-CN"
+out=$(node "$CLI" init --lang=ja --force --statusline)
+echo "$out" | grep -q 'had local edits\|本地修改\|ローカルの変更' && fail "切換語言不得誤報本地修改"
+cd "$REPO10"   # 後續測試接續 zh-TW 這個 repo,別把 cwd 留在別處
+pass "覆蓋本地修改時逐檔點名、切語言不誤報"
+
 # 18. update:偵測既有選項(lang/statusline)、force 刷新框架檔、不動使用者資料、沿用 marker 語言
 echo "OLD-SKILL" >> .claude/skills/fw-record/SKILL.md
 echo "SENTINEL-U" >> .flightwake/STATE.md
