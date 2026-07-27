@@ -8,6 +8,8 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-07-27
+
 ### Added
 
 - **Installed content now ships in four languages** — `--lang=en|zh-TW|zh-CN|ja`. Templates, the four skills,
@@ -114,7 +116,8 @@ First public release. ✈️
 
 Initial npm publish; superseded within the day by 0.7.2.
 
-[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.11.0
 [0.10.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.10.0
 [0.9.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.9.0
 [0.8.2]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.8.2
