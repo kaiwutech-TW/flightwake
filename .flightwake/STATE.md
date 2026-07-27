@@ -1,7 +1,7 @@
 ---
-updated: 2026-07-23
-updated_by: Claude(Fable 5)
-latest_record: records/260723-v0101-version-gauge.md
+updated: 2026-07-27
+updated_by: Claude(Opus 5)
+latest_record: records/260727-dependabot-codeql-group.md
 health: green
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
@@ -32,8 +32,9 @@ flightwake v0.10.0,**已開源上線(2026-07-18)、i18n 完成(2026-07-19)**:tru
 
 1. **發宣傳**:三稿最終版(已改寫為不點名 GSD,含 HN 留言預備)在使用者桌面 `~/Desktop/flightwake-launch-copy.md`;截圖三張在使用者手上;HN 挑能盯留言的時段發
 2. HN 後續:等 hn@ycombinator.com 回覆(作者留言被 auto-flag)→ 解 flag 後補「v0.9.0 已兌現 English defaults」留言
-3. 宣傳後:盯 issues/討論回饋 + dependabot 升版 PR(PR 流程練習);GSD 側對照實測待補(benchmarks 公平性);範例 repo 降為 nice-to-have
-4. 擇時:其他已裝 repo(kaiwuweb、salesmartly_chain、marketing_dashboard)`npx flightwake update` 到 0.10.0
+3. **合三個 dependabot PR**:#6(codeql-action 群組 4.37.1→4.37.3,CI 綠)、#3(scorecard-action 2.4.3→2.4.4)、#2(checkout 7.0.0→7.0.1)——首批已排除 codeql-action 拆 PR 的坑,見 [[260727-dependabot-codeql-group]]
+4. 宣傳後:盯 issues/討論回饋;GSD 側對照實測待補(benchmarks 公平性);範例 repo 降為 nice-to-have
+5. 擇時:其他已裝 repo(kaiwuweb、salesmartly_chain、marketing_dashboard)`npx flightwake update` 到 0.10.0
 
 # 常備事實(這個 repo 的 3-5 條保命知識)
 
