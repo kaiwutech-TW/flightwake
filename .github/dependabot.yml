@@ -5,3 +5,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      # codeql-action 的子 action(init/analyze/upload-sarif)必須同版,
+      # 拆成獨立 PR 會讓每個 PR 自己的 CodeQL run 撞版本不一致而紅(見 TRAPS codeql-action-version-lockstep)
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"

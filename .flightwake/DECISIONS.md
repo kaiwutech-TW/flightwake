@@ -6,6 +6,7 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
+| 2026-07-27 | dependabot 加 `groups` 把 `github/codeql-action*` 併成單一 PR;不改用「按序合併紅 PR」繞過 | 三個子 action 拆 PR 時每個都撞版本不一致而紅(見 TRAPS codeql-action-version-lockstep),按序合併等於每週手動排雷且 main 會短暫紅;group 是修根因、且不放寬釘 SHA 的安全決策 | 其他 action 出現同類 lockstep 需求時擴充 patterns |
 | 2026-07-23 | 儀表常駐顯示版本號(暗色小字),放寬 2026-07-18「內容只放三項」為四項;不加 /fw-update skill,update 維持 CLI 子指令 | 使用者要求看得到目前版本(該條重評條件「使用者要求」成立);版本號是 update 提示的前置認知。skill 只會是包 bash 的殼,義務表/儀表已指路,且守 4-skill 最小表面 | 再有欄位需求時議可配置化 |
 | 2026-07-23 | 多 agent 並行(worktree 同 repo 多 session)的 STATE/DECISIONS/TRAPS 衝突暫不設計,維持單線 session 假設 | 現行工作流是單線;「新條目加最上面」在並行 append 時必衝突,但需求未出現前的設計是猜測(beads 的 hash-ID + JSONL 是已知參考解) | worktree 並行 session 成為日常、或第一次真實 merge 衝突發生 |
 | 2026-07-23 | state-check 加第二檢查:health=green 但最新 record 無 tests 證據 → hook 擋一次提醒、CI 只警告不失敗 | green 是自我申報,「測試綠才算完成」硬防護原本與 health 無接線;只偵測 frontmatter tests 欄有無、不判讀內文,免費文字誤判——所以 CI 不敢當閘門 | 誤報(合理空欄場景)或漏報(有欄無實據)實測後調整 |

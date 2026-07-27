@@ -5,6 +5,19 @@
 # 坑 Registry
 
 ---
+name: codeql-action-version-lockstep
+type: trap
+status: active
+tags: [ci, github-actions, dependabot, codeql]
+discovered: 2026-07-27
+---
+
+**症狀**:dependabot 開的 codeql-action 升版 PR,CI 紅在 `##[error]Loaded a configuration file for version '4.37.1', but running version '4.37.3'` → `CodeQL job status was configuration error`。PR 內容本身只是換一行 SHA,看起來完全無辜。
+**根因**:`github/codeql-action/init`、`analyze`、`upload-sarif` 在 dependabot 眼中是**三個獨立套件**,會拆成三個 PR;但 CodeQL 要求同一 workflow 內所有 codeql-action step 同版,任一 PR 單獨存在時 branch 上就是 init 舊版 + analyze 新版。init 步驟其實有先警告(`Not all workflow steps that use github/codeql-action actions use the same version`),但它只是 warning,真正炸在 analyze。
+**解法/繞法**:`.github/dependabot.yml` 用 `groups` 把 `github/codeql-action*` 併成單一 PR(已設,2026-07-27)。若手動升版:三處 SHA 一起換。看到 configuration error 先 `grep codeql-action .github/workflows/` 比對版本註解,別去查 CodeQL 設定檔。
+**佐證**:PR #1/#4/#5(2026-07-26 dependabot 批次),失敗 run 30184467406
+
+---
 name: gh-active-account-drift
 type: gotcha
 status: active
