@@ -20,6 +20,10 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   prod and end users.
 - `fw-coldstart` now reads TRAPS **before acting in a trap's territory**, not only after a weird symptom shows up —
   by the time the symptom appears the trap has already been stepped in.
+- `fw-handoff` Scope now requires one line of **acceptance** — what counts as done, stated observably (which
+  number must match what, what appears on which screen, which test goes green). The section already pinned down
+  what is in and out of scope but never what "finished" looks like, so the receiving session had to invent a
+  definition — usually a looser one.
 
 ### Compatibility
 - **Backward compatible.** The field is optional; existing entries without it are treated as `unknown`, which
