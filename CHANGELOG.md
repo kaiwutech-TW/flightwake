@@ -8,6 +8,24 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ## [Unreleased]
 
+### Added
+- **TRAPS entries carry a `confidence` on their root cause** — `confirmed` (controlled experiment: toggle the
+  cause, symptom follows, at least twice) / `probable` (repeat observations, no control) / `suspected` (single
+  observation, or the most likely explanation at the time). Motivated by a real failure mode: the registry's most
+  expensive defect is not a missing entry but a misdiagnosis recorded as settled fact — readers cannot distinguish
+  a nailed root cause from the best guess at the time, and following a wrong one costs more than an empty registry.
+  Three rules ship with it: the symptom field is always fact (confidence rates the root cause only); below
+  `confirmed` the remedy is written as a *workaround* and never treated as a rule; and the bar is **asymmetric** —
+  `probable` suffices to argue "this breaks", while "this is safe" requires `confirmed`, because that error reaches
+  prod and end users.
+- `fw-coldstart` now reads TRAPS **before acting in a trap's territory**, not only after a weird symptom shows up —
+  by the time the symptom appears the trap has already been stepped in.
+
+### Compatibility
+- **Backward compatible.** The field is optional; existing entries without it are treated as `unknown`, which
+  readers handle exactly like `suspected`. No migration required, and `update` does not rewrite user data
+  (STATE/DECISIONS/TRAPS/records are never overwritten).
+
 ## [0.11.0] — 2026-07-27
 
 ### Added

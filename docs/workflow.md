@@ -80,6 +80,7 @@ When it hits a non-obvious trap mid-run (lying error messages, vendor quirks, en
 
 - Hands-off works because the hard guards are in place: tests green + typecheck clean before "done" counts, destructive operations confirmed first — installed into the instruction file on day one, independent of model self-discipline.
 - The TRAPS bar is "**non-obvious**": anything documented doesn't qualify; what you want is "the symptom misleads about the root cause." Over-filing dilutes the registry — >20 active entries means it's time to compact.
+- Every trap carries a `confidence` on its **root cause** — `confirmed` (controlled experiment) / `probable` (repeat observations, no control) / `suspected` (one observation). The registry's worst failure isn't a missing entry, it's a misdiagnosis written as settled fact: readers can't tell a nailed cause from the most likely story at the time, and following a wrong one costs more than having no registry. The bar is deliberately **asymmetric** — `probable` is enough to argue "this breaks", but arguing "this is safe" requires `confirmed`, because that error lands on prod and your users.
 - Independent tasks: say "these three don't depend on each other — run them in parallel."
 </details>
 
