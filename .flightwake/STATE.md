@@ -1,7 +1,7 @@
 ---
-updated: 2026-07-27
+updated: 2026-08-03
 updated_by: Claude(Opus 5)
-latest_record: records/260727-v0110-release.md
+latest_record: records/260803-trap-confidence.md
 health: green
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
@@ -11,6 +11,7 @@ health: green
 # 現在在哪
 
 flightwake **v0.11.0(2026-07-27 已發，npm latest)**,**已開源上線(2026-07-18)、i18n 完成(2026-07-19)**:trusted publishing 連六次 Release 零失誤、英文預設 + `--lang=zh-TW`、`update` 就地升級、儀表含下一步提示/真實視窗/新版提示(本 repo、kaiwuweb、salesmartly_chain、marketing_dashboard 實跑中,前三者已 update 至 0.9.0)。HN 已發(Show HN,留言被 auto-flag 待版主回覆)。缺口 1–7 全落地、兩 gate 全關、benchmarks n=2(非自我參照,零糾正)、宣傳素材全齊(三稿 + 三張截圖 + context 開銷故事線)。**GSD 全域已拆除(2026-07-18 晚,手冊 docs/cleanGSD.md);A/B 已量、開場底盤已分解到底**。新增 docs/workflow.md 分階段實戰手冊(四語 README 有入口)。**2026-07-23 外部評測後補強 → v0.10.0 已發佈**(fw-trap 跨 repo 坑雙寫、state-check health=green 證據檢查、hook 盲區文件化;同類專案掃描確認差異化象限無人佔據)。**Demo GIF 已上 README 首屏**(本 repo 實錄 /fw-coldstart,docs/demo.gif 244KB,四語嵌入)。npm 0.10.0 已上(驗證證據見 latest_record);**0.10.1(儀表常駐版本號)已 bump 在 main、刻意未發**——等下批新功能一起出 Release(使用者 2026-07-23 定的)。**2026-07-27 首批 dependabot PR 全處理完、PR 流程硬化**:閘門不再誤擋 bot commit(state-check + statusline 同步)、main 開 required status checks、補齊 CONTRIBUTING/CHANGELOG/CoC/issue+PR 模板/.gitignore(見 [[260727-oss-pr-flow-hardening]]);Scorecard 實測 7.2/10。**同日安裝內容擴到四語**(en/zh-TW/zh-CN/ja;刻意不做語言自動偵測、覆蓋本地修改改為逐檔點名,見 [[260727-four-language-install]])——日文/簡中翻譯未經母語者校對,待推廣後徵求。**這批連同擱置的 0.10.1 一起發成 v0.11.0**(minor 而非 patch:含新功能;第七次 Release 零失誤,驗證證據見 latest_record)。剩:發宣傳(三稿最終版在使用者桌面)。定位:給強模型(Fable 5 級)的事後記錄框架,補持久性與紀律、不補智力。
+**2026-08-03:TRAPS 根因加 `confidence` 三級 + 不對稱門檻(四語 14 檔,smoke 23/23)**——起點是使用者問「寫進 TRAPS 卻還是又踩,是設計還是呼叫問題」,稽核下游 106 條後答案是兩者皆非:失效在**誤診被寫成定案**(22% 帶更正標記)。見 [[260803-trap-confidence]]。**目前在分支 `feat/trap-confidence`、未合 main、未發版**(CHANGELOG 在 `[Unreleased]`,下批一起出 Release)。兩個下游 repo 共 50 條已回頭標註完畢。
 
 # 進行中(未完成勿刪)
 
@@ -32,8 +33,9 @@ flightwake **v0.11.0(2026-07-27 已發，npm latest)**,**已開源上線(2026-07
 
 1. **發宣傳**:三稿最終版(已改寫為不點名 GSD,含 HN 留言預備)在使用者桌面 `~/Desktop/flightwake-launch-copy.md`;截圖三張在使用者手上;HN 挑能盯留言的時段發
 2. HN 後續:等 hn@ycombinator.com 回覆(作者留言被 auto-flag)→ 解 flag 後補「v0.9.0 已兌現 English defaults」留言
-3. 擇時把其他已裝 repo(kaiwuweb、salesmartly_chain、marketing_dashboard)`npx flightwake update` 到 0.11.0
-4. 宣傳後:盯 issues/討論回饋(含徵求日文/簡中母語者校對);GSD 側對照實測待補(benchmarks 公平性);範例 repo 降為 nice-to-have
+3. **合併 `feat/trap-confidence` 到 main**(PR 走 required status checks);發版時 CHANGELOG `[Unreleased]` 提為 minor(新增選填欄位,無破壞性)
+4. 擇時把其他已裝 repo(kaiwuweb、salesmartly_chain、marketing_dashboard)`npx flightwake update` 到最新(含 confidence 欄位)
+5. 宣傳後:盯 issues/討論回饋(含徵求日文/簡中母語者校對);GSD 側對照實測待補(benchmarks 公平性);範例 repo 降為 nice-to-have
 
 # 常備事實(這個 repo 的 3-5 條保命知識)
 

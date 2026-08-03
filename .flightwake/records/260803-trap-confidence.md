@@ -1,0 +1,74 @@
+---
+record_id: 260803-trap-confidence
+session: Claude(Opus 5)
+date: 2026-08-03
+repos: [flightwake, 兩個下游 repo(未公開,以「A/B」代稱)]
+tests: bash test/smoke.sh 23/23 全過(欄位為選填,不改安裝行為,故無新增測試)
+prod_changes: none(僅 templates/skills/docs;npm 未發版,變更放 CHANGELOG [Unreleased])
+---
+
+# TRAPS 根因加 confidence 三級：從真實誤診案例反推出來的欄位
+
+**TL;DR**：使用者問「已經寫進 TRAPS 卻還是又踩到，是設計問題還是呼叫問題」。稽核兩個下游 repo
+共 106 條 trap 後發現**兩個都不是**——寫入很勤（不是呼叫問題），讀取路徑雖然偏事後但沒有一條
+supersede 是「忘了有這條」（不是設計問題）。真正的失效是**根因被誤診、卻以定案的樣子寫進 registry**：
+106 條裡 24 條（22%）帶誤診／更正／取代標記。因此在 frontmatter 加 `confidence`（confirmed/
+probable/suspected）標記**根因的把握度**，並配一條不對稱門檻。向後相容，欄位選填。
+
+## 關鍵發現(重要性排序)
+
+1. **registry 的最貴失效是「誤診寫成定案」，不是漏記。** 讀的人分不出「受控實驗坐實的」與
+   「當下最像的解釋」，照著錯的根因走比沒有 registry 更遠。實例：下游 repo A 的同一個根因寫了
+   三條 trap，前兩條都是誤診（第一次歸因「本機 vs 雲端環境差異」、第二次歸因「bundle 有兩份
+   同名套件」），第三次才找到真因（ORM 建構時就地改寫共用 client 的 serializers）。兩次誤診
+   之間該功能在 prod 斷流三天，且排程顯示 succeeded 造成假象。
+
+2. **錯在「危險側」的 trap 比錯在保守側嚴重一個數量級，所以門檻必須不對稱。** 同一個 repo 另有
+   一條：單次觀察（開某開關 → 觸發）被寫成雙向通則（「不開該開關 ＝ 天然 dry-run」），四天後
+   實測推翻——實際上流程照常對真實客戶發訊。**照著那條 trap 做才會出事**。故定：論證「這樣會壞」
+   `probable` 即可（錯了只是多做防護）；論證「這樣是安全的」必須 `confirmed`。
+
+3. **`confidence` 只能評根因，不能評症狀。** 症狀（錯誤訊息、觀察到的行為）永遠是事實，照貼即可；
+   把兩者混在一個等級裡會讓「行為觀測很硬、機制推論很軟」的條目無法誠實表達。實例：上述 dry-run
+   的後繼條目，「關掉託管仍會發訊」是直接觀測（硬），「為什麼」是推論（軟）——標 probable 並在
+   內文分開講，才能用它論證不安全、同時擋住反向推論。
+
+4. **三級定義原本漏掉非因果類事實。** 「某後台動作格有沒有系統變數」「共用雲端硬碟預設不在搜尋
+   語料庫」這類是能力／存在性宣稱，沒有「改變因 → 症狀跟著變」可做。定義補上：非因果事實以
+   **窮盡查證 + 指得出一手來源**（原始碼行號／官方文件／後台逐項確認）替代受控實驗，同樣可達
+   `confirmed`。這是實際標註 50 條時撞出來的，不是設計時想到的。
+
+5. **可驗證性決定 confidence 分佈上限，不是記錄品質。** 下游 repo A（第三方黑箱後台）標出
+   confirmed 16 / probable 10 / suspected 3；repo B（自家 code 與 DB）是 20 / 1 / 0。差異來自
+   B 讀得到原始碼、跑得了測試、查得到系統目錄，A 只能觀察黑箱行為。**「整合第三方的 repo 大量
+   probable」應視為常態**，不該當成待改善項去逼升級。
+
+6. **讀取路徑同時補了一刀：** 原本 fw-coldstart 只寫「碰到怪症狀時查 TRAPS」——那是事後，症狀
+   出現時已經踩下去了。改為「要做的事若碰得到某條 trap 的領域，動手前先查那條」。此點證據較弱
+   （稽核中沒找到「忘了有這條」的實例），屬預防性補強，不是本次主因，特此標明以免後人誤讀。
+
+## 交付 / Commits
+
+`fae6554`(本 repo，14 檔四語同步) + record/STATE/DECISIONS 本次收尾 commit。
+下游兩 repo 各一個 docs commit（回頭標註 50 條，內容見各自 TRAPS.md）。
+
+README 四語未動——TRAPS 的欄位 schema 只定義在 `templates/*/TRAPS.md` 與
+`skills/*/fw-trap/SKILL.md`，README 僅提及 TRAPS 存在，不必同步。
+
+## 驗證證據
+
+- `bash test/smoke.sh` 23/23 全過（四語安裝、update 就地升級、覆蓋本地修改逐檔點名皆未受影響）
+- 回頭標註覆蓋率：repo A 29/29、repo B 21/21，兩邊散裝 `##` 格式條目（A 3 條、B 1 條）一併
+  轉為標準 frontmatter，`grep -c '^## '` 皆為 0
+- 向後相容以定義保證而非測試保證：欄位選填、缺欄視為 unknown（讀取端比照 suspected）；
+  `--force`/`update` 本來就不碰使用者資料，故既有 TRAPS 不受影響
+
+## 未完 / 交接
+
+- **本次標註順帶查出一條疑似未被發現的誤診**（已寫進 repo A 的 TRAPS 並降級為 suspected）：
+  某條「本機 vs 雲端環境差異」的時間戳型別坑，寫法與前述兩次誤診完全同型，而真因條目明載被
+  改寫的序列化器涵蓋日期型別。7/20 修完當時沒回頭複查這條。驗法已寫在條目內（乾淨 client vs
+  被 ORM 污染的 client 各讀一次，比對回傳型別）。**尚未執行**。
+- 本 repo 仍在分支 `feat/trap-confidence`，**未合 main、未發版**。CHANGELOG 放在 `[Unreleased]`，
+  下批一起出 Release（沿用 0.10.1 當初的作法）。
+- 其他已裝 repo 的 `npx flightwake update` 到含本欄位的版本，等發版後再做（STATE 下一步入口第 3 點）。
