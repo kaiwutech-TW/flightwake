@@ -24,6 +24,11 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   number must match what, what appears on which screen, which test goes green). The section already pinned down
   what is in and out of scope but never what "finished" looks like, so the receiving session had to invent a
   definition — usually a looser one.
+- **`fw-record` now routes unfinished work to the right exit** — loose ends the next session can pick up in
+  passing stay in the record's unfinished section; a multi-session build being paused is redirected to
+  `/fw-handoff` (the record keeps only a pointer). The boundary between the two exits was never stated, which is
+  why handoffs went unwritten in practice (this very repo: 23 records, 0 CONTEXTs). The workflow guide's
+  wrap-up-or-stop section gained the boundary rule and a worked four-section CONTEXT example (en + zh-TW).
 
 ### Compatibility
 - **Backward compatible.** The field is optional; existing entries without it are treated as `unknown`, which

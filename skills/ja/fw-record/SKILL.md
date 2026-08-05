@@ -15,6 +15,8 @@ description: flightwake 締めの記録 — 飛行記録を書いて STATE を�
    - TL;DR を 2〜3 文(出発点の問題 → 到達した状態)
    - 重要な発見を重要度順に。条件を満たすものは **TRAPS にも**(/fw-trap の形式で)**DECISIONS にも**登録
    - コミット range を 1 行(詳細は git に任せる)、検証の証拠、未完了/引き継ぎ
+     — 未完了なのが**複数 session にまたがる建設**なら(次の session が片手間に拾える端切れではなく)
+     → `/fw-handoff` に切り替えて CONTEXT を書く。record の未完了欄にはそこへのポインタだけ残す
 3. `.flightwake/STATE.md` を更新:今どこか、進行中、次の入口、`latest_record` のポインタ、`health`
 4. まとめてコミット(record + STATE を 1 コミットに。メッセージは `docs(fw): record YYMMDD-slug`)
 

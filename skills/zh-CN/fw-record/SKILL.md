@@ -15,6 +15,8 @@ description: flightwake 收尾记录 — 写飞行记录并更新 STATE。Use wh
    - TL;DR 两三句(起点问题 → 终点状态)
    - 关键发现按重要性排序;够格的**同步登进 TRAPS**(用 /fw-trap 格式)**与 DECISIONS**
    - commit range 一行(细节留给 git)、验证证据、未完交接
+     — 未完的若是**跨多 session 的建设**(不是下个 session 顺手能捡的零头)→ 改走 `/fw-handoff` 写 CONTEXT,
+     record 的未完节只留一个指针指过去
 3. 更新 `.flightwake/STATE.md`:现在在哪、进行中、下一步入口、`latest_record` 指标、`health`
 4. 一起 commit(record + STATE 同一个 commit,讯息 `docs(fw): record YYMMDD-slug`)
 
