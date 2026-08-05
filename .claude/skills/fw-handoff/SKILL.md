@@ -11,7 +11,9 @@ description: flightwake 跨 session 交接 — 為「還沒做完、之後要繼
 ## 步驟
 
 1. 寫 `.flightwake/records/YYMMDD-slug-CONTEXT.md`,必含四節:
-   - **Scope**:要做什麼/明確不做什麼(out of scope 防範圍蔓延)
+   - **Scope**:要做什麼/明確不做什麼(out of scope 防範圍蔓延);再加一行**驗收**——
+     怎樣算做完,**要可觀測**(哪個數字要對得上什麼、哪個畫面要出現什麼、哪個測試要綠)。
+     「做完」沒有可觀測的定義,下個 session 只能自己補一個,而且通常補得比你寬
    - **已定案決策**:含 why(同步登 DECISIONS)
    - **現況與資料底座**:哪些已就緒(附驗證證據)、哪些是假設(標注「執行前 spot-check」)
    - **下一步**:具體到「打開哪個檔案/跑哪個指令」

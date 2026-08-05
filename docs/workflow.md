@@ -80,6 +80,7 @@ When it hits a non-obvious trap mid-run (lying error messages, vendor quirks, en
 
 - Hands-off works because the hard guards are in place: tests green + typecheck clean before "done" counts, destructive operations confirmed first — installed into the instruction file on day one, independent of model self-discipline.
 - The TRAPS bar is "**non-obvious**": anything documented doesn't qualify; what you want is "the symptom misleads about the root cause." Over-filing dilutes the registry — >20 active entries means it's time to compact.
+- Every trap carries a `confidence` on its **root cause** — `confirmed` (controlled experiment) / `probable` (repeat observations, no control) / `suspected` (one observation). The registry's worst failure isn't a missing entry, it's a misdiagnosis written as settled fact: readers can't tell a nailed cause from the most likely story at the time, and following a wrong one costs more than having no registry. The bar is deliberately **asymmetric** — `probable` is enough to argue "this breaks", but arguing "this is safe" requires `confirmed`, because that error lands on prod and your users.
 - Independent tasks: say "these three don't depend on each other — run them in parallel."
 </details>
 
@@ -109,6 +110,8 @@ When a session is ending, there's exactly one question: **is this piece of work 
 - **Done** → say "**wrap up**". The model runs `/fw-record`: flight record, STATE update, sensitive-info self-check.
 - **Not done, continuing later** → say "**handoff**". The model runs `/fw-handoff`, writing where it got to, where it's stuck, and where the next session enters — the CONTEXT.
 
+The line between the two is judgeable in one sentence: **loose ends the next session can pick up in passing stay in the record's unfinished section; a multi-session build being paused gets a handoff.** A record says "here's what happened"; a CONTEXT says "here's how to continue". If everything ends up in records and no CONTEXT ever gets written, the second kind of stop is being filed under the first — and the next session pays for it by reconstructing scope from scratch.
+
 The classic mistake is doing neither and closing the window. There's a net for forgetting: when STATE lags ≥3 commits, the Stop hook blocks once before the session ends. But treating the net as routine is a bad habit — **the net is for forgetting, not for skipping**.
 
 <details>
@@ -116,6 +119,11 @@ The classic mistake is doing neither and closing the window. There's a net for f
 
 - Records aren't only for session-end: touched schema, touched prod, or ≥3 commits since the last record — any one of these means wrap up now.
 - A handoff is written **before stopping, not before starting** — the root difference between flightwake and stage-driven frameworks: the plan is a road sign left after contact with reality, not a gate before it.
+- What a CONTEXT looks like (`records/YYMMDD-slug-CONTEXT.md`, four sections, each a few lines):
+  - **Scope** — installer ships in four languages; out of scope: README translations. *Acceptance*: `bash test/smoke.sh` green **and** `--lang=ja` installs a Japanese STATE — observable, so the next session doesn't invent a looser definition of "done".
+  - **Decisions made** — no locale auto-detection (terminal `LANG` and OS locale routinely disagree; also in DECISIONS).
+  - **Current state & data base** — en/zh-TW done and smoke-tested; ja templates drafted — *assumption*: untranslated placeholders may remain, **spot-check before building on them**.
+  - **Next step** — open `skills/ja/fw-record/SKILL.md`, finish the translation, run `bash test/smoke.sh`.
 - Commit right after the record — state only truly exists once it's in git, where other agents and teammates can see it.
 </details>
 

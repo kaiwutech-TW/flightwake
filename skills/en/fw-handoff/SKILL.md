@@ -11,7 +11,10 @@ a CONTEXT written after touching reality is the only kind that's real.
 ## Steps
 
 1. Write `.flightwake/records/YYMMDD-slug-CONTEXT.md` with four mandatory sections:
-   - **Scope**: what to build / explicitly out of scope (guards against scope creep)
+   - **Scope**: what to build / explicitly out of scope (guards against scope creep); plus one line of
+     **acceptance** — what counts as done, stated **observably** (which number must match what, what must
+     appear on which screen, which test must go green). With no observable definition of "done", the next
+     session invents one — usually looser than yours
    - **Settled decisions**: with the why (also logged to DECISIONS)
    - **Current state & data foundation**: what's ready (with verification evidence), what's an assumption (mark "spot-check before executing")
    - **Next step**: concrete down to "open this file / run this command"

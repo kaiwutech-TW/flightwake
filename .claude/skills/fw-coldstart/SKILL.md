@@ -11,8 +11,12 @@ description: flightwake 冷啟動 — 接手一個 repo 前先恢復狀態。Use
 
 1. 讀 `.flightwake/STATE.md`(現在在哪、進行中、下一步入口、常備事實)
 2. 讀 STATE frontmatter 指向的 `latest_record`(上次收尾的完整脈絡)
-3. 只在需要時才讀:`DECISIONS.md`(要改既有方向前必讀)、`TRAPS.md`(碰到怪症狀時查)
+3. 只在需要時才讀:`DECISIONS.md`(要改既有方向前必讀)、`TRAPS.md`(碰到怪症狀時查;
+   **另外——要做的事若碰得到某條 trap 的領域,動手前先查那條**,別等症狀出現才查,那時已經踩下去了)
    — 兩者都**跳過標 superseded 的條目**(它們只是歷史,新舊衝突時以 active/新日期為準)
+   — TRAPS 條目**先看 `confidence`**:只有 `confirmed` 能當行為準則;`probable`/`suspected`/
+     未標此欄的舊條目一律當**線索**而非事實,尤其**不可**拿來論證「這樣做是安全的」
+     (誤判安全會直接打到 prod 和使用者)。要據此放行就先自己驗一次,並把結果回寫升級該條
 4. 量化落後程度:`git rev-list --count "$(git log -1 --format=%H -- .flightwake/STATE.md)"..HEAD`
    (≥1 = 上個 session 沒收尾,提高警覺;STATE 從未 commit 時改看 `git log --oneline -10`)
 5. 向使用者回報一段話:「上次到哪、這次打算從哪接、有沒有未驗證的變更(health)」——**回報完才開始動手**

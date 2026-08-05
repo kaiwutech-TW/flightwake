@@ -15,6 +15,8 @@ Purpose: turn this stretch of work into a durable artifact "a stranger three mon
    - TL;DR in two or three sentences (starting problem → ending state)
    - Key findings ordered by importance; ones that qualify **also go into TRAPS** (in /fw-trap format) **and DECISIONS**
    - Commit range in one line (details stay in git), verification evidence, unfinished/handoff
+     — if what's unfinished is a **multi-session build** (not loose ends the next session can pick up in passing)
+     → switch to `/fw-handoff` and write a CONTEXT; the record's unfinished section keeps only a pointer to it
 3. Update `.flightwake/STATE.md`: where we are, in progress, next entry points, the `latest_record` pointer, `health`
 4. Commit together (record + STATE in one commit, message `docs(fw): record YYMMDD-slug`)
 

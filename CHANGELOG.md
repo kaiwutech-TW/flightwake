@@ -6,7 +6,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 Releases before 0.7.1 predate the public launch and were never published; the history starts there.
 
-## [Unreleased]
+## [0.12.0] — 2026-08-05
+
+### Added
+- **TRAPS entries carry a `confidence` on their root cause** — `confirmed` (controlled experiment: toggle the
+  cause, symptom follows, at least twice) / `probable` (repeat observations, no control) / `suspected` (single
+  observation, or the most likely explanation at the time). Motivated by a real failure mode: the registry's most
+  expensive defect is not a missing entry but a misdiagnosis recorded as settled fact — readers cannot distinguish
+  a nailed root cause from the best guess at the time, and following a wrong one costs more than an empty registry.
+  Three rules ship with it: the symptom field is always fact (confidence rates the root cause only); below
+  `confirmed` the remedy is written as a *workaround* and never treated as a rule; and the bar is **asymmetric** —
+  `probable` suffices to argue "this breaks", while "this is safe" requires `confirmed`, because that error reaches
+  prod and end users.
+- `fw-coldstart` now reads TRAPS **before acting in a trap's territory**, not only after a weird symptom shows up —
+  by the time the symptom appears the trap has already been stepped in.
+- `fw-handoff` Scope now requires one line of **acceptance** — what counts as done, stated observably (which
+  number must match what, what appears on which screen, which test goes green). The section already pinned down
+  what is in and out of scope but never what "finished" looks like, so the receiving session had to invent a
+  definition — usually a looser one.
+- **`fw-record` now routes unfinished work to the right exit** — loose ends the next session can pick up in
+  passing stay in the record's unfinished section; a multi-session build being paused is redirected to
+  `/fw-handoff` (the record keeps only a pointer). The boundary between the two exits was never stated, which is
+  why handoffs went unwritten in practice (this very repo: 23 records, 0 CONTEXTs). The workflow guide's
+  wrap-up-or-stop section gained the boundary rule and a worked four-section CONTEXT example (en + zh-TW).
+
+### Compatibility
+- **Backward compatible.** The field is optional; existing entries without it are treated as `unknown`, which
+  readers handle exactly like `suspected`. No migration required, and `update` does not rewrite user data
+  (STATE/DECISIONS/TRAPS/records are never overwritten).
 
 ## [0.11.0] — 2026-07-27
 

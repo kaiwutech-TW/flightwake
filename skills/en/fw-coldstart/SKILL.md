@@ -11,8 +11,14 @@ Purpose: before touching any file, recover to a "safe takeover" state with the m
 
 1. Read `.flightwake/STATE.md` (where we are, in progress, next entry points, standing facts)
 2. Read the `latest_record` the STATE frontmatter points to (full context of the last wrap-up)
-3. Read only when needed: `DECISIONS.md` (mandatory before changing an established direction), `TRAPS.md` (check when hitting weird symptoms)
+3. Read only when needed: `DECISIONS.md` (mandatory before changing an established direction), `TRAPS.md` (check when hitting weird symptoms;
+   **also — if the work you're about to do touches the territory of a trap, read that entry before you act**, don't wait for the
+   symptom, by then you've already stepped in it)
    — in both, **skip entries marked superseded** (they are history; when old and new conflict, trust active / the newer date)
+   — for TRAPS entries, **check `confidence` first**: only `confirmed` may be treated as a rule; `probable`/`suspected`/
+     legacy entries without the field are **leads, not facts** — and must **never** be used to argue "doing it this way is safe"
+     (a wrong safety call hits prod and your users directly). To proceed on one, verify it yourself first, then write the result
+     back and raise the entry's confidence
 4. Quantify the lag: `git rev-list --count "$(git log -1 --format=%H -- .flightwake/STATE.md)"..HEAD`
    (≥1 = the last session didn't wrap up — raise your guard; if STATE was never committed, use `git log --oneline -10` instead)
 5. Report back to the user in one paragraph: "where the last session got to, where this one plans to pick up, whether there are unverified changes (health)" — **only start working after reporting**

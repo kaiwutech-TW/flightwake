@@ -107,6 +107,8 @@ session 要結束時,只有一個判斷:**這件事做完了嗎?**
 - **做完了** → 說「**收尾**」。模型跑 `/fw-record`:寫飛行紀錄、更新 STATE、跑敏感資訊自查。
 - **沒做完、之後要繼續** → 說「**交接**」。模型跑 `/fw-handoff`,把「做到哪、卡在哪、下一步從哪進」寫成 CONTEXT。
 
+兩者的分界一句話就能判定:**下個 session 順手能撿的零頭,留在 record 的未完節;跨多 session 的建設要停手,才寫交接。** record 說的是「發生了什麼」,CONTEXT 說的是「怎麼繼續」。如果所有停手都進了 record、CONTEXT 從來沒被寫過,代表第二種停手被錯歸成了第一種——代價由下個 session 付:從零重建 scope。
+
 最常見的錯誤是兩個都不做就關視窗。忘了也有網:STATE 落後 ≥3 commits 時,Stop hook 會在 session 結束前擋一次提醒你。但把安全網當日常是壞習慣——**網是給忘記的人,不是給偷懶的人**。
 
 <details>
@@ -114,6 +116,11 @@ session 要結束時,只有一個判斷:**這件事做完了嗎?**
 
 - record 的觸發不只是 session 結束:動了 schema、動了 prod、距上次 record ≥3 commits,任一成立就該收。
 - handoff 寫在**停手前**,不是開工前——這是 flightwake 與 stage-driven 框架的根本差異:計畫是事後留下的路標,不是事前的關卡。
+- CONTEXT 長什麼樣(`records/YYMMDD-slug-CONTEXT.md`,四節、每節幾行就夠):
+  - **Scope** — 安裝器出四語;不做:README 翻譯。*驗收*:`bash test/smoke.sh` 綠 **且** `--lang=ja` 裝出日文 STATE——要可觀測,下個 session 才不會自己補一個更寬的「做完」定義。
+  - **已定案決策** — 不做語言自動偵測(終端 `LANG` 與 OS locale 常不一致;同步登 DECISIONS)。
+  - **現況與資料底座** — en/zh-TW 完成且 smoke 過;ja 模板已起草——*假設*:可能殘留未翻譯佔位,**動工前先 spot-check**。
+  - **下一步** — 打開 `skills/ja/fw-record/SKILL.md` 譯完,跑 `bash test/smoke.sh`。
 - record 寫完順手 commit,狀態才真正進 git、其他 agent 與同事才看得到。
 </details>
 
