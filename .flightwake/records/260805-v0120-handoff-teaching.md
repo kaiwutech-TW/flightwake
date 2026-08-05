@@ -42,11 +42,10 @@ CONTEXT 永遠「不太需要」。本批補分界規則與教學,連同擱置�
 
 - `bash test/smoke.sh` 23/23(本機,教學變更後)
 - PR #8 required checks 全綠:smoke ubuntu/macos、state-fresh、analyze、CodeQL(連結見 PR)
-- npm 發佈驗證:(Release 發佈後補)`npm view flightwake version` 應回 `0.12.0`
+- npm 發佈驗證(2026-08-05 補記):release run 30981923138 success;`npm view flightwake version` 實回 `0.12.0`(trusted publishing 第八次零失誤)
 
 ## 未完 / 交接
 
-- **npm publish 驗證待補**(上一行);補完 STATE health 才算完整 green
 - 下游三 repo(kaiwuweb、salesmartly_chain、marketing_dashboard)`npx flightwake update` 至 0.12.0
 - 使用者提到「實際重複踩到 trap」——**具體是哪條尚未取得**;拿到後對照三型
   (誤診型/危險側通則型/忘了查型)驗證 confidence 修正是否命中,並依新規則補標
