@@ -6,7 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 Releases before 0.7.1 predate the public launch and were never published; the history starts there.
 
-## [Unreleased]
+## [0.12.0] — 2026-08-05
 
 ### Added
 - **TRAPS entries carry a `confidence` on their root cause** — `confirmed` (controlled experiment: toggle the

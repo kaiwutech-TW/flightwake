@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const LANG = 'zh-TW';
-const FW_VERSION = '0.11.0';
+const FW_VERSION = '0.12.0';
 // Message table lookup. Keyed rather than positional: with four languages, positional args silently
 // swap when one is edited. Any missing key falls back to English rather than printing undefined.
 const M = (m) => m[LANG] ?? m.en;
