@@ -5,6 +5,20 @@
 # 坑 Registry
 
 ---
+name: macos-mktemp-symlink-cwd-mismatch
+type: gotcha
+status: active
+tags: [macos, testing, node, paths]
+discovered: 2026-08-11
+confidence: confirmed
+---
+
+**症狀**:測試在暫存 repo 裡把 `process.cwd()` 記下的路徑(如 registry 條目)拿去和 shell 的 `$TMP` 比對,比對永遠落空——兩邊看起來是同一個目錄。
+**根因**:macOS `mktemp -d` 回傳 `/var/folders/…`,而 `/var` 是 `/private/var` 的 symlink;bash 保留邏輯路徑,Node 的 `process.cwd()` 回實體路徑,字串永不相等。
+**解法/繞法**:測試腳本拿到 `$TMP` 後立刻 `TMP="$(cd "$TMP" && pwd -P)"` 正規化成實體路徑再往下用(smoke.sh 已內建)。任何「shell 路徑 vs Node cwd」的字串比對都適用本條。
+**佐證**:本 repo test/smoke.sh registry 測項首次紅燈(2026-08-11),正規化後綠
+
+---
 name: codeql-action-version-lockstep
 type: trap
 status: active
