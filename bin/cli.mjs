@@ -12,6 +12,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, appendFileS
 import { join, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { homedir } from 'node:os';
 
 const FW_SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = process.cwd();
@@ -58,6 +59,36 @@ const excludePath = () => {
   let p;
   try { p = git('rev-parse', '--git-path', 'info/exclude'); } catch { p = join('.git', 'info', 'exclude'); }
   return isAbsolute(p) ? p : join(TARGET, p);
+};
+
+// Cross-repo registry (~/.flightwake/registry.json) — read-only query layers (flightwake-tower) discover
+// installed repos through it. Best-effort by contract: a registry problem must never fail an install,
+// and a corrupt registry is left in place for inspection rather than clobbered.
+const REGISTRY = join(process.env.FLIGHTWAKE_HOME ?? join(homedir(), '.flightwake'), 'registry.json');
+const readRegistry = () => {
+  if (!existsSync(REGISTRY)) return { version: 1, repos: {} };
+  const reg = JSON.parse(readFileSync(REGISTRY, 'utf8'));
+  if (!reg || typeof reg.repos !== 'object' || Array.isArray(reg.repos)) throw new Error('unexpected shape');
+  return reg;
+};
+const registerRepo = () => {
+  try {
+    const reg = readRegistry();
+    const today = new Date().toISOString().slice(0, 10);
+    reg.repos[TARGET] = { ...(reg.repos[TARGET] ?? { registered: today }), fw_version: VERSION };
+    mkdirSync(dirname(REGISTRY), { recursive: true });
+    writeFileSync(REGISTRY, JSON.stringify(reg, null, 2) + '\n');
+    log(`  reg  ${REGISTRY}${M({ en: ' ← repo registered (cross-repo index)', 'zh-TW': ' ← 已登記(跨 repo 索引)', 'zh-CN': ' ← 已登记(跨 repo 索引)', ja: ' ← 登録済(クロス repo インデックス)' })}`);
+  } catch { log(`  ⚠️  ${REGISTRY} could not be updated — skipped (cross-repo tools won't see this repo)`); }
+};
+const unregisterRepo = () => {
+  try {
+    const reg = readRegistry();
+    if (!(TARGET in reg.repos)) return;
+    delete reg.repos[TARGET];
+    writeFileSync(REGISTRY, JSON.stringify(reg, null, 2) + '\n');
+    log(`  edit ${REGISTRY} ← entry removed`);
+  } catch {}
 };
 
 // ── Detect the existing install (marker version/lang, statusline, private) — drives `update` and lang defaults ──
@@ -172,6 +203,8 @@ if (cmd === 'uninstall') {
   // 5. Remove now-empty directories (non-empty = user has their own things there; rmdir fails silently, which is the point)
   try { rmdirSync(join(TARGET, '.claude', 'skills')); } catch {}
   try { rmdirSync(join(TARGET, '.claude')); } catch {}
+  // 5b. Cross-repo registry entry
+  unregisterRepo();
   // 6. User data
   if (PURGE) {
     rm('.flightwake');
@@ -470,6 +503,9 @@ if (clobbered.length) {
     ja: '言語を変えたい場合は手で書き換えず --lang で入れ直す:npx flightwake init --lang=<言語> --force',
   })}`);
 }
+
+// 7. Cross-repo registry: init and update both register (existing installs enroll on their next update)
+registerRepo();
 
 if (IS_UPDATE) {
   log(M({

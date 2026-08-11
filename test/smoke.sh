@@ -9,6 +9,11 @@ export FLIGHTWAKE_NO_UPDATE_CHECK=1
 FW="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+# macOS: mktemp gives /var/... (a symlink) while node's process.cwd() reports /private/var/... —
+# resolve to the physical path so registry keys (recorded from cwd) match the paths tests compare against
+TMP="$(cd "$TMP" && pwd -P)"
+# Isolate the cross-repo registry — without this, every test repo below lands in the real ~/.flightwake/registry.json
+export FLIGHTWAKE_HOME="$TMP/fw-home"
 
 fail() { echo "❌ FAIL: $1"; exit 1; }
 pass() { echo "  ok: $1"; }
@@ -336,6 +341,26 @@ mkdir -p "$REPO11" && cd "$REPO11"
 git init -q && git config user.email t@t.t && git config user.name t
 node "$CLI" update >/dev/null 2>&1 && fail "未安裝的 repo 跑 update 應退出非零"
 pass "舊 marker 相容與 update 防呆"
+
+# 20. registry:init 登記 repo 路徑、update 保留 registered 日期、uninstall 移除、壞檔不炸安裝也不被覆蓋
+REG="$FLIGHTWAKE_HOME/registry.json"
+node -e "const r=require('$REG'); if(!r.repos['$TMP/repo']) process.exit(1)" || fail "init 後 registry 應含 repo 路徑"
+REPO12="$TMP/repo12"
+mkdir -p "$REPO12" && cd "$REPO12"
+git init -q && git config user.email t@t.t && git config user.name t
+node "$CLI" init >/dev/null
+node -e "const r=require('$REG'); if(r.repos['$REPO12']?.fw_version!=='$FWV') process.exit(1)" || fail "registry 條目應記 fw_version=$FWV"
+reg1=$(node -e "console.log(require('$REG').repos['$REPO12'].registered)")
+node "$CLI" update >/dev/null
+reg2=$(node -e "console.log(require('$REG').repos['$REPO12'].registered)")
+[ "$reg1" = "$reg2" ] || fail "update 不應改 registered 日期(got: $reg1 → $reg2)"
+node "$CLI" uninstall >/dev/null
+node -e "const r=require('$REG'); if(r.repos['$REPO12']) process.exit(1)" || fail "uninstall 應移除 registry 條目"
+echo 'not json' > "$REG"
+node "$CLI" init >/dev/null || fail "registry 壞檔不得讓 init 失敗"
+grep -q 'not json' "$REG" || fail "壞 registry 應原樣保留供檢查,不得被覆蓋"
+node "$CLI" uninstall >/dev/null || fail "registry 壞檔不得讓 uninstall 失敗"
+pass "registry 登記/移除/壞檔容錯"
 
 echo ""
 echo "✅ smoke 全過"
