@@ -82,3 +82,17 @@ discovered: {{YYYY-MM-DD}}
 **根因**:{{一句話}}
 **解法/繞法**:{{怎麼處理}}
 **佐證**:{{commit/record 連結}}
+
+---
+name: codex-exec-stdin-hang
+type: trap
+status: active
+tags: [codex, stdin, automation]
+discovered: 2026-09-02
+confidence: confirmed
+---
+
+**症狀**:從腳本/agent 的 Bash 呼叫 `codex exec '<prompt>'`,印出 `Reading additional input from stdin...` 後永久卡住,零 CPU、不開 session、無錯誤。
+**根因**:`codex exec` 在 stdin 不是 TTY 時會**額外**讀 stdin 到 EOF 當補充輸入(即使已給 prompt 參數);agent 的 shell stdin 是不會關的 pipe,EOF 永遠不來。與 [[hook-stdin-tty-block]] 同一家族,只是這次卡的是 Codex 本體而非我們的 hook。
+**解法/繞法**:非互動呼叫一律 `codex exec … </dev/null`(或 `echo | codex exec …`)。macOS 沒有 `timeout` 指令,別指望它救場。
+**佐證**:[[260902-codex-gemini-native]](真機驗證第一次卡 9 分鐘 0% CPU;加 `</dev/null` 後同指令 100 秒內完成——開關對照一次;第二次 Stop-hook 測試同法直接過,合計兩次)
