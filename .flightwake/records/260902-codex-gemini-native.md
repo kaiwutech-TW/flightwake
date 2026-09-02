@@ -4,7 +4,7 @@ session: Claude(Fable 5.1)
 date: 2026-09-02
 repos: [flightwake]
 tests: bash test/smoke.sh 28/28 全過(新增 Codex/Gemini 方言、.agents/skills、.codex/.gemini hook、uninstall 對稱、hook 三宿主 stdin 測項);本 repo dogfood `node bin/cli.mjs update` 正常;Codex 0.147.0 真機:`codex exec` 列出 fw-coldstart/fw-record/fw-trap/fw-handoff 四個 skill,落後 3 commits 的 repo 收到 Stop hook 的 flightwake reason 作為 hook_prompt 續跑(證據見「驗證證據」)
-prod_changes: 無(npm 未發版;連同 registry 一起進 0.13.0)
+prod_changes: npm v0.13.0 發佈(PR #9 merge commit 8924786 → GitHub Release v0.13.0 → release.yml trusted publishing;發佈後驗證見「驗證證據」)
 ---
 
 # Codex / Gemini CLI 原生支援:同一套 skill 與 hook,裝進各平台的位置與方言
@@ -74,6 +74,10 @@ Codex/Gemini 時,skill 複製到 `.agents/skills/fw-*`(兩家共讀)、STATE 檢
     `<hook_prompt hook_run_id="stop:8:…/.codex/hooks.json">flightwake: .flightwake/STATE.md lags 3 commits behind. Run fw-record to wrap up …</hook_prompt>`
     ——hook 的 reason 確實成為續跑 prompt;git status 乾淨(模型沒亂寫)
   - 對照組:最小 hook(`echo '{"decision":"block","reason":"reply BANANA"}'`)→ `APPLE` 後續跑回 `BANANA`
+- **npm 發佈驗證(2026-09-02 同 session)**:PR #9 CI 全綠(smoke macos/ubuntu、state-fresh、CodeQL)→
+  `gh pr merge --merge`(8924786)→ `gh release create v0.13.0` → release run 33589488156 success(18 秒)→
+  `npm view flightwake version` 第 5 次輪詢(約 60 秒後)實回 `0.13.0`,tarball `flightwake-0.13.0.tgz`,
+  `time.modified` 2026-09-02T04:06:58Z(trusted publishing 第九次零失誤)
 
 ## 未完 / 交接
 
@@ -83,6 +87,7 @@ Codex/Gemini 時,skill 複製到 `.agents/skills/fw-*`(兩家共讀)、STATE 檢
   prompt
 - `--private` 對 Codex/Gemini 只做「未追蹤才寫 + exclude」,沒有 Claude 那種 local 等價檔(Codex 的
   `~/.codex/hooks.json` 是使用者級不是 repo 級);smoke 未加 private+codex 測項
-- 發版:本批與 registry 一起進 **0.13.0**(package.json 仍 0.12.0,bump 走 Release 流程);發版後常用
-  repo `npx flightwake update`——有 AGENTS.md 的 16 個機隊 repo 會在 update 時自動長出 `.agents/skills`
-  與 `.codex/hooks.json`,**每個 repo 首次開 Codex 都會被問一次信任 hook**,先跟使用者說一聲
+- ~~發版~~ 已發 0.13.0(見驗證證據)。剩:常用 repo `npx flightwake update`——有 AGENTS.md 的 16 個機隊
+  repo 會在 update 時自動長出 `.agents/skills` 與 `.codex/hooks.json`,**每個 repo 首次開 Codex 都會被問
+  一次信任 hook**(已向使用者說明)
+- gh 活躍帳號本 session 切到 kaiwutech-TW 後未切回(見 [[gh-active-account-drift]])
