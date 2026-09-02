@@ -34,7 +34,7 @@ npx flightwake update                        # その場で更新。インスト
 
 **インストールされたファイルを手で翻訳しないこと。** マーカーがどの言語で入れたかを記録しているため、次の `update` はその言語のソースから refresh し、手の入った箇所は消える。言語を変えたいときは `--lang` を付けて init を実行し直す。既に手で書き換えてしまった場合、init/update が上書きしたファイルを 1 つずつ名前で知らせるようになった。
 
-init が行うこと:`.flightwake/` の作成(テンプレート + Stop hook)、4 つの skill を `.claude/skills/` にコピー、Stop hook を `.claude/settings.json` にマージ、トリガー義務表(`<!-- flightwake:begin/end -->` マーカー付き)を**検出した agent 指示ファイル**(CLAUDE.md / AGENTS.md / GEMINI.md — 存在するものに追記;どれも無ければ AGENTS.md を作成;`--agents=claude,codex,gemini` で明示指定可)に追記。**純粋なファイルコピー、ランタイム依存ゼロ**(Node ≥18 はインストール時と hook のみ)。ユーザーデータ(STATE/DECISIONS/TRAPS)はいかなる場合も上書きしない;`--force` はフレームワーク所有ファイルのみ更新する。
+init が行うこと:`.flightwake/` の作成(テンプレート + Stop hook)、4 つの skill を `.claude/skills/` にコピー、Stop hook を `.claude/settings.json` にマージ、トリガー義務表(`<!-- flightwake:begin/end -->` マーカー付き)を**検出した agent 指示ファイル**(CLAUDE.md / AGENTS.md / GEMINI.md — 存在するものに追記;どれも無ければ AGENTS.md を作成;`--agents=claude,codex,gemini` で明示指定可)に追記。**検出した各プラットフォームは同じ skill と hook を、それぞれの方言で受け取る**:Codex と Gemini CLI は skill を `.agents/skills/fw-*` から読み、STATE チェックは `.codex/hooks.json`(Stop)/ `.gemini/settings.json`(AfterAgent)に入り、義務表は Codex には `$fw-coldstart`、Claude Code には `/fw-coldstart`、Gemini には skill 名だけで書かれる。Codex は初回実行時にこの repo hook の信頼確認を一度求める。**純粋なファイルコピー、ランタイム依存ゼロ**(Node ≥18 はインストール時と hook のみ)。ユーザーデータ(STATE/DECISIONS/TRAPS)はいかなる場合も上書きしない;`--force` はフレームワーク所有ファイルのみ更新する。
 
 ## 使い方
 
@@ -75,6 +75,8 @@ STATE の health が正直かどうか(green/yellow/red)。フレームワーク
 ### ステージ別プレイブック
 
 強いモデルとの協働が初めてなら:[docs/workflow.md](docs/workflow.md) は「各ステージで**あなた**が何をし、モデルに何と言うか」のステージマップ——本線は初心者向け、「⚙ Advanced」の折りたたみは Claude Code 熟練者向け。(繁體中文版:[workflow.zh-TW.md](docs/workflow.zh-TW.md))
+
+同じ repo で複数のモデルを使うなら:[docs/multi-agent.md](docs/multi-agent.md) は Claude Code・Codex・Gemini CLI が一つの `.flightwake/` を共有する方法——init が各プラットフォームに何を入れるか、各ツールでの skill の呼び方、どのモデルが最後に書いても引き継ぎが同じになる「締め → commit → コールドスタート」のループ。(繁體中文版:[multi-agent.zh-TW.md](docs/multi-agent.zh-TW.md))
 
 ## なぜこのプロジェクトが存在するか
 
@@ -119,11 +121,14 @@ your-repo/
 │   ├── TEMPLATE-record.md   # 飛行記録テンプレート
 │   ├── hooks/state-check.mjs  # Stop hook:STATE が 3 コミット以上遅れたら催促
 │   └── records/             # 飛行記録(意味のある締めごとに一枚)
-├── .claude/skills/fw-*/     # 4 つの skill
-└── .claude/settings.json    # init が Stop hook 設定をマージ
+├── .claude/skills/fw-*/     # 4 つの skill(Claude Code)
+├── .claude/settings.json    # init が Stop hook 設定をマージ
+├── .agents/skills/fw-*/     # 同じ 4 つの skill を Codex / Gemini CLI 向けに(AGENTS.md / GEMINI.md を検出した時のみ)
+├── .codex/hooks.json        # Codex の Stop hook(AGENTS.md を検出した時のみ)
+└── .gemini/settings.json    # Gemini CLI の AfterAgent hook(GEMINI.md を検出した時のみ)
 ```
 
-skill と Stop hook は Claude Code 上の便利な糖衣;`.flightwake/` 本体は純粋な Markdown で、指示ファイルを読める agent なら誰でも同じトリガー義務に従える。既存の GSD `.planning/` と共存可能(旧記録は歴史アーカイブになる)。
+skill と hook はプラットフォームごとの便利な糖衣——同じ 4 つの skill と同じチェックスクリプトを、Claude Code・Codex・Gemini CLI がそれぞれ探す場所に置くだけ;`.flightwake/` 本体は git に入る純粋な Markdown なので、どの agent も(そして人も)同じ状態を読み書きする。他の agent も指示ファイルを読めば同じトリガー義務に手動で従える。既存の GSD `.planning/` と共存可能(旧記録は歴史アーカイブになる)。
 
 ## 高度なインストール
 
@@ -157,7 +162,7 @@ health の色(あなたが見張る唯一のもの)、STATE の遅れ(Stop hook 
 
 ### CI 側の締めチェック(任意)
 
-Stop hook は Claude Code 内でのみ有効;「STATE を遅らせない」規律を他の agent や人間の協力者に広げるには、同じスクリプトを CI で走らせる——STATE が HEAD から 3 コミット以上遅れたら失敗(`--threshold=N` で調整可):
+hook は Claude Code・Codex・Gemini CLI のセッション内でのみ発火する;「STATE を遅らせない」規律を他の agent や人間の協力者に広げるには、同じスクリプトを CI で走らせる——STATE が HEAD から 3 コミット以上遅れたら失敗(`--threshold=N` で調整可):
 
 ```yaml
 # .github/workflows/flightwake.yml(例;repo の慣習に従い actions は SHA 固定を推奨)
@@ -189,8 +194,8 @@ flightwake があなたの repo に workflow を書き込むことはない—�
 ## セキュリティ
 
 - **依存ゼロ、ネットワークなし、install script なし**:インストーラはファイルコピーのみ;hook は `git`(shell なし)で読み取り専用クエリのみ。
-- **固定書き込み範囲**:`init` が触るのは `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`、および agent 指示ファイル内のマーカーブロックのみ;`--private` 時は代わりに `.claude/settings.local.json`、`CLAUDE.local.md`、`.git/info/exclude` 内のマーカーブロック。`uninstall` は同じ範囲を逆順に掃除。
-- **hook は git に入る**:`.flightwake/hooks/state-check.mjs` は repo 内のファイル——commit できる人は誰でも変更できる。すべての repo-local 設定と同じ信頼レベルで、Claude Code は読み込み時に確認を求める。
+- **固定書き込み範囲**:`init` が触るのは `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`、agent 指示ファイル内のマーカーブロック、そして(Codex / Gemini CLI を検出した時)`.agents/skills/fw-*`、`.codex/hooks.json`、`.gemini/settings.json` のみ;`--private` 時は代わりに `.claude/settings.local.json`、`CLAUDE.local.md`、`.git/info/exclude` 内のマーカーブロック(Codex/Gemini のファイルは未追跡の時だけ書き、exclude に加える)。`uninstall` は同じ範囲を逆順に掃除。
+- **hook は git に入る**:`.flightwake/hooks/state-check.mjs` は repo 内のファイル——commit できる人は誰でも変更できる。すべての repo-local 設定と同じ信頼レベルで、Claude Code は読み込み時に確認を求め、Codex は hook 定義ごとに信頼ハッシュを記録して変更のたびに再確認する。
 - 脆弱性報告は [SECURITY.md](SECURITY.md) へ。npm には Trusted Publishing(provenance 付き)で公開;`npm audit signatures` で検証可能。
 
 ## ステータス

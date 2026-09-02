@@ -34,7 +34,7 @@ npx flightwake update                           # 就地升级,沿用你装过�
 
 **不要手动翻译装好的文件。** marker 记着你装的是哪个语言,下次 `update` 会用那个语言的来源刷新,你的修改会消失。要换语言请重跑 init 加 `--lang`;若已经手改过,现在 init/update 会逐档列出它覆盖了什么。
 
-init 会:建 `.flightwake/`(模板 + Stop hook)、复制 4 个 skill 到 `.claude/skills/`、把 Stop hook 并入 `.claude/settings.json`、把触发义务表(含 `<!-- flightwake:begin/end -->` 标记)追加到**检测到的 agent 指令文件**(CLAUDE.md / AGENTS.md / GEMINI.md,有哪个贴哪个;全都没有就建 AGENTS.md;`--agents=claude,codex,gemini` 可明确指定)。**纯文件复制,零运行期依赖**(Node ≥18 只在安装与 hook 时用)。用户数据(STATE/DECISIONS/TRAPS)任何情况下都不覆盖;`--force` 只更新框架拥有的文件。
+init 会:建 `.flightwake/`(模板 + Stop hook)、复制 4 个 skill 到 `.claude/skills/`、把 Stop hook 并入 `.claude/settings.json`、把触发义务表(含 `<!-- flightwake:begin/end -->` 标记)追加到**检测到的 agent 指令文件**(CLAUDE.md / AGENTS.md / GEMINI.md,有哪个贴哪个;全都没有就建 AGENTS.md;`--agents=claude,codex,gemini` 可明确指定)。**检测到的每个平台都拿到同一套 skill 与 hook,用它自己的方言**:Codex 与 Gemini CLI 从 `.agents/skills/fw-*` 读 skill,STATE 检查分别进 `.codex/hooks.json`(Stop)与 `.gemini/settings.json`(AfterAgent),义务表对 Codex 写 `$fw-coldstart`、对 Claude Code 写 `/fw-coldstart`、对 Gemini 写裸 skill 名。Codex 首次执行会要你信任这个 repo hook 一次。**纯文件复制,零运行期依赖**(Node ≥18 只在安装与 hook 时用)。用户数据(STATE/DECISIONS/TRAPS)任何情况下都不覆盖;`--force` 只更新框架拥有的文件。
 
 ## 使用教程
 
@@ -74,6 +74,8 @@ STATE 的 health 诚不诚实(green/yellow/red)。框架的质量指标只有一
 ### 分阶段实战手册
 
 刚开始跟强模型协作?[docs/workflow.zh-TW.md](docs/workflow.zh-TW.md) 是一张阶段地图:每个阶段**你**该做什么、该对模型说什么——主线给新手,「⚙ 进阶」折叠给 Claude Code 老手。(英文版:[workflow.md](docs/workflow.md))
+
+同一个 repo 用不止一个模型?[docs/multi-agent.zh-TW.md](docs/multi-agent.zh-TW.md) 说明 Claude Code、Codex、Gemini CLI 怎么共用同一份 `.flightwake/`——init 替各家装了什么、各工具怎么叫 skill、以及让交接不分模型都一样的「收尾 → commit → 冷启动」循环。(英文版:[multi-agent.md](docs/multi-agent.md))
 
 ## 为什么会有这个项目
 
@@ -118,11 +120,14 @@ your-repo/
 │   ├── TEMPLATE-record.md   # 飞行记录模板
 │   ├── hooks/state-check.mjs  # Stop hook:STATE 落后 ≥3 commits 时提醒收尾
 │   └── records/             # 飞行记录(每次有意义的收尾一份)
-├── .claude/skills/fw-*/     # 四个 skill
-└── .claude/settings.json    # init 并入 Stop hook 设置
+├── .claude/skills/fw-*/     # 四个 skill(Claude Code)
+├── .claude/settings.json    # init 并入 Stop hook 设置
+├── .agents/skills/fw-*/     # 同一套四个 skill 给 Codex / Gemini CLI(检测到 AGENTS.md / GEMINI.md 才装)
+├── .codex/hooks.json        # Codex 的 Stop hook(检测到 AGENTS.md 才装)
+└── .gemini/settings.json    # Gemini CLI 的 AfterAgent hook(检测到 GEMINI.md 才装)
 ```
 
-skill 与 Stop hook 是 Claude Code 上的便利糖衣;`.flightwake/` 本体是纯 Markdown,任何 agent 读指令文件即可遵循同一套触发义务。与既有 GSD `.planning/` 可并存(旧记录即历史档案)。
+skill 与 hook 是各平台的便利糖衣——同一套四个 skill、同一份检查脚本,装到 Claude Code、Codex、Gemini CLI 各自会去找的位置;`.flightwake/` 本体是进 git 的纯 Markdown,所以每个 agent(和每个人)读写的是同一份状态。其他 agent 读指令文件也能手动遵循同一套触发义务。与既有 GSD `.planning/` 可并存(旧记录即历史档案)。
 
 ## 高级安装
 
@@ -156,7 +161,7 @@ health 颜色(你唯一要盯的事)、STATE 落后量(与 Stop hook 同一套 r
 
 ### CI 端收尾检查(可选)
 
-Stop hook 只在 Claude Code 生效;要把「STATE 不落后」的纪律带到其他 agent 与人类协作者,在 CI 跑同一份脚本——STATE 落后 HEAD ≥3 commits 即失败(`--threshold=N` 可调):
+hook 只在 Claude Code、Codex、Gemini CLI 的 session 里触发;要把「STATE 不落后」的纪律带到其他 agent 与人类协作者,在 CI 跑同一份脚本——STATE 落后 HEAD ≥3 commits 即失败(`--threshold=N` 可调):
 
 ```yaml
 # .github/workflows/flightwake.yml(示例;依你的 repo 惯例建议把 actions 钉到 SHA)
@@ -188,7 +193,7 @@ flightwake 不会把 workflow 写进你的 repo——`.github/workflows/` 权限
 ## 安全性
 
 - **零依赖、无网络、无 install script**:安装器只做文件复制;hook 只用 `git`(无 shell)做只读查询。
-- **写入范围固定**:`init` 只碰 `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`,以及 agent 指令文件里的标记区块;`--private` 时改碰 `.claude/settings.local.json`、`CLAUDE.local.md` 与 `.git/info/exclude` 里的标记区块。`uninstall` 反向清除同一范围。
+- **写入范围固定**:`init` 只碰 `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`、agent 指令文件里的标记区块,以及(检测到 Codex / Gemini CLI 时)`.agents/skills/fw-*`、`.codex/hooks.json`、`.gemini/settings.json`;`--private` 时改碰 `.claude/settings.local.json`、`CLAUDE.local.md` 与 `.git/info/exclude` 里的标记区块(Codex/Gemini 那几个文件只在未受跟踪时才写,并加进 exclude)。`uninstall` 反向清除同一范围。
 - **hook 进 git**:`.flightwake/hooks/state-check.mjs` 是 repo 内的文件,能 commit 的人就能改——与所有 repo-local 设置同级,Claude Code 加载时会要求确认。
 - 漏洞报告见 [SECURITY.md](SECURITY.md)。以 npm Trusted Publishing 发布(附 provenance),可用 `npm audit signatures` 验证。
 

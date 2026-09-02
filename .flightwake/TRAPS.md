@@ -5,6 +5,20 @@
 # 坑 Registry
 
 ---
+name: macos-mktemp-symlink-cwd-mismatch
+type: gotcha
+status: active
+tags: [macos, testing, node, paths]
+discovered: 2026-08-11
+confidence: confirmed
+---
+
+**症狀**:測試在暫存 repo 裡把 `process.cwd()` 記下的路徑(如 registry 條目)拿去和 shell 的 `$TMP` 比對,比對永遠落空——兩邊看起來是同一個目錄。
+**根因**:macOS `mktemp -d` 回傳 `/var/folders/…`,而 `/var` 是 `/private/var` 的 symlink;bash 保留邏輯路徑,Node 的 `process.cwd()` 回實體路徑,字串永不相等。
+**解法/繞法**:測試腳本拿到 `$TMP` 後立刻 `TMP="$(cd "$TMP" && pwd -P)"` 正規化成實體路徑再往下用(smoke.sh 已內建)。任何「shell 路徑 vs Node cwd」的字串比對都適用本條。
+**佐證**:本 repo test/smoke.sh registry 測項首次紅燈(2026-08-11),正規化後綠
+
+---
 name: codeql-action-version-lockstep
 type: trap
 status: active
@@ -68,3 +82,17 @@ discovered: {{YYYY-MM-DD}}
 **根因**:{{一句話}}
 **解法/繞法**:{{怎麼處理}}
 **佐證**:{{commit/record 連結}}
+
+---
+name: codex-exec-stdin-hang
+type: trap
+status: active
+tags: [codex, stdin, automation]
+discovered: 2026-09-02
+confidence: confirmed
+---
+
+**症狀**:從腳本/agent 的 Bash 呼叫 `codex exec '<prompt>'`,印出 `Reading additional input from stdin...` 後永久卡住,零 CPU、不開 session、無錯誤。
+**根因**:`codex exec` 在 stdin 不是 TTY 時會**額外**讀 stdin 到 EOF 當補充輸入(即使已給 prompt 參數);agent 的 shell stdin 是不會關的 pipe,EOF 永遠不來。與 [[hook-stdin-tty-block]] 同一家族,只是這次卡的是 Codex 本體而非我們的 hook。
+**解法/繞法**:非互動呼叫一律 `codex exec … </dev/null`(或 `echo | codex exec …`)。macOS 沒有 `timeout` 指令,別指望它救場。
+**佐證**:[[260902-codex-gemini-native]](真機驗證第一次卡 9 分鐘 0% CPU;加 `</dev/null` 後同指令 100 秒內完成——開關對照一次;第二次 Stop-hook 測試同法直接過,合計兩次)

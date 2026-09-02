@@ -3,7 +3,9 @@
  * flightwake CLI — `npx flightwake init [--force] [--lang=en|zh-TW|zh-CN|ja]` (or `npx github:kaiwutech-TW/flightwake init`)
  * Run at the target repo root: installs .flightwake/ templates + 4 skills + Stop hook,
  * and appends the trigger-obligation table to detected agent instruction files
- * (CLAUDE.md/AGENTS.md/GEMINI.md; override with --agents).
+ * (CLAUDE.md/AGENTS.md/GEMINI.md; override with --agents). Each detected platform gets the skills and the
+ * wrap-up hook in its own dialect: Claude Code → .claude/skills + .claude/settings.json (`/fw-…`);
+ * Codex → .agents/skills + .codex/hooks.json (`$fw-…`); Gemini CLI → .agents/skills + .gemini/settings.json.
  * Pure file copying, cross-platform (Node ≥18). User data (STATE/DECISIONS/TRAPS) is never overwritten;
  * framework-owned files (skills/hooks/TEMPLATE/CLAUDE.md snippet) are not overwritten by default — --force updates them.
  * `update` = re-detect the existing install's options (lang/statusline/private) and force-refresh framework files.
@@ -12,6 +14,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, appendFileS
 import { join, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { homedir } from 'node:os';
 
 const FW_SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = process.cwd();
@@ -58,6 +61,36 @@ const excludePath = () => {
   let p;
   try { p = git('rev-parse', '--git-path', 'info/exclude'); } catch { p = join('.git', 'info', 'exclude'); }
   return isAbsolute(p) ? p : join(TARGET, p);
+};
+
+// Cross-repo registry (~/.flightwake/registry.json) — read-only query layers (flightwake-tower) discover
+// installed repos through it. Best-effort by contract: a registry problem must never fail an install,
+// and a corrupt registry is left in place for inspection rather than clobbered.
+const REGISTRY = join(process.env.FLIGHTWAKE_HOME ?? join(homedir(), '.flightwake'), 'registry.json');
+const readRegistry = () => {
+  if (!existsSync(REGISTRY)) return { version: 1, repos: {} };
+  const reg = JSON.parse(readFileSync(REGISTRY, 'utf8'));
+  if (!reg || typeof reg.repos !== 'object' || Array.isArray(reg.repos)) throw new Error('unexpected shape');
+  return reg;
+};
+const registerRepo = () => {
+  try {
+    const reg = readRegistry();
+    const today = new Date().toISOString().slice(0, 10);
+    reg.repos[TARGET] = { ...(reg.repos[TARGET] ?? { registered: today }), fw_version: VERSION };
+    mkdirSync(dirname(REGISTRY), { recursive: true });
+    writeFileSync(REGISTRY, JSON.stringify(reg, null, 2) + '\n');
+    log(`  reg  ${REGISTRY}${M({ en: ' ← repo registered (cross-repo index)', 'zh-TW': ' ← 已登記(跨 repo 索引)', 'zh-CN': ' ← 已登记(跨 repo 索引)', ja: ' ← 登録済(クロス repo インデックス)' })}`);
+  } catch { log(`  ⚠️  ${REGISTRY} could not be updated — skipped (cross-repo tools won't see this repo)`); }
+};
+const unregisterRepo = () => {
+  try {
+    const reg = readRegistry();
+    if (!(TARGET in reg.repos)) return;
+    delete reg.repos[TARGET];
+    writeFileSync(REGISTRY, JSON.stringify(reg, null, 2) + '\n');
+    log(`  edit ${REGISTRY} ← entry removed`);
+  } catch {}
 };
 
 // ── Detect the existing install (marker version/lang, statusline, private) — drives `update` and lang defaults ──
@@ -118,28 +151,35 @@ if (cmd === 'uninstall') {
     rmSync(p, { recursive: true });
     log(`  rm   ${rel}`);
   };
-  // 1. Skills + framework files inside .flightwake/ (hooks/ removed once emptied; anything the user put there stays)
+  // 1. Skills (both trees: .claude/skills for Claude Code, .agents/skills for Codex/Gemini) + framework files
+  //    inside .flightwake/ (hooks/ removed once emptied; anything the user put there stays)
   for (const s of readdirSync(join(FW_SRC, 'skills', 'en'))) {
-    if (statSync(join(FW_SRC, 'skills', 'en', s)).isDirectory()) rm(`.claude/skills/${s}`);
+    if (!statSync(join(FW_SRC, 'skills', 'en', s)).isDirectory()) continue;
+    rm(`.claude/skills/${s}`);
+    rm(`.agents/skills/${s}`);
   }
   rm('.flightwake/TEMPLATE-record.md');
   rm('.flightwake/hooks/state-check.mjs');
   rm('.flightwake/hooks/statusline.mjs');
   try { rmdirSync(join(TARGET, '.flightwake', 'hooks')); } catch {}
-  // 2. Settings: pluck only flightwake's Stop hook and statusLine, keep everything else; delete the file only if empty after
-  for (const rel of ['.claude/settings.json', '.claude/settings.local.json']) {
+  // 2. Settings: pluck only flightwake's hook (Stop for Claude/Codex, AfterAgent for Gemini) and statusLine,
+  //    keep everything else; delete the file only if empty after
+  for (const [rel, event] of [
+    ['.claude/settings.json', 'Stop'], ['.claude/settings.local.json', 'Stop'],
+    ['.codex/hooks.json', 'Stop'], ['.gemini/settings.json', 'AfterAgent'],
+  ]) {
     const p = join(TARGET, ...rel.split('/'));
     if (!existsSync(p)) continue;
     let s;
     try { s = JSON.parse(readFileSync(p, 'utf8')); }
-    catch { log(`  ⚠️  ${rel} is not valid JSON — remove the state-check.mjs Stop hook and statusline.mjs statusLine manually`); continue; }
+    catch { log(`  ⚠️  ${rel} is not valid JSON — remove the state-check.mjs ${event} hook and statusline.mjs statusLine manually`); continue; }
     let changed = false;
-    const stop = s.hooks?.Stop;
+    const stop = s.hooks?.[event];
     if (Array.isArray(stop) && JSON.stringify(stop).includes('state-check.mjs')) {
       const cleaned = stop
         .map((e) => ({ ...e, hooks: (e.hooks ?? []).filter((h) => !String(h.command ?? '').includes('state-check.mjs')) }))
         .filter((e) => e.hooks.length);
-      if (cleaned.length) s.hooks.Stop = cleaned; else delete s.hooks.Stop;
+      if (cleaned.length) s.hooks[event] = cleaned; else delete s.hooks[event];
       if (s.hooks && !Object.keys(s.hooks).length) delete s.hooks;
       changed = true;
     }
@@ -170,8 +210,11 @@ if (cmd === 'uninstall') {
     }
   } catch {}
   // 5. Remove now-empty directories (non-empty = user has their own things there; rmdir fails silently, which is the point)
-  try { rmdirSync(join(TARGET, '.claude', 'skills')); } catch {}
-  try { rmdirSync(join(TARGET, '.claude')); } catch {}
+  for (const rel of ['.claude/skills', '.claude', '.agents/skills', '.agents', '.codex', '.gemini']) {
+    try { rmdirSync(join(TARGET, ...rel.split('/'))); } catch {}
+  }
+  // 5b. Cross-repo registry entry
+  unregisterRepo();
   // 6. User data
   if (PURGE) {
     rm('.flightwake');
@@ -251,23 +294,51 @@ for (const [read, rel] of [
   log(`  ${existed ? 'update' : 'add '} ${rel}`);
 }
 
-// 3. The four skills → .claude/skills/ (directories only, junk filtered; --force updates)
-mkdirSync(join(TARGET, '.claude', 'skills'), { recursive: true });
-for (const s of readdirSync(join(FW_SRC, 'skills', LANG))) {
-  if (!statSync(join(FW_SRC, 'skills', LANG, s)).isDirectory()) continue;
-  privateExcludes?.push(`.claude/skills/${s}/`);
-  const dst = join(TARGET, '.claude', 'skills', s);
-  const existed = existsSync(dst);
-  if (existed && !FORCE) { log(`  skip .claude/skills/${s}${M({
-    en: ' (exists — --force to update)',
-    'zh-TW': '(已存在,--force 可更新)',
-    'zh-CN': '(已存在,--force 可更新)',
-    ja: '(既存 — --force で更新)',
-  })}`); continue; }
-  noteClobberDir(join(FW_SRC, 'skills', LANG, s), dst, `.claude/skills/${s}`);
-  cpSync(join(FW_SRC, 'skills', LANG, s), dst, { recursive: true, force: true, filter: noJunk });
-  log(`  ${existed ? 'update' : 'add '} .claude/skills/${s}`);
+// Platform groups: an agent's instruction-file candidates count as the same file (installed into the first
+// that exists; a marker in any of them means no duplicate). The group's last candidate is the creation target
+// for --agents. Default mode targets platforms that already have an instruction file; with none anywhere →
+// codex (AGENTS.md, the widest-compatibility standard). The active set also decides where skills and hooks go.
+const GROUPS = {
+  claude: ['.claude/CLAUDE.md', 'CLAUDE.md'],
+  codex: ['AGENTS.md'],
+  gemini: ['GEMINI.md'],
+};
+const agentsArg = args.find((a) => a.startsWith('--agents='));
+const wanted = agentsArg ? agentsArg.slice('--agents='.length).split(',').map((s) => s.trim()).filter(Boolean) : null;
+if (wanted) {
+  const bad = wanted.filter((w) => !GROUPS[w]);
+  if (bad.length) { log(`⚠️  --agents not recognized: ${bad.join(', ')} (available: ${Object.keys(GROUPS).join(', ')})`); process.exit(1); }
 }
+const hasFile = (rel) => existsSync(join(TARGET, ...rel.split('/')));
+const anyInstructionFile = Object.values(GROUPS).flat().some(hasFile);
+const ACTIVE = new Set(Object.keys(GROUPS).filter((name) => (wanted
+  ? wanted.includes(name)
+  : (GROUPS[name].some(hasFile) || (!anyInstructionFile && name === 'codex')))));
+// Codex and Gemini CLI both read `.agents/skills/` (Gemini treats it as an alias of .gemini/skills)
+const AGENTS_SKILLS = ACTIVE.has('codex') || ACTIVE.has('gemini');
+
+// 3. The four skills → .claude/skills/ always, plus .agents/skills/ when Codex/Gemini is in play
+//    (directories only, junk filtered; --force updates; other skills already in those trees are never touched)
+const installSkills = (baseRel) => {
+  mkdirSync(join(TARGET, ...baseRel.split('/')), { recursive: true });
+  for (const s of readdirSync(join(FW_SRC, 'skills', LANG))) {
+    if (!statSync(join(FW_SRC, 'skills', LANG, s)).isDirectory()) continue;
+    privateExcludes?.push(`${baseRel}/${s}/`);
+    const dst = join(TARGET, ...baseRel.split('/'), s);
+    const existed = existsSync(dst);
+    if (existed && !FORCE) { log(`  skip ${baseRel}/${s}${M({
+      en: ' (exists — --force to update)',
+      'zh-TW': '(已存在,--force 可更新)',
+      'zh-CN': '(已存在,--force 可更新)',
+      ja: '(既存 — --force で更新)',
+    })}`); continue; }
+    noteClobberDir(join(FW_SRC, 'skills', LANG, s), dst, `${baseRel}/${s}`);
+    cpSync(join(FW_SRC, 'skills', LANG, s), dst, { recursive: true, force: true, filter: noJunk });
+    log(`  ${existed ? 'update' : 'add '} ${baseRel}/${s}`);
+  }
+};
+installSkills('.claude/skills');
+if (AGENTS_SKILLS) installSkills('.agents/skills');
 
 // 4. Stop hook merged into .claude/settings.json (--private → settings.local.json, stays out of the repo)
 {
@@ -344,36 +415,79 @@ for (const s of readdirSync(join(FW_SRC, 'skills', LANG))) {
   }
 }
 
-// 5. Trigger-obligation snippet → each agent instruction file. Default: detect existing files
-//    (CLAUDE.md/AGENTS.md/GEMINI.md — whichever exists gets it); --agents=claude,codex,gemini targets platforms
-//    (creating missing files); no instruction file at all and nothing specified → create AGENTS.md (widest compatibility).
+// 4b. Codex (.codex/hooks.json, Stop) and Gemini CLI (.gemini/settings.json, AfterAgent) get the same check.
+//     Neither sets $CLAUDE_PROJECT_DIR; both run hooks with the session cwd, so the repo root comes from git.
+//     --private: these files have no local-only twin (Codex's ~/.codex/hooks.json is per-user, not per-repo) —
+//     write only when the file is untracked and exclude it; a tracked file would carry the trace, so skip and warn.
+{
+  const HOOK_CMD_GIT = 'node "$(git rev-parse --show-toplevel)/.flightwake/hooks/state-check.mjs"';
+  for (const [name, rel, event] of [['codex', '.codex/hooks.json', 'Stop'], ['gemini', '.gemini/settings.json', 'AfterAgent']]) {
+    if (!ACTIVE.has(name)) continue;
+    const p = join(TARGET, ...rel.split('/'));
+    if (PRIVATE && existsSync(p) && isTracked(rel)) {
+      log(`  ⚠️  --private: ${rel}${M({
+        en: ` is git-tracked, writing would leave a trace — skipped; add the ${event} hook yourself: ${HOOK_CMD_GIT}`,
+        'zh-TW': ` 受 git 追蹤,寫入會留下痕跡 — 跳過;${event} hook 請自行加:${HOOK_CMD_GIT}`,
+        'zh-CN': ` 受 git 追踪,写入会留下痕迹 — 跳过;${event} hook 请自行加:${HOOK_CMD_GIT}`,
+        ja: ` は git 管理下のため、書き込むと痕跡が残る — スキップ。${event} hook はご自分で追加:${HOOK_CMD_GIT}`,
+      })}`);
+      continue;
+    }
+    let s = {};
+    if (existsSync(p)) {
+      try { s = JSON.parse(readFileSync(p, 'utf8')); }
+      catch { log(`  ⚠️  ${rel} is not valid JSON — skipping hook install; add to hooks.${event} manually: ${HOOK_CMD_GIT}`); continue; }
+    }
+    s.hooks ??= {};
+    s.hooks[event] ??= [];
+    if (JSON.stringify(s.hooks[event]).includes('state-check.mjs')) {
+      log(`  skip ${rel} ${event} hook${M({ en: ' (already set)', 'zh-TW': '(已設定)', 'zh-CN': '(已设定)', ja: '(設定済)' })}`);
+    } else {
+      s.hooks[event].push({ hooks: [{ type: 'command', command: HOOK_CMD_GIT }] });
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, JSON.stringify(s, null, 2) + '\n');
+      log(`  add  ${rel} ← ${event} hook${M({
+        en: ' (STATE staleness check)',
+        'zh-TW': '(STATE 過期檢查)',
+        'zh-CN': '(STATE 过期检查)',
+        ja: '(STATE 遅れチェック)',
+      })}`);
+    }
+    privateExcludes?.push(rel);
+  }
+}
+
+// 5. Trigger-obligation snippet → each active platform's instruction file, in that platform's dialect:
+//    Claude Code invokes skills as `/fw-…`, Codex as `$fw-…`, Gemini CLI activates them by name.
+//    One snippet source per language; the invocation form is rewritten per platform at install time.
 {
   const BEGIN = '<!-- flightwake:begin';
   const END = '<!-- flightwake:end -->';
   const LEGACY = 'flightwake 工作紀律';
   const body = readFileSync(join(FW_SRC, 'snippets', LANG, 'CLAUDE-md-snippet.md'), 'utf8').replace(/^<!--[\s\S]*?-->\n?/, '');
-  const block = `${BEGIN} v${VERSION} lang=${LANG} -->\n${body.trimEnd()}\n${END}\n`;
-  // Platform groups: candidates in a group count as the same file (installed into the first that exists;
-  // a marker in any of them means no duplicate). The group's last candidate is the creation target for --agents.
-  const GROUPS = {
-    claude: ['.claude/CLAUDE.md', 'CLAUDE.md'],
-    codex: ['AGENTS.md'],
-    gemini: ['GEMINI.md'],
+  const INVOKE = { claude: (s) => `\`/${s}\``, codex: (s) => `\`$${s}\``, gemini: (s) => `\`${s}\`` };
+  const NOTE = {
+    codex: M({
+      en: 'Codex: the four skills live in `.agents/skills/fw-*` (mention one with `$fw-…`); the wrap-up reminder is the Stop hook in `.codex/hooks.json` — Codex asks you to trust it once.',
+      'zh-TW': 'Codex:四個 skill 在 `.agents/skills/fw-*`(用 `$fw-…` 點名);收尾提醒是 `.codex/hooks.json` 的 Stop hook——Codex 首次會要你信任它一次。',
+      'zh-CN': 'Codex:四个 skill 在 `.agents/skills/fw-*`(用 `$fw-…` 点名);收尾提醒是 `.codex/hooks.json` 的 Stop hook——Codex 首次会要你信任它一次。',
+      ja: 'Codex:4 つの skill は `.agents/skills/fw-*` にある(`$fw-…` で指名);締めのリマインドは `.codex/hooks.json` の Stop hook——初回に Codex が信頼確認を求める。',
+    }),
+    gemini: M({
+      en: 'Gemini CLI: the four skills live in `.agents/skills/fw-*` (activated by name); the wrap-up reminder is the AfterAgent hook in `.gemini/settings.json`.',
+      'zh-TW': 'Gemini CLI:四個 skill 在 `.agents/skills/fw-*`(用名字啟用);收尾提醒是 `.gemini/settings.json` 的 AfterAgent hook。',
+      'zh-CN': 'Gemini CLI:四个 skill 在 `.agents/skills/fw-*`(用名字启用);收尾提醒是 `.gemini/settings.json` 的 AfterAgent hook。',
+      ja: 'Gemini CLI:4 つの skill は `.agents/skills/fw-*` にある(名前で起動);締めのリマインドは `.gemini/settings.json` の AfterAgent hook。',
+    }),
   };
-  const agentsArg = args.find((a) => a.startsWith('--agents='));
-  const wanted = agentsArg ? agentsArg.slice('--agents='.length).split(',').map((s) => s.trim()).filter(Boolean) : null;
-  if (wanted) {
-    const bad = wanted.filter((w) => !GROUPS[w]);
-    if (bad.length) { log(`⚠️  --agents not recognized: ${bad.join(', ')} (available: ${Object.keys(GROUPS).join(', ')})`); process.exit(1); }
-  }
-  const anyInstructionFile = Object.values(GROUPS).flat().some((rel) => existsSync(join(TARGET, ...rel.split('/'))));
+  const blockFor = (name) => {
+    const dialect = body.replace(/`\/(fw-[a-z]+)`/g, (_, s) => INVOKE[name](s)).trimEnd();
+    return `${BEGIN} v${VERSION} lang=${LANG} -->\n${dialect}${NOTE[name] ? `\n${NOTE[name]}` : ''}\n${END}\n`;
+  };
   for (const [name, rels] of Object.entries(GROUPS)) {
+    if (!ACTIVE.has(name)) continue;
+    const block = blockFor(name);
     const files = rels.map((rel) => ({ rel, path: join(TARGET, ...rel.split('/')) }));
-    const existing = files.filter((f) => existsSync(f.path));
-    // Default mode only installs into platforms that already have an instruction file;
-    // with none anywhere, fall back to the codex group and create AGENTS.md
-    const fallback = !wanted && !anyInstructionFile && name === 'codex';
-    if (wanted ? !wanted.includes(name) : (!existing.length && !fallback)) continue;
     // --private: writing to a git-tracked file always leaves a trace (exclude has no effect on tracked files).
     // claude has a local equivalent, CLAUDE.local.md → detection still scans the originals, writes go to the local file;
     // other platforms have no equivalent → skip tracked files.
@@ -471,6 +585,9 @@ if (clobbered.length) {
   })}`);
 }
 
+// 7. Cross-repo registry: init and update both register (existing installs enroll on their next update)
+registerRepo();
+
 if (IS_UPDATE) {
   log(M({
     en: `\n✅ updated to v${VERSION}.`,
@@ -479,48 +596,54 @@ if (IS_UPDATE) {
     ja: `\n✅ v${VERSION} に更新しました。`,
   }));
 } else {
+  const addPaths = ['.flightwake', '.claude',
+    ...(AGENTS_SKILLS ? ['.agents'] : []),
+    ...(ACTIVE.has('codex') ? ['.codex', 'AGENTS.md'] : []),
+    ...(ACTIVE.has('gemini') ? ['.gemini', 'GEMINI.md'] : []),
+    ...(ACTIVE.has('claude') ? ['CLAUDE.md'] : []),
+  ].join(' ');
   log(PRIVATE ? M({
     en: `
 ✅ done (--private). Records stay local; git does not track them. Costs and caveats:
    - Records aren't shared with the repo: teammates and other machines can't see STATE/records (you give up flightwake's sharing value)
    - .git/info/exclude is purely local: after a fresh clone, rerun init --private
    - To go shared again: delete the flightwake block from .git/info/exclude, then git add .flightwake .claude
-   Next: edit .flightwake/STATE.md with the current situation (or have Claude initialize it with /fw-record)`,
+   Next: edit .flightwake/STATE.md with the current situation (or have your agent initialize it with fw-record)`,
     'zh-TW': `
 ✅ done(--private)。紀錄只留本機,git 不追蹤。代價與注意:
    - 紀錄不隨 repo 共享:隊友與其他機器看不到 STATE/records(放棄 flightwake 的共享價值)
    - .git/info/exclude 純本地:重新 clone 後需重跑 init --private
    - 想改回共享:刪除 .git/info/exclude 的 flightwake 區塊,再 git add .flightwake .claude
-   下一步:編輯 .flightwake/STATE.md 填入現況(或讓 Claude 用 /fw-record 初始化)`,
+   下一步:編輯 .flightwake/STATE.md 填入現況(或讓 agent 用 fw-record 初始化)`,
     'zh-CN': `
 ✅ done(--private)。记录只留本机,git 不追踪。代价与注意:
    - 记录不随 repo 共享:队友与其他机器看不到 STATE/records(放弃 flightwake 的共享价值)
    - .git/info/exclude 纯本地:重新 clone 后需重跑 init --private
    - 想改回共享:删除 .git/info/exclude 的 flightwake 区块,再 git add .flightwake .claude
-   下一步:编辑 .flightwake/STATE.md 填入现况(或让 Claude 用 /fw-record 初始化)`,
+   下一步:编辑 .flightwake/STATE.md 填入现况(或让 agent 用 fw-record 初始化)`,
     ja: `
 ✅ 完了(--private)。記録はローカルのみ、git は追跡しません。代償と注意:
    - 記録は repo と共有されない:チームメイトや別のマシンから STATE/records が見えない(flightwake の共有価値を手放す)
    - .git/info/exclude は純粋にローカル:clone し直したら init --private を再実行
    - 共有に戻すには:.git/info/exclude の flightwake ブロックを削除し、git add .flightwake .claude
-   次:.flightwake/STATE.md に現状を書く(または Claude に /fw-record で初期化させる)`,
+   次:.flightwake/STATE.md に現状を書く(または agent に fw-record で初期化させる)`,
   }) : M({
     en: `
 ✅ done. Next:
-   1. Edit .flightwake/STATE.md with the current situation (or have Claude initialize it with /fw-record)
-   2. git add .flightwake .claude CLAUDE.md && git commit`,
+   1. Edit .flightwake/STATE.md with the current situation (or have your agent initialize it with fw-record)
+   2. git add ${addPaths} && git commit`,
     'zh-TW': `
 ✅ done。下一步:
-   1. 編輯 .flightwake/STATE.md 填入現況(或讓 Claude 用 /fw-record 初始化)
-   2. git add .flightwake .claude CLAUDE.md && git commit`,
+   1. 編輯 .flightwake/STATE.md 填入現況(或讓 agent 用 fw-record 初始化)
+   2. git add ${addPaths} && git commit`,
     'zh-CN': `
 ✅ done。下一步:
-   1. 编辑 .flightwake/STATE.md 填入现况(或让 Claude 用 /fw-record 初始化)
-   2. git add .flightwake .claude CLAUDE.md && git commit`,
+   1. 编辑 .flightwake/STATE.md 填入现况(或让 agent 用 fw-record 初始化)
+   2. git add ${addPaths} && git commit`,
     ja: `
 ✅ 完了。次:
-   1. .flightwake/STATE.md に現状を書く(または Claude に /fw-record で初期化させる)
-   2. git add .flightwake .claude CLAUDE.md && git commit`,
+   1. .flightwake/STATE.md に現状を書く(または agent に fw-record で初期化させる)
+   2. git add ${addPaths} && git commit`,
   }));
   // Language was never chosen — English is the documented default, but the alternatives have to be discoverable.
   // No auto-detection on purpose: terminal LANG and the OS locale routinely disagree, and a confident wrong

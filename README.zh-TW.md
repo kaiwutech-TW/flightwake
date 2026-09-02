@@ -34,7 +34,7 @@ npx flightwake update                           # 就地升級,沿用你裝過�
 
 **不要手動翻譯裝好的檔案。** marker 記著你裝的是哪個語言,下次 `update` 會用那個語言的來源刷新,你的修改會消失。要換語言請重跑 init 加 `--lang`;若已經手改過,現在 init/update 會逐檔列出它覆蓋了什麼。
 
-init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claude/skills/`、把 Stop hook 併入 `.claude/settings.json`、把觸發義務表(含 `<!-- flightwake:begin/end -->` 標記)附加到**偵測到的 agent 指令檔**(CLAUDE.md / AGENTS.md / GEMINI.md,有哪個貼哪個;全都沒有就建 AGENTS.md;`--agents=claude,codex,gemini` 可明確指定)。**純檔案複製,零執行期依賴**(Node ≥18 只在安裝與 hook 時用)。使用者資料(STATE/DECISIONS/TRAPS)任何情況下都不覆蓋;`--force` 只更新框架擁有的檔案。
+init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claude/skills/`、把 Stop hook 併入 `.claude/settings.json`、把觸發義務表(含 `<!-- flightwake:begin/end -->` 標記)附加到**偵測到的 agent 指令檔**(CLAUDE.md / AGENTS.md / GEMINI.md,有哪個貼哪個;全都沒有就建 AGENTS.md;`--agents=claude,codex,gemini` 可明確指定)。**偵測到的每個平台都拿到同一套 skill 與 hook,用它自己的方言**:Codex 與 Gemini CLI 從 `.agents/skills/fw-*` 讀 skill,STATE 檢查分別進 `.codex/hooks.json`(Stop)與 `.gemini/settings.json`(AfterAgent),義務表對 Codex 寫 `$fw-coldstart`、對 Claude Code 寫 `/fw-coldstart`、對 Gemini 寫裸 skill 名。Codex 首次執行會要你信任這個 repo hook 一次。**純檔案複製,零執行期依賴**(Node ≥18 只在安裝與 hook 時用)。使用者資料(STATE/DECISIONS/TRAPS)任何情況下都不覆蓋;`--force` 只更新框架擁有的檔案。
 
 ## 使用教學
 
@@ -74,6 +74,8 @@ STATE 的 health 誠不誠實(green/yellow/red)。框架的品質指標只有一
 ### 分階段實戰手冊
 
 剛開始跟強模型協作?[docs/workflow.md](docs/workflow.md) 是一張階段地圖:每個階段**你**該做什麼、該對模型說什麼——主線給新手,「⚙ 進階」摺疊給 Claude Code 老手。
+
+同一個 repo 用不只一個模型?[docs/multi-agent.zh-TW.md](docs/multi-agent.zh-TW.md) 說明 Claude Code、Codex、Gemini CLI 怎麼共用同一份 `.flightwake/`——init 替各家裝了什麼、各工具怎麼叫 skill、以及讓交接不分模型都一樣的「收尾 → commit → 冷啟動」循環。(英文版:[multi-agent.md](docs/multi-agent.md))
 
 ## 為什麼會有這個專案
 
@@ -118,11 +120,14 @@ your-repo/
 │   ├── TEMPLATE-record.md   # 飛行紀錄模板
 │   ├── hooks/state-check.mjs  # Stop hook:STATE 落後 ≥3 commits 時提醒收尾
 │   └── records/             # 飛行紀錄(每次有意義的收尾一份)
-├── .claude/skills/fw-*/     # 四個 skill
-└── .claude/settings.json    # init 併入 Stop hook 設定
+├── .claude/skills/fw-*/     # 四個 skill(Claude Code)
+├── .claude/settings.json    # init 併入 Stop hook 設定
+├── .agents/skills/fw-*/     # 同一套四個 skill 給 Codex / Gemini CLI(偵測到 AGENTS.md / GEMINI.md 才裝)
+├── .codex/hooks.json        # Codex 的 Stop hook(偵測到 AGENTS.md 才裝)
+└── .gemini/settings.json    # Gemini CLI 的 AfterAgent hook(偵測到 GEMINI.md 才裝)
 ```
 
-skill 與 Stop hook 是 Claude Code 上的便利糖衣;`.flightwake/` 本體是純 Markdown,任何 agent 讀指令檔即可遵循同一套觸發義務。與既有 GSD `.planning/` 可並存(舊紀錄即歷史檔案)。
+skill 與 hook 是各平台的便利糖衣——同一套四個 skill、同一份檢查腳本,裝到 Claude Code、Codex、Gemini CLI 各自會去找的位置;`.flightwake/` 本體是進 git 的純 Markdown,所以每個 agent(和每個人)讀寫的是同一份狀態。其他 agent 讀指令檔也能手動遵循同一套觸發義務。與既有 GSD `.planning/` 可並存(舊紀錄即歷史檔案)。
 
 ## 進階安裝
 
@@ -156,7 +161,7 @@ health 顏色(你唯一要盯的事)、STATE 落後量(與 Stop hook 同一套 r
 
 ### CI 端收尾檢查(選配)
 
-Stop hook 只在 Claude Code 生效;要把「STATE 不落後」的紀律帶到其他 agent 與人類協作者,在 CI 跑同一份腳本——STATE 落後 HEAD ≥3 commits 即失敗(`--threshold=N` 可調):
+hook 只在 Claude Code、Codex、Gemini CLI 的 session 裡觸發;要把「STATE 不落後」的紀律帶到其他 agent 與人類協作者,在 CI 跑同一份腳本——STATE 落後 HEAD ≥3 commits 即失敗(`--threshold=N` 可調):
 
 ```yaml
 # .github/workflows/flightwake.yml(範例;依你的 repo 慣例建議把 actions 釘到 SHA)
@@ -188,7 +193,7 @@ flightwake 不會把 workflow 寫進你的 repo——`.github/workflows/` 權限
 ## 安全性
 
 - **零依賴、無網路、無 install script**:安裝器只做檔案複製;hook 只用 `git`(無 shell)做唯讀查詢。
-- **寫入範圍固定**:`init` 只碰 `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`,以及 agent 指令檔裡的標記區塊;`--private` 時改碰 `.claude/settings.local.json`、`CLAUDE.local.md` 與 `.git/info/exclude` 裡的標記區塊。`uninstall` 反向清除同一範圍。
+- **寫入範圍固定**:`init` 只碰 `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`、agent 指令檔裡的標記區塊,以及(偵測到 Codex / Gemini CLI 時)`.agents/skills/fw-*`、`.codex/hooks.json`、`.gemini/settings.json`;`--private` 時改碰 `.claude/settings.local.json`、`CLAUDE.local.md` 與 `.git/info/exclude` 裡的標記區塊(Codex/Gemini 那幾個檔只在未受追蹤時才寫,並加進 exclude)。`uninstall` 反向清除同一範圍。
 - **hook 進 git**:`.flightwake/hooks/state-check.mjs` 是 repo 內的檔案,能 commit 的人就能改——與所有 repo-local 設定同級,Claude Code 載入時會要求確認。
 - 漏洞回報見 [SECURITY.md](SECURITY.md)。以 npm Trusted Publishing 發布(附 provenance),可用 `npm audit signatures` 驗證。
 

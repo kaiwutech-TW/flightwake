@@ -9,6 +9,11 @@ export FLIGHTWAKE_NO_UPDATE_CHECK=1
 FW="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+# macOS: mktemp gives /var/... (a symlink) while node's process.cwd() reports /private/var/... —
+# resolve to the physical path so registry keys (recorded from cwd) match the paths tests compare against
+TMP="$(cd "$TMP" && pwd -P)"
+# Isolate the cross-repo registry — without this, every test repo below lands in the real ~/.flightwake/registry.json
+export FLIGHTWAKE_HOME="$TMP/fw-home"
 
 fail() { echo "❌ FAIL: $1"; exit 1; }
 pass() { echo "  ok: $1"; }
@@ -92,6 +97,12 @@ git add -A && git commit -qm "install flightwake"
 for i in 1 2 3; do echo "$i" > "f$i.txt" && git add "f$i.txt" && git commit -qm "c$i"; done
 out=$(echo '{}' | node .flightwake/hooks/state-check.mjs)
 echo "$out" | grep -q '"decision":"block"' || fail "落後 3 commits 時 hook 應該 block(got: $out)"
+echo "$out" | grep -q '/fw-record' && fail "hook 訊息不得寫死 Claude 的斜線指令(Codex 是 \$fw-record)"
+# 同一份腳本三個宿主:Codex 的 Stop 也吃 block;Gemini 的 AfterAgent 要 deny
+out=$(echo '{"hook_event_name":"Stop","turn_id":"t1","model":"gpt"}' | node .flightwake/hooks/state-check.mjs)
+echo "$out" | grep -q '"decision":"block"' || fail "Codex 形狀的 Stop stdin 應 block(got: $out)"
+out=$(echo '{"hook_event_name":"AfterAgent","prompt":"x","prompt_response":"y"}' | node .flightwake/hooks/state-check.mjs)
+echo "$out" | grep -q '"decision":"deny"' || fail "Gemini AfterAgent 應回 deny(got: $out)"
 node .flightwake/hooks/state-check.mjs --ci >/dev/null 2>&1 && fail "--ci 落後時應退出非零"
 node .flightwake/hooks/state-check.mjs --ci --threshold=99 >/dev/null 2>&1 || fail "--ci 未達門檻時應通過"
 node .flightwake/hooks/state-check.mjs --ci --threshold=abc >/dev/null 2>&1 && fail "--threshold 非法值應退回預設 3,不得靜默變成永不觸發"
@@ -137,9 +148,21 @@ git init -q && git config user.email t@t.t && git config user.name t
 node "$CLI" init >/dev/null
 [ -f AGENTS.md ] || fail "無指令檔時應建 AGENTS.md"
 [ "$(grep -c 'flightwake:begin' AGENTS.md)" = 1 ] || fail "AGENTS.md 片段不是恰好一份"
+# Codex 方言:義務表寫 $fw-…、skill 落 .agents/skills、Stop hook 進 .codex/hooks.json
+grep -q '`\$fw-coldstart`' AGENTS.md || fail "AGENTS.md 應以 Codex 語法 \$fw-coldstart 指涉 skill"
+grep -q '`/fw-' AGENTS.md && fail "AGENTS.md 不得殘留 Claude 的 /fw- 斜線指令(Codex 沒這指令)"
+grep -q '\.agents/skills' AGENTS.md || fail "AGENTS.md 應說明 skill 在 .agents/skills"
+for s in fw-coldstart fw-record fw-trap fw-handoff; do
+  [ -f ".agents/skills/$s/SKILL.md" ] || fail ".agents/skills/$s 應就位(Codex/Gemini 讀這裡)"
+done
+node -e "const s=require('./.codex/hooks.json'); if(!JSON.stringify(s.hooks.Stop).includes('state-check.mjs')) process.exit(1)" \
+  || fail ".codex/hooks.json 無效或缺 Stop hook"
+grep -q 'CLAUDE_PROJECT_DIR' .codex/hooks.json && fail "Codex hook 不得依賴 \$CLAUDE_PROJECT_DIR(Codex 不設這個變數)"
+[ -f .gemini/settings.json ] && fail "沒有 GEMINI.md 時不該裝 Gemini hook"
 node "$CLI" init >/dev/null
 [ "$(grep -c 'flightwake:begin' AGENTS.md)" = 1 ] || fail "重跑後 AGENTS.md 片段重複"
-pass "無指令檔 → 建 AGENTS.md"
+[ "$(node -e "console.log(require('./.codex/hooks.json').hooks.Stop.length)")" = 1 ] || fail "重跑後 Codex Stop hook 重複"
+pass "無指令檔 → 建 AGENTS.md(Codex 方言 + .agents/skills + .codex hook)"
 
 # 9. 多平台:CLAUDE.md + GEMINI.md 同存 → 各貼一份、不多建;--agents 指定缺檔平台會建檔;不認得的值退出非零
 REPO3="$TMP/repo3"
@@ -151,10 +174,19 @@ node "$CLI" init >/dev/null
 [ "$(grep -c 'flightwake:begin' CLAUDE.md)" = 1 ] || fail "CLAUDE.md 應恰好一份片段"
 [ "$(grep -c 'flightwake:begin' GEMINI.md)" = 1 ] || fail "GEMINI.md 應恰好一份片段"
 [ -f AGENTS.md ] && fail "已有指令檔時不應多建 AGENTS.md"
+# 各平台各自的方言:Claude 保留 /fw-,Gemini 用裸名;Gemini 的 hook 是 AfterAgent;Codex 沒被偵測到就不裝 .codex
+grep -q '`/fw-coldstart`' CLAUDE.md || fail "CLAUDE.md 應保留 Claude 的 /fw-coldstart"
+grep -q '`fw-coldstart`' GEMINI.md || fail "GEMINI.md 應以裸名 fw-coldstart 指涉 skill"
+grep -q '`/fw-\|`\$fw-' GEMINI.md && fail "GEMINI.md 不得出現 /fw- 或 \$fw- 指令形式"
+[ -f .agents/skills/fw-coldstart/SKILL.md ] || fail "GEMINI.md 存在時 skill 應落 .agents/skills"
+node -e "const s=require('./.gemini/settings.json'); if(!JSON.stringify(s.hooks.AfterAgent).includes('state-check.mjs')) process.exit(1)" \
+  || fail ".gemini/settings.json 無效或缺 AfterAgent hook"
+[ -f .codex/hooks.json ] && fail "未偵測到 Codex 時不該裝 .codex/hooks.json"
 node "$CLI" init --agents=codex >/dev/null
 [ "$(grep -c 'flightwake:begin' AGENTS.md)" = 1 ] || fail "--agents=codex 應建 AGENTS.md 並貼片段"
+[ -f .codex/hooks.json ] || fail "--agents=codex 應裝 .codex/hooks.json"
 node "$CLI" init --agents=nonsense >/dev/null 2>&1 && fail "--agents 不認得的值應退出非零"
-pass "多平台偵測與 --agents"
+pass "多平台偵測與 --agents(各平台方言)"
 
 # 10. --private:全部寫入被 exclude、hook 進 settings.local.json、受追蹤的 CLAUDE.md 不碰、git status 乾淨、重跑冪等
 REPO4="$TMP/repo4"
@@ -197,6 +229,35 @@ grep -q 'state-check' .claude/settings.json 2>/dev/null && fail "uninstall 應�
 grep -q 'user-hook' .claude/settings.json || fail "uninstall 不應動使用者自己的 hook"
 node "$CLI" uninstall >/dev/null || fail "重跑 uninstall 應成功(冪等)"
 pass "uninstall 反向清除"
+
+# 11b. Codex/Gemini 對稱:uninstall 只拿走自己的 skill 與 hook,使用者放在 .agents/skills 與 hooks.json 的東西不動;
+#      flightwake 建的空目錄(.agents/.codex/.gemini)清掉
+REPO5B="$TMP/repo5b"
+mkdir -p "$REPO5B" && cd "$REPO5B"
+git init -q && git config user.email t@t.t && git config user.name t
+echo "# 專案說明" > AGENTS.md
+echo "# g" > GEMINI.md
+node "$CLI" init >/dev/null
+mkdir -p .agents/skills/mine && echo "user skill" > .agents/skills/mine/SKILL.md
+node -e "const f='./.codex/hooks.json',fs=require('fs'),s=require(f);s.hooks.Stop.push({hooks:[{type:'command',command:'echo user-hook'}]});fs.writeFileSync(f,JSON.stringify(s,null,2))"
+node "$CLI" uninstall >/dev/null
+[ -d .agents/skills/fw-coldstart ] && fail "uninstall 應刪 .agents/skills 的 fw skill"
+[ -f .agents/skills/mine/SKILL.md ] || fail "uninstall 不應動使用者自己的 .agents/skills"
+grep -q 'state-check' .codex/hooks.json && fail "uninstall 應移除 Codex Stop hook"
+grep -q 'user-hook' .codex/hooks.json || fail "uninstall 不應動使用者自己的 Codex hook"
+[ -f .gemini/settings.json ] && fail "只有 flightwake 內容的 .gemini/settings.json 應被刪除"
+[ -d .gemini ] && fail "空的 .gemini 目錄應被清掉"
+grep -q 'flightwake:begin' AGENTS.md && fail "uninstall 應移除 AGENTS.md 片段"
+grep -q '專案說明' AGENTS.md || fail "uninstall 不應動 AGENTS.md 其他內容"
+grep -q "# g" GEMINI.md || fail "uninstall 不應動使用者自己建的 GEMINI.md"
+REPO5C="$TMP/repo5c"
+mkdir -p "$REPO5C" && cd "$REPO5C"
+git init -q && git config user.email t@t.t && git config user.name t
+node "$CLI" init >/dev/null && node "$CLI" uninstall >/dev/null
+[ -d .agents ] && fail "無指令檔安裝後 uninstall 應清掉 .agents"
+[ -d .codex ] && fail "無指令檔安裝後 uninstall 應清掉 .codex"
+[ -f AGENTS.md ] && fail "flightwake 建的 AGENTS.md 清空後應刪除"
+pass "uninstall 對 Codex/Gemini 對稱"
 
 # 12. --private 安裝後 uninstall:exclude/CLAUDE.local.md/settings.local.json 全清;--purge 連使用者資料一起刪
 REPO6="$TMP/repo6"
@@ -336,6 +397,26 @@ mkdir -p "$REPO11" && cd "$REPO11"
 git init -q && git config user.email t@t.t && git config user.name t
 node "$CLI" update >/dev/null 2>&1 && fail "未安裝的 repo 跑 update 應退出非零"
 pass "舊 marker 相容與 update 防呆"
+
+# 20. registry:init 登記 repo 路徑、update 保留 registered 日期、uninstall 移除、壞檔不炸安裝也不被覆蓋
+REG="$FLIGHTWAKE_HOME/registry.json"
+node -e "const r=require('$REG'); if(!r.repos['$TMP/repo']) process.exit(1)" || fail "init 後 registry 應含 repo 路徑"
+REPO12="$TMP/repo12"
+mkdir -p "$REPO12" && cd "$REPO12"
+git init -q && git config user.email t@t.t && git config user.name t
+node "$CLI" init >/dev/null
+node -e "const r=require('$REG'); if(r.repos['$REPO12']?.fw_version!=='$FWV') process.exit(1)" || fail "registry 條目應記 fw_version=$FWV"
+reg1=$(node -e "console.log(require('$REG').repos['$REPO12'].registered)")
+node "$CLI" update >/dev/null
+reg2=$(node -e "console.log(require('$REG').repos['$REPO12'].registered)")
+[ "$reg1" = "$reg2" ] || fail "update 不應改 registered 日期(got: $reg1 → $reg2)"
+node "$CLI" uninstall >/dev/null
+node -e "const r=require('$REG'); if(r.repos['$REPO12']) process.exit(1)" || fail "uninstall 應移除 registry 條目"
+echo 'not json' > "$REG"
+node "$CLI" init >/dev/null || fail "registry 壞檔不得讓 init 失敗"
+grep -q 'not json' "$REG" || fail "壞 registry 應原樣保留供檢查,不得被覆蓋"
+node "$CLI" uninstall >/dev/null || fail "registry 壞檔不得讓 uninstall 失敗"
+pass "registry 登記/移除/壞檔容錯"
 
 echo ""
 echo "✅ smoke 全過"
