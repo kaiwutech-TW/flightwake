@@ -2,6 +2,7 @@
 
 > Who this is for: developers who can code but are new to working with a Fable 5-class model.
 > Each stage has a collapsible "⚙ Advanced" section for people already fluent in Claude Code; the main line never depends on it.
+> Skills are written as `/fw-…` (Claude Code syntax) throughout; in Codex the same skill is `$fw-…`, and in Gemini CLI you just name it.
 > 繁體中文版:[workflow.zh-TW.md](workflow.zh-TW.md)
 >
 > The premise: **the model's capability is no longer the bottleneck. Your bottleneck is knowing what to do now, and what to say.**

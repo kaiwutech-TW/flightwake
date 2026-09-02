@@ -40,7 +40,7 @@ wrote them. Drop `--statusline` from any line if you don't want the gauge.
 `update` refreshes them from that language's source and your edits disappear. Rerun init with `--lang` instead;
 if you already did hand-edit, init/update will now name each file it overwrote.
 
-init creates `.flightwake/` (templates + Stop hook), copies 4 skills into `.claude/skills/`, merges the Stop hook into `.claude/settings.json`, and appends the trigger-obligation table (wrapped in `<!-- flightwake:begin/end -->` markers) to **detected agent instruction files** (CLAUDE.md / AGENTS.md / GEMINI.md — whichever exist; if none, it creates AGENTS.md; `--agents=claude,codex,gemini` selects explicitly). **Pure file copying, zero runtime dependencies** (Node ≥18 used only at install time and by the hooks). User data (STATE/DECISIONS/TRAPS) is never overwritten; `--force` only updates framework-owned files. `update` re-detects what you installed and refreshes it from the latest version.
+init creates `.flightwake/` (templates + Stop hook), copies 4 skills into `.claude/skills/`, merges the Stop hook into `.claude/settings.json`, and appends the trigger-obligation table (wrapped in `<!-- flightwake:begin/end -->` markers) to **detected agent instruction files** (CLAUDE.md / AGENTS.md / GEMINI.md — whichever exist; if none, it creates AGENTS.md; `--agents=claude,codex,gemini` selects explicitly). **Each detected platform gets the same skills and hook in its own dialect**: Codex and Gemini CLI read the skills from `.agents/skills/fw-*`, the STATE check goes into `.codex/hooks.json` (Stop) or `.gemini/settings.json` (AfterAgent), and the table says `$fw-coldstart` to Codex, `/fw-coldstart` to Claude Code, and the bare skill name to Gemini. Codex asks you to trust the repo hook once on first run. **Pure file copying, zero runtime dependencies** (Node ≥18 used only at install time and by the hooks). User data (STATE/DECISIONS/TRAPS) is never overwritten; `--force` only updates framework-owned files. `update` re-detects what you installed and refreshes it from the latest version.
 
 ## How to use
 
@@ -82,6 +82,8 @@ This repo dogfoods its own framework: [`.flightwake/`](.flightwake/) contains th
 ### Stage-by-stage playbook
 
 New to working with a strong model? [docs/workflow.md](docs/workflow.md) is a stage map of what **you** do and what to say to the model at each point — beginner main line, advanced folds for Claude Code veterans. (繁體中文版:[workflow.zh-TW.md](docs/workflow.zh-TW.md))
+
+Using more than one model on the same repo? [docs/multi-agent.md](docs/multi-agent.md) shows how Claude Code, Codex, and Gemini CLI share one `.flightwake/` — what init installs for each, how to invoke the skills in each tool, and the wrap-up → commit → cold-start loop that makes the handover identical whichever model wrote last. (繁體中文版:[multi-agent.zh-TW.md](docs/multi-agent.zh-TW.md))
 
 ## Why this project exists
 
@@ -126,11 +128,14 @@ your-repo/
 │   ├── TEMPLATE-record.md   # flight-record template
 │   ├── hooks/state-check.mjs  # Stop hook: reminds you to wrap up when STATE lags ≥3 commits
 │   └── records/             # flight records (one per meaningful wrap-up)
-├── .claude/skills/fw-*/     # the four skills
-└── .claude/settings.json    # init merges the Stop hook config here
+├── .claude/skills/fw-*/     # the four skills (Claude Code)
+├── .claude/settings.json    # init merges the Stop hook config here
+├── .agents/skills/fw-*/     # the same four skills for Codex / Gemini CLI (only when AGENTS.md / GEMINI.md is detected)
+├── .codex/hooks.json        # Codex Stop hook (only when AGENTS.md is detected)
+└── .gemini/settings.json    # Gemini CLI AfterAgent hook (only when GEMINI.md is detected)
 ```
 
-The skills and Stop hook are convenience sugar for Claude Code; `.flightwake/` itself is plain Markdown — any agent that reads the instruction file can follow the same trigger obligations. Coexists with an existing GSD `.planning/` (old records become historical archives).
+The skills and hooks are convenience sugar per platform — the same four skills and the same check script, installed where Claude Code, Codex, and Gemini CLI each look for them; `.flightwake/` itself is plain Markdown in git, so every agent (and every human) reads and writes the same state. Any other agent that reads the instruction file can follow the same trigger obligations by hand. Coexists with an existing GSD `.planning/` (old records become historical archives).
 
 ## Advanced install
 
@@ -164,7 +169,7 @@ The gauge also tells you when a newer flightwake exists (`→ v0.9.1 available: 
 
 ### CI-side wrap-up check (optional)
 
-The Stop hook only works inside Claude Code; to extend the "STATE must not lag" discipline to other agents and human collaborators, run the same script in CI — it fails when STATE lags HEAD by ≥3 commits (tunable via `--threshold=N`):
+The hook fires only inside Claude Code, Codex, and Gemini CLI sessions; to extend the "STATE must not lag" discipline to other agents and human collaborators, run the same script in CI — it fails when STATE lags HEAD by ≥3 commits (tunable via `--threshold=N`):
 
 ```yaml
 # .github/workflows/flightwake.yml (example; pin actions to SHAs per your repo's conventions)
@@ -196,8 +201,8 @@ flightwake will not write a workflow into your repo — `.github/workflows/` is 
 ## Security
 
 - **Zero dependencies, no network, no install scripts**: the installer only copies files; the hook only uses `git` (no shell) for read-only queries.
-- **Fixed write scope**: `init` only touches `.flightwake/`, `.claude/skills/fw-*`, `.claude/settings.json`, and the marker blocks inside agent instruction files; with `--private` it instead touches `.claude/settings.local.json`, `CLAUDE.local.md`, and the marker block in `.git/info/exclude`. `uninstall` reverses the same scope.
-- **The hook lives in git**: `.flightwake/hooks/state-check.mjs` is a file in your repo — anyone who can commit can change it, same trust level as all repo-local config; Claude Code asks for confirmation when loading it.
+- **Fixed write scope**: `init` only touches `.flightwake/`, `.claude/skills/fw-*`, `.claude/settings.json`, the marker blocks inside agent instruction files, and — when Codex / Gemini CLI is detected — `.agents/skills/fw-*`, `.codex/hooks.json`, `.gemini/settings.json`; with `--private` it instead touches `.claude/settings.local.json`, `CLAUDE.local.md`, and the marker block in `.git/info/exclude` (the Codex/Gemini files are written only while untracked, and excluded). `uninstall` reverses the same scope.
+- **The hook lives in git**: `.flightwake/hooks/state-check.mjs` is a file in your repo — anyone who can commit can change it, same trust level as all repo-local config; Claude Code asks for confirmation when loading it, and Codex records a trust hash per hook definition and re-asks whenever it changes.
 - Vulnerability reports: see [SECURITY.md](SECURITY.md). Published to npm via Trusted Publishing (with provenance); verify with `npm audit signatures`.
 
 ## Status

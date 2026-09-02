@@ -6,6 +6,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 Releases before 0.7.1 predate the public launch and were never published; the history starts there.
 
+## [Unreleased]
+
+### Added
+- **Codex and Gemini CLI get the skills and the wrap-up hook, not just the obligation table.** Until now
+  `--agents=codex` (or a repo that only had AGENTS.md) received a table that said "run `/fw-coldstart`" — a
+  Claude Code slash command Codex cannot see — while the four skills were only ever copied into `.claude/skills/`.
+  init/update now install, per detected platform: the skills into `.agents/skills/fw-*` (read by both Codex and
+  Gemini CLI) alongside `.claude/skills/`; the STATE staleness check as a Stop hook in `.codex/hooks.json` and
+  as an AfterAgent hook in `.gemini/settings.json` (same script — it answers `block` to Claude/Codex and `deny`
+  to Gemini, which is that host's spelling of the same thing); and the obligation table in each platform's
+  dialect (`/fw-…` for Claude Code, `$fw-…` for Codex, bare skill names for Gemini), with a one-line note on
+  where the skills and hook live. `uninstall` reverses all of it and leaves other skills/hooks in those trees
+  untouched. The `.flightwake/` data layer was always shared; what an agent could *do* with it was not.
+  Field-verified on Codex 0.147.0: the four skills are discovered from `.agents/skills/`, and the Stop hook's
+  reason arrives as the continuation prompt when STATE lags. The Gemini CLI hook follows the published hooks
+  reference and is not yet field-verified.
+- **`docs/multi-agent.md`** (en + zh-TW): how several models share one repo's flightwake memory — what init
+  installs per platform, each tool's skill syntax, the wrap-up → commit → cold-start loop, what is deliberately
+  *not* shared, and the rules for two agents open on the same checkout.
+- **Cross-repo registry**: init/update record the repo path in `~/.flightwake/registry.json` (uninstall removes
+  it) so read-only cross-repo tools such as [flightwake-tower](https://github.com/kaiwutech-TW/flightwake-tower)
+  can find every installed repo. Best-effort: a registry problem never fails an install, and a corrupt registry is
+  left in place rather than clobbered. `FLIGHTWAKE_HOME` relocates it (the smoke test uses this for isolation).
+
+### Changed
+- The hook's reminder says "run fw-record" instead of "/fw-record": the same message now reaches three hosts
+  with three invocation syntaxes.
+
 ## [0.12.0] — 2026-08-05
 
 ### Added
@@ -143,7 +171,7 @@ First public release. ✈️
 
 Initial npm publish; superseded within the day by 0.7.2.
 
-[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.12.0...HEAD
 [0.11.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.11.0
 [0.10.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.10.0
 [0.9.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.9.0
