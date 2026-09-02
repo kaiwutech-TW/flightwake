@@ -6,7 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 Releases before 0.7.1 predate the public launch and were never published; the history starts there.
 
-## [Unreleased]
+## [0.13.0] — 2026-09-02
 
 ### Added
 - **Codex and Gemini CLI get the skills and the wrap-up hook, not just the obligation table.** Until now
@@ -171,7 +171,8 @@ First public release. ✈️
 
 Initial npm publish; superseded within the day by 0.7.2.
 
-[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.13.0
 [0.11.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.11.0
 [0.10.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.10.0
 [0.9.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.9.0
