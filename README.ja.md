@@ -18,6 +18,7 @@
 ```bash
 cd your-repo
 npx flightwake init --lang=ja --statusline   # 日本語 + 下部ゲージ
+npx flightwake init --lang=ja --statusline --agents=claude,codex,gemini   # 3 つの agent を一度に(Claude Code + Codex + Gemini CLI)
 npx flightwake update                        # その場で更新。インストール時のオプション(lang/statusline/private)を引き継ぐ
 ```
 
@@ -30,7 +31,7 @@ npx flightwake update                        # その場で更新。インスト
 | 繁體中文 | `npx flightwake init --lang=zh-TW --statusline` | `npx flightwake init --lang=zh-TW --force --statusline` |
 | 简体中文 | `npx flightwake init --lang=zh-CN --statusline` | `npx flightwake init --lang=zh-CN --force --statusline` |
 
-言語の切り替えは安全:`--force` が置き換えるのはフレームワーク所有のファイル(テンプレート、skill、hook、マーカーブロック)だけ。あなたの STATE / DECISIONS / TRAPS / records には**一切触れない**——書いたときの言語のまま残る。ゲージが不要なら `--statusline` を外すだけ。
+言語の切り替えは安全:`--force` が置き換えるのはフレームワーク所有のファイル(テンプレート、skill、hook、マーカーブロック)だけ。あなたの STATE / DECISIONS / TRAPS / records には**一切触れない**——書いたときの言語のまま残る。ゲージが不要なら `--statusline` を外すだけ。`--agents=claude,codex,gemini`(部分指定も可)を付けると、その agent 向けに明示的にインストールする。付けなければ init は既にある指示ファイル(CLAUDE.md / AGENTS.md / GEMINI.md)から自動検出する。
 
 **インストールされたファイルを手で翻訳しないこと。** マーカーがどの言語で入れたかを記録しているため、次の `update` はその言語のソースから refresh し、手の入った箇所は消える。言語を変えたいときは `--lang` を付けて init を実行し直す。既に手で書き換えてしまった場合、init/update が上書きしたファイルを 1 つずつ名前で知らせるようになった。
 

@@ -18,6 +18,7 @@
 ```bash
 cd your-repo
 npx flightwake init --lang=zh-TW --statusline   # 繁體中文 + 底部儀表
+npx flightwake init --lang=zh-TW --statusline --agents=claude,codex,gemini   # 三家一次裝齊(Claude Code + Codex + Gemini CLI)
 npx flightwake update                           # 就地升級,沿用你裝過的選項(lang/statusline/private)
 ```
 
@@ -30,7 +31,7 @@ npx flightwake update                           # 就地升級,沿用你裝過�
 | 日本語 | `npx flightwake init --lang=ja --statusline` | `npx flightwake init --lang=ja --force --statusline` |
 | English | `npx flightwake init --statusline` | `npx flightwake init --lang=en --force --statusline` |
 
-切語言是安全的:`--force` 只換框架擁有的檔案(模板、skill、hook、marker 區塊),你的 STATE / DECISIONS / TRAPS / records **完全不動**,維持你當初寫下的語言。不要儀表的話,把 `--statusline` 拿掉即可。
+切語言是安全的:`--force` 只換框架擁有的檔案(模板、skill、hook、marker 區塊),你的 STATE / DECISIONS / TRAPS / records **完全不動**,維持你當初寫下的語言。不要儀表的話,把 `--statusline` 拿掉即可。加 `--agents=claude,codex,gemini`(可任選子集)明確指定要裝哪些 agent;不加的話,init 依既有的指令檔(CLAUDE.md / AGENTS.md / GEMINI.md)自動偵測。
 
 **不要手動翻譯裝好的檔案。** marker 記著你裝的是哪個語言,下次 `update` 會用那個語言的來源刷新,你的修改會消失。要換語言請重跑 init 加 `--lang`;若已經手改過,現在 init/update 會逐檔列出它覆蓋了什麼。
 

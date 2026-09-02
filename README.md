@@ -18,6 +18,7 @@ An ultra-lightweight work-recording framework for strong AI coding agents (Claud
 ```bash
 cd your-repo
 npx flightwake init --statusline    # English (default) + the bottom gauge
+npx flightwake init --statusline --agents=claude,codex,gemini   # all three agents at once (Claude Code + Codex + Gemini CLI)
 npx flightwake update               # upgrade an existing install in place (keeps your options: lang/statusline/private)
 ```
 
@@ -34,7 +35,7 @@ worse than a stated default. Copy the line you want:
 
 Switching languages is safe: `--force` replaces only framework-owned files (templates, skills, hooks, the
 marker block). Your STATE / DECISIONS / TRAPS / records are never touched — they stay in whatever language you
-wrote them. Drop `--statusline` from any line if you don't want the gauge.
+wrote them. Drop `--statusline` from any line if you don't want the gauge. Add `--agents=claude,codex,gemini` (any subset) to install for those agents explicitly — without it, init installs for whichever instruction files already exist (CLAUDE.md / AGENTS.md / GEMINI.md).
 
 **Don't hand-translate the installed files.** The marker records which language you installed, so the next
 `update` refreshes them from that language's source and your edits disappear. Rerun init with `--lang` instead;
