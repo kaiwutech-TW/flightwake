@@ -5,6 +5,20 @@
 # 坑 Registry
 
 ---
+name: codex-custom-agent-sandbox-not-enforced
+type: gotcha
+status: active
+tags: [codex, subagents, sandbox, security]
+discovered: 2026-09-27
+confidence: probable
+---
+
+**症狀**:`.codex/agents/<id>.toml` 設 `sandbox_mode = "read-only"`,主 session 以 workspace-write 啟動並成功衍生該 agent(子 rollout 帶有定義裡的 developer_instructions),子 agent 用 shell 與 apply_patch 都**寫檔成功**;子 rollout 的 effective `sandbox_policy.type` 是 workspace-write。
+**根因**:未完全確定。推測自訂 agent 檔只是一層 config,衍生時父 turn 的 live permission 會重套(官方 Subagents 文件有此描述),因此不能當成優先於 runtime 的政策。現象本身已在一個隔離環境重現(Codex 0.157.1);TUI、Orca worker、既有使用者設定未逐一驗證。
+**解法/繞法**:不要把「產生了 read-only 的 agent 定義檔」當成強制唯讀。需要唯讀時,本次同環境實測以唯讀啟動**整個 session**(`codex exec -s read-only`)可擋 shell 與 apply_patch;其他方式與 MCP 遠端副作用未驗證。文件與產出若有權限意圖,只能標 guidance。
+**佐證**:2026-09-27 roles v2 審查,Codex 暫存實測(父 thread 01a0e395-d1a8…、子 thread 01a0e395-f61e…),見 docs/plans/roles-v2.review-codex.md 第二節
+
+---
 name: codex-exec-project-hooks-not-loaded
 type: gotcha
 status: active
