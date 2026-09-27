@@ -41,9 +41,9 @@ flightwake **v0.14.0(2026-09-28 已發,npm latest;前版 v0.13.0 2026-09-02)**,*
 0. **v0.14.0 已發佈(2026-09-28)**:roles + v2 在 npm latest(驗證見 [[260928-roles-v2]] 補記)。後續:常用 repo `npx flightwake update`;觀察下游團隊日常 /clear 後角色與待命角色派工;Gemini 原生待命定義待驗證後再做
 1. **發宣傳**:三稿最終版(已改寫為不點名 GSD,含 HN 留言預備)在使用者桌面 `~/Desktop/flightwake-launch-copy.md`;截圖三張在使用者手上;HN 挑能盯留言的時段發
 2. HN 後續:等 hn@ycombinator.com 回覆(作者留言被 auto-flag)→ 解 flag 後補「v0.9.0 已兌現 English defaults」留言
-3. **0.13.0 後續**:常用 repo `npx flightwake update`(**有 AGENTS.md 的 16 個機隊 repo 會長出 `.agents/skills` 與 `.codex/hooks.json`,每個 repo 首次開 Codex 會被問一次信任 hook**)→ 建 kaiwutech-TW/flightwake-tower repo + trusted publishing → 發 tower 0.1.0
+3. **0.13.0 後續**:常用 repo `npx flightwake update`(**有 AGENTS.md 的 16 個機隊 repo 會長出 `.agents/skills` 與 `.codex/hooks.json`,每個 repo 首次開 Codex 會被問一次信任 hook**)(tower 已凍結,不發版,見 DECISIONS 2026-09-28)
 3b. **Gemini CLI hook 真機驗證**:第一個真的用 Gemini 的 repo 驗 AfterAgent 是否觸發、`deny` 的 reason 是否成為下一則 prompt(結構來自官方 reference,未實跑;見 [[260902-codex-gemini-native]] 未完節)
-4. **SCOPE+ 格式向使用者確認**(機隊目前零筆,是待啟用的新慣例);Phase 2 session 成本/工時規格見 [[260811-tower-and-registry]] 未完節
+4. **SCOPE+ 格式向使用者確認**(機隊目前零筆,是待啟用的新慣例);tower Phase 2 隨 tower 凍結暫停
 5. **向使用者要「最近重複踩到的那條 trap」**,對照三型(誤診/危險側通則/忘了查)驗證 confidence 修正是否命中
 6. 宣傳後:盯 issues/討論回饋(含徵求日文/簡中母語者校對);GSD 側對照實測待補(benchmarks 公平性);範例 repo 降為 nice-to-have
 
