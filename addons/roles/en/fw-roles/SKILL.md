@@ -1,6 +1,6 @@
 ---
 name: fw-roles
-description: flightwake team roles — scan the project, recommend a set of agent roles, let the user preview and customize them, then put seated roles into CLAUDE.md/AGENTS.md (survives /clear) and on-call roles into native agent definitions; also handles changing seats (assign), calling on-call roles, and migrating the legacy format. Use when the user wants to set up or change agent roles (PM / tech lead / coder / reviewer / security / designer…), says set up roles / who does what / reassign / roles, needs to call an on-call role, or an agent keeps drifting out of its role after /clear.
+description: flightwake team roles — recommend, customize, and install agent roles that survive /clear (seats in CLAUDE.md/AGENTS.md, on-call roles as native agents). Use when setting up or changing who does what on a multi-agent team, calling an on-call role, or when an agent drifts out of its role after /clear.
 ---
 
 # fw-roles — team roles

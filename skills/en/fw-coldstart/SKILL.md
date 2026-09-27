@@ -5,7 +5,7 @@ description: flightwake cold start — restore state before touching a repo. Use
 
 # fw-coldstart — cold-start takeover
 
-Purpose: before touching any file, recover to a "safe takeover" state with the minimum reading. **Time it** — cold-start cost is the framework's quality metric.
+Purpose: before touching any file, recover to a "safe takeover" state with the minimum reading — cold-start cost (time and tokens to a correct report) is this framework's quality metric.
 
 ## Steps
 
@@ -22,8 +22,6 @@ Purpose: before touching any file, recover to a "safe takeover" state with the m
 4. Quantify the lag: `git rev-list --count "$(git log -1 --format=%H -- .flightwake/STATE.md)"..HEAD`
    (≥1 = the last session didn't wrap up — raise your guard; if STATE was never committed, use `git log --oneline -10` instead)
 5. Report back to the user in one paragraph: "where the last session got to, where this one plans to pick up, whether there are unverified changes (health)" — **only start working after reporting**
-   (To measure token cost: the model can't see its own usage — prefer zero-token parsing of the local transcript
-   (`~/.claude/projects/<project>/*.jsonl` carries usage per message; hook stdin also carries transcript_path); ask the user for `/cost` only if that fails)
 
 ## Red lines
 

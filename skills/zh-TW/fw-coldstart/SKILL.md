@@ -5,7 +5,7 @@ description: flightwake 冷啟動 — 接手一個 repo 前先恢復狀態。Use
 
 # fw-coldstart — 冷啟動接手
 
-目的:在動任何檔案之前,用最少的讀取恢復到「安全接手」狀態。**計時**——冷啟動成本是框架的品質指標。
+目的:在動任何檔案之前,用最少的讀取恢復到「安全接手」狀態——冷啟動成本(到正確回報為止的時間與 token)是這個框架的品質指標。
 
 ## 步驟
 
@@ -20,8 +20,6 @@ description: flightwake 冷啟動 — 接手一個 repo 前先恢復狀態。Use
 4. 量化落後程度:`git rev-list --count "$(git log -1 --format=%H -- .flightwake/STATE.md)"..HEAD`
    (≥1 = 上個 session 沒收尾,提高警覺;STATE 從未 commit 時改看 `git log --oneline -10`)
 5. 向使用者回報一段話:「上次到哪、這次打算從哪接、有沒有未驗證的變更(health)」——**回報完才開始動手**
-   (要量 token 成本時:模型端看不到自己的用量——優先零 token 解析本機 transcript
-   (`~/.claude/projects/<專案>/*.jsonl` 每條訊息帶 usage;hook stdin 也帶 transcript_path),拿不到再向使用者要 `/cost`)
 
 ## 紅線
 

@@ -1,6 +1,6 @@
 ---
 name: fw-roles
-description: flightwake 團隊角色 — 掃專案、推薦一組 agent 角色、讓使用者預覽與客製,再把座位角色裝進 CLAUDE.md/AGENTS.md(/clear 後不會忘)、待命角色裝成原生 agent;也負責換座位(assign)、派待命角色、舊格式遷移。Use when the user wants to set up or change agent roles (PM/技術總監/寫手/審核/資安/設計…), says 設定角色/分工/換角色/roles, needs to call an on-call role, or an agent keeps drifting out of its role after /clear.
+description: flightwake 團隊角色 — 推薦、客製並安裝 /clear 後不會忘的 agent 角色(座位寫進 CLAUDE.md/AGENTS.md,待命角色裝成原生 agent)。Use when setting up or changing who does what on a multi-agent team (設定角色/分工/換角色), calling an on-call role, or when an agent drifts out of its role after /clear.
 ---
 
 # fw-roles — 團隊角色
