@@ -25,7 +25,8 @@
 - 新增 `## seats` **表格**:`| repo | vendor | role |`(表格,不是空白切詞——路徑可含空白)。
   - 有 seats 時它是唯一座位來源;角色內仍有 `agent/repo` 且與 seats 矛盾 → 退出非零。無 seats → 舊格式照讀(每個角色內的 agent/repo 視為一個座位)。
   - 同一角色可占多個座位;每個 `(realpath(repo), vendor)` 最多一個;未知 role/vendor、重複座位、保留名稱 `seats` 先驗證。
-- **seated / on-call 是「派工方式」,不是互斥種類**:任何角色都可被當待命叫出,即使它在別處有座位。
+- **seated / on-call 是「派工方式」,不是互斥種類**:任何角色都可以用 `roles card` 派給 worker。
+  **實作修正(2026-09-28 dogfood)**:原生定義檔只產生給**沒有座位**的角色——有座位的角色若也有原生副本,別的座位(例如 pm)可在本地衍生 `fw-coder` 自己寫程式,繞過寫/審分工(Claude Code 會依 description 自動委派)。
 
 ### 2.2 待命角色的落地
 - 原生定義檔產生到**座位表出現過的每個 (repo, vendor)**:`.claude/agents/fw-<id>.md`、`.codex/agents/fw-<id>.toml`;dry-run 明列。沒有座位的 team 需顯式指定目標,不猜。

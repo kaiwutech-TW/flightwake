@@ -41,7 +41,7 @@ if (!['init', 'update', 'uninstall', 'roles'].includes(cmd) || args.includes('--
   update      re-install with the options detected from the existing install (lang / statusline / private) — the in-place upgrade
   uninstall   reverse-remove framework files and marker blocks; keeps .flightwake/ user data unless --purge
   roles       opt-in add-on: install the fw-roles skill; apply renders .flightwake/ROLES.md — seats into CLAUDE.md/AGENTS.md/GEMINI.md,
-              every role into native on-call agents (.claude/agents, .codex/agents); card prints a dispatch card; assign changes a seat;
+              on-call (unseated) roles into native agents (.claude/agents, .codex/agents); card prints a dispatch card; assign changes a seat;
               remove strips this repo's role output (ROLES.md kept). Roles are guidance, not permissions`);
   process.exit(['init', 'update', 'uninstall', 'roles', 'help'].includes(cmd) ? 0 : 1);
 }

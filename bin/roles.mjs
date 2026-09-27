@@ -3,8 +3,8 @@
  * `.flightwake/ROLES.md`: role definitions (`## <id> — <title>` + body) and, optionally, a `## seats` table that
  * puts roles on (repo, vendor) seats. A seat is rendered into the instruction file that vendor re-reads at every
  * session start (Claude Code → CLAUDE.md, Codex → AGENTS.md, Gemini CLI → GEMINI.md), so it survives /clear with
- * no hook. Every role — seated or not — is also generated as a native on-call agent definition in each seated
- * (repo, vendor) (`.claude/agents/fw-<id>.md`, `.codex/agents/fw-<id>.toml`) and can be printed as a dispatch card.
+ * no hook. Every on-call role (no seat) is generated as a native agent definition in each seated (repo, vendor)
+ * (`.claude/agents/fw-<id>.md`, `.codex/agents/fw-<id>.toml`); any role can be printed as a dispatch card.
  * Role text is guidance, never enforcement: nothing here claims to block a tool call (see TRAPS
  * codex-custom-agent-sandbox-not-enforced).
  *
@@ -289,7 +289,9 @@ export function planApply({ source, text, lang, version }) {
   for (const s of nativeTargets.values()) {
     const src = relative(s.repoPath, source);
     for (const r of roles) {
-      if (r.id === s.role) continue; // no point spawning the seat's own role from itself
+      // Only on-call roles become native agents. A seated role stays with its seat: a native copy would let another
+      // seat spawn it locally (e.g. a pm spawning fw-coder) and bypass the team's routing and review split.
+      if (seats.some((x) => x.role === r.id)) continue;
       const card = renderCard(r, roles, seats, { lang, src });
       put(s.repoPath, nativeRel(s.agent, r.id), 'file', renderNative(s.agent, r, card, { version, src }));
     }

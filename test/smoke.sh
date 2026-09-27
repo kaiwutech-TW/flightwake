@@ -546,8 +546,8 @@ cat > .flightwake/ROLES.md <<'ROLES'
 ROLES
 node "$CLI" roles apply >/dev/null || fail "v2 apply 應成功(含空白路徑)"
 grep -q 'PM-BODY' AGENTS.md && grep -q 'CODER-BODY' "$A/CLAUDE.md" || fail "座位表應決定區塊寫到哪"
-[ -f "$A/.claude/agents/fw-security.md" ] && [ -f "$A/.codex/agents/fw-security.toml" ] && [ -f .codex/agents/fw-coder.toml ] || fail "每個座位的 (repo,vendor) 都應產生待命原生定義"
-[ -f .codex/agents/fw-pm.toml ] && fail "座位自己的角色不應產生給自己"
+[ -f "$A/.claude/agents/fw-security.md" ] && [ -f "$A/.codex/agents/fw-security.toml" ] && [ -f .codex/agents/fw-security.toml ] || fail "每個座位的 (repo,vendor) 都應產生待命原生定義"
+ls .codex/agents/fw-coder.toml .codex/agents/fw-pm.toml "$A/.claude/agents/fw-reviewer.md" 2>/dev/null | grep -q . && fail "有座位的角色不應產生原生定義(會繞過分工)"
 python3 -c "import tomllib,sys; d=tomllib.load(open(sys.argv[1],'rb')); assert d['name']=='fw-security' and '\"\"\"' in d['developer_instructions'] and '\\\\' in d['developer_instructions'] and '🔐' in d['developer_instructions']" "$A/.codex/agents/fw-security.toml" || fail "TOML 應可解析且 escape 正確"
 head -3 "$A/.claude/agents/fw-security.md" | grep -q '^name: "fw-security"' || fail "Claude 定義 frontmatter 應正確"
 grep -q '碰到登入' "$A/.claude/agents/fw-security.md" && grep -q '待命' AGENTS.md || fail "When to call 應進描述與團隊名單"

@@ -23,9 +23,10 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   `roles remove` and `uninstall` strip the blocks and the skill; ROLES.md is user data and is kept; `update`
   refreshes the skill only where it is already installed.
 - **Seats and on-call roles.** An optional `## seats` table (`| repo | vendor | role |`) decides who sits where; a role
-  without a seat is **on call** and costs no seat. `roles apply` generates every role as a native agent definition in
+  without a seat is **on call** and costs no seat. `roles apply` generates every on-call role as a native agent definition in
   each seated (repo, vendor) — `.claude/agents/fw-<id>.md`, `.codex/agents/fw-<id>.toml` — so a seated agent can spawn
-  `fw-security` directly, and `roles card <id>` prints the same role as a dispatch card for a cross-vendor worker
+  `fw-security` directly (seated roles get no native copy, so no seat can spawn another seat's job and bypass the
+  review split), and `roles card <id>` prints any role as a dispatch card for a cross-vendor worker
   (stdout only; on error nothing on stdout and a non-zero exit, so a worker is never dispatched without its role).
   Seat blocks now say they are the *main session's* role and that an explicit card overrides them for that task.
   `### When to call` in a role feeds every seat's team list. `roles assign <repo>:<vendor> <id> [--add] [--dry-run]`
