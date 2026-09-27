@@ -2,7 +2,7 @@
 updated: 2026-09-28
 updated_by: Claude(Opus 5.5)
 latest_record: records/260928-roles-v2.md
-health: green  # smoke 全過(含 v2 第 22 節);v2 兩家真機衍生通過;未發版;Gemini hook 仍未真機
+health: green  # v0.14.0 已發佈並驗證(npm latest + provenance);Gemini hook 仍未真機
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
 <!-- 規則:只寫「現在」與「下一步」;歷史去 records/,決策去 DECISIONS.md。 -->
@@ -10,7 +10,7 @@ health: green  # smoke 全過(含 v2 第 22 節);v2 兩家真機衍生通過;未
 
 # 現在在哪
 
-flightwake **v0.13.0(2026-09-02 已發,npm latest)**,**已開源上線(2026-07-18)、i18n 完成(2026-07-19)**:trusted publishing 連六次 Release 零失誤、英文預設 + `--lang=zh-TW`、`update` 就地升級、儀表含下一步提示/真實視窗/新版提示(本 repo、kaiwuweb、salesmartly_chain、marketing_dashboard 實跑中,前三者已 update 至 0.9.0)。HN 已發(Show HN,留言被 auto-flag 待版主回覆)。缺口 1–7 全落地、兩 gate 全關、benchmarks n=2(非自我參照,零糾正)、宣傳素材全齊(三稿 + 三張截圖 + context 開銷故事線)。**GSD 全域已拆除(2026-07-18 晚,手冊 docs/cleanGSD.md);A/B 已量、開場底盤已分解到底**。新增 docs/workflow.md 分階段實戰手冊(四語 README 有入口)。**2026-07-23 外部評測後補強 → v0.10.0 已發佈**(fw-trap 跨 repo 坑雙寫、state-check health=green 證據檢查、hook 盲區文件化;同類專案掃描確認差異化象限無人佔據)。**Demo GIF 已上 README 首屏**(本 repo 實錄 /fw-coldstart,docs/demo.gif 244KB,四語嵌入)。npm 0.10.0 已上(驗證證據見 latest_record);**0.10.1(儀表常駐版本號)已 bump 在 main、刻意未發**——等下批新功能一起出 Release(使用者 2026-07-23 定的)。**2026-07-27 首批 dependabot PR 全處理完、PR 流程硬化**:閘門不再誤擋 bot commit(state-check + statusline 同步)、main 開 required status checks、補齊 CONTRIBUTING/CHANGELOG/CoC/issue+PR 模板/.gitignore(見 [[260727-oss-pr-flow-hardening]]);Scorecard 實測 7.2/10。**同日安裝內容擴到四語**(en/zh-TW/zh-CN/ja;刻意不做語言自動偵測、覆蓋本地修改改為逐檔點名,見 [[260727-four-language-install]])——日文/簡中翻譯未經母語者校對,待推廣後徵求。**這批連同擱置的 0.10.1 一起發成 v0.11.0**(minor 而非 patch:含新功能;第七次 Release 零失誤,驗證證據見 latest_record)。剩:發宣傳(三稿最終版在使用者桌面)。定位:給強模型(Fable 5 級)的事後記錄框架,補持久性與紀律、不補智力。
+flightwake **v0.14.0(2026-09-28 已發,npm latest;前版 v0.13.0 2026-09-02)**,**已開源上線(2026-07-18)、i18n 完成(2026-07-19)**:trusted publishing 連六次 Release 零失誤、英文預設 + `--lang=zh-TW`、`update` 就地升級、儀表含下一步提示/真實視窗/新版提示(本 repo、kaiwuweb、salesmartly_chain、marketing_dashboard 實跑中,前三者已 update 至 0.9.0)。HN 已發(Show HN,留言被 auto-flag 待版主回覆)。缺口 1–7 全落地、兩 gate 全關、benchmarks n=2(非自我參照,零糾正)、宣傳素材全齊(三稿 + 三張截圖 + context 開銷故事線)。**GSD 全域已拆除(2026-07-18 晚,手冊 docs/cleanGSD.md);A/B 已量、開場底盤已分解到底**。新增 docs/workflow.md 分階段實戰手冊(四語 README 有入口)。**2026-07-23 外部評測後補強 → v0.10.0 已發佈**(fw-trap 跨 repo 坑雙寫、state-check health=green 證據檢查、hook 盲區文件化;同類專案掃描確認差異化象限無人佔據)。**Demo GIF 已上 README 首屏**(本 repo 實錄 /fw-coldstart,docs/demo.gif 244KB,四語嵌入)。npm 0.10.0 已上(驗證證據見 latest_record);**0.10.1(儀表常駐版本號)已 bump 在 main、刻意未發**——等下批新功能一起出 Release(使用者 2026-07-23 定的)。**2026-07-27 首批 dependabot PR 全處理完、PR 流程硬化**:閘門不再誤擋 bot commit(state-check + statusline 同步)、main 開 required status checks、補齊 CONTRIBUTING/CHANGELOG/CoC/issue+PR 模板/.gitignore(見 [[260727-oss-pr-flow-hardening]]);Scorecard 實測 7.2/10。**同日安裝內容擴到四語**(en/zh-TW/zh-CN/ja;刻意不做語言自動偵測、覆蓋本地修改改為逐檔點名,見 [[260727-four-language-install]])——日文/簡中翻譯未經母語者校對,待推廣後徵求。**這批連同擱置的 0.10.1 一起發成 v0.11.0**(minor 而非 patch:含新功能;第七次 Release 零失誤,驗證證據見 latest_record)。剩:發宣傳(三稿最終版在使用者桌面)。定位:給強模型(Fable 5 級)的事後記錄框架,補持久性與紀律、不補智力。
 **2026-08-03:TRAPS 根因加 `confidence` 三級 + 不對稱門檻(四語 14 檔,smoke 23/23)**——起點是使用者問「寫進 TRAPS 卻還是又踩,是設計還是呼叫問題」,稽核下游 106 條後答案是兩者皆非:失效在**誤診被寫成定案**(22% 帶更正標記)。見 [[260803-trap-confidence]]。同批第二項:**fw-handoff 的 Scope 加「驗收」一行**(四語)——Scope 原本定義做什麼/不做什麼,沒定義怎樣算做完。同時評估並**否決**了「把開場模板做成第五個 skill」(理由見 DECISIONS 2026-08-03 首條:那是開工前 intake gate,違反本框架第一原則,且會把事件觸發成本變成常駐成本)。兩個下游 repo 共 50 條 trap 已標註完畢,marketing_dashboard 另做了 STATE 瘦身(197→110 行,常備事實 28→6,慣例拆到該 repo 的 docs/conventions.md)。
 **2026-08-11:跨 repo 查詢層 `flightwake-tower` 完成(獨立 repo `~/orca/flightwake-tower`)+ 核心 registry 登記**——tower 唯讀(TRAPS 跨 repo 搜尋 + STATE 總覽含 SCOPE+ 行與 health_note,CLI 皆有 --json + 手寫零依賴 MCP stdio);核心唯一改動 = init/update 寫 `~/.flightwake/registry.json`、uninstall 移除。真實機隊 21 repo 入冊(worktree 跳過)、驗收全過;架構三決策(獨立 repo/手寫 MCP/命名)見 DECISIONS 2026-08-11,詳見 [[260811-tower-and-registry]]。**核心 0.13.0 與 tower 0.1.0 都未發版**;Phase 2(session 成本/工時:token + 5 分鐘 gap-capping)未動工。
 **2026-09-28(晚):roles v2 完成並在下游真實團隊驗收**——座位表、待命角色原生定義(只給無座位角色)、`roles card`/`assign`、manifest 清理;Codex 真機實測、兩家實際衍生通過;改為與現行 roles 合併以 0.14.0 發佈(DECISIONS 2026-09-28)。
@@ -38,7 +38,7 @@ flightwake **v0.13.0(2026-09-02 已發,npm latest)**,**已開源上線(2026-07-1
 
 # 下一步入口
 
-0. **發 0.14.0 進行中**:PR #10 已開(版號 4f6427a;CodeQL js/bad-tag-filter 對自家 marker 解析的誤報已改寫 6c587d8)→ CI 全綠後 merge commit → `gh release create v0.14.0` → 驗 npm。下游兩個 repo 的 roles v2 已 commit。見 [[260928-roles-v2]]
+0. **v0.14.0 已發佈(2026-09-28)**:roles + v2 在 npm latest(驗證見 [[260928-roles-v2]] 補記)。後續:常用 repo `npx flightwake update`;觀察下游團隊日常 /clear 後角色與待命角色派工;Gemini 原生待命定義待驗證後再做
 1. **發宣傳**:三稿最終版(已改寫為不點名 GSD,含 HN 留言預備)在使用者桌面 `~/Desktop/flightwake-launch-copy.md`;截圖三張在使用者手上;HN 挑能盯留言的時段發
 2. HN 後續:等 hn@ycombinator.com 回覆(作者留言被 auto-flag)→ 解 flag 後補「v0.9.0 已兌現 English defaults」留言
 3. **0.13.0 後續**:常用 repo `npx flightwake update`(**有 AGENTS.md 的 16 個機隊 repo 會長出 `.agents/skills` 與 `.codex/hooks.json`,每個 repo 首次開 Codex 會被問一次信任 hook**)→ 建 kaiwutech-TW/flightwake-tower repo + trusted publishing → 發 tower 0.1.0
