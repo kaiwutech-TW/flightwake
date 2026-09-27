@@ -3,7 +3,7 @@ name: fw-handoff
 description: flightwake 跨 session 交接 — 為「還沒做完、之後要繼續」的工作寫 CONTEXT。Use when stopping mid-build on multi-session work, when the user says 交接/handoff/下次繼續, or before context runs out on a large task.
 ---
 
-# fw-handoff — 跨 session 交接(升級為 phase 的唯一時機)
+# fw-handoff — 跨 session 交接
 
 目的:讓「未完成的建設」能被任何 session 冷啟動接續。**觸發點是停手前,不是開工前**——
 接觸過現實之後寫的 CONTEXT 才是真的。
@@ -21,7 +21,7 @@ description: flightwake 跨 session 交接 — 為「還沒做完、之後要繼
 3. 更新 STATE:進行中 + 下一步入口指向此 CONTEXT
 4. commit;並向使用者提議 push(交接物離開本機才保險,但 push 由使用者決定)
 
-## 與 GSD phase 的關係
+## CONTEXT 放哪
 
-這就是 flightwake 版的 phase 立案:一份 CONTEXT,不預先拆 plan——plan 由執行 session 臨場判斷。
-若 repo 同時有 GSD `.planning/`,CONTEXT 可以放那邊的 phases/ 目錄以維持既有索引(參照本檔格式即可)。
+一份 CONTEXT,不預先拆計劃——由執行的 session 臨場規劃。
+若 repo 有舊的 `.planning/` 目錄,CONTEXT 可以放它的 phases/ 目錄以沿用既有索引(格式相同)。

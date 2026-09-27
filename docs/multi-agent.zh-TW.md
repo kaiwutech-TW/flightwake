@@ -95,3 +95,21 @@ grep -n 'fw-coldstart' CLAUDE.md AGENTS.md GEMINI.md
 
 然後在每個工具裡打開資料夾,用該工具的語法要求冷啟動。三家都該回同一段「上次到哪 / 這次從哪接 / 有沒有未驗證
 的東西」——因為讀的是同一份 STATE。
+
+## 角色:讓每個 agent 在 /clear 後還記得自己是誰(選配,預覽版)
+
+一個資料夾裡同時有 Claude 當技術總監、Codex 當專案經理時,角色如果只講在對話裡,/clear 一清就沒了——專案經理
+醒來看到「下一步:做 X」,最省事的反應就是自己動手寫。`flightwake roles` 把角色寫進各 agent 每次開場都會讀的
+指令檔,所以不需要 hook,/clear 後自動回來:
+
+```bash
+npx flightwake roles                 # 裝 fw-roles skill(init 不會裝)
+# 然後請 agent 跑 fw-roles:掃專案 → 推薦角色 → 你預覽、客製 → 寫出 .flightwake/ROLES.md
+npx flightwake roles apply --dry-run # 先看會寫什麼
+npx flightwake roles apply           # 寫進 CLAUDE.md / AGENTS.md / GEMINI.md 的標記區塊
+```
+
+- **一個團隊一份 ROLES.md**,可以跨資料夾:`repo: ../other-repo` 的角色會被寫進那個 repo。
+- **唯一限制**:agent 靠「讀哪個指令檔」分辨角色,所以同一資料夾每個廠牌最多一個角色。
+- 完整說明:[roles.zh-TW.md](roles.zh-TW.md)。
+- 每個預設角色都有「禁止」清單——實測中讓專案經理乖乖派工而不自己寫的,就是那幾行。

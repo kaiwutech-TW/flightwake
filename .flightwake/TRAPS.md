@@ -5,6 +5,76 @@
 # 坑 Registry
 
 ---
+name: codex-project-trust-exact-path
+type: gotcha
+status: active
+tags: [codex, trust, subagents, config]
+discovered: 2026-09-28
+confidence: confirmed
+---
+
+**症狀**:repo 有有效的 `.codex/agents/fw-x.toml`,Codex 的 spawn 工具卻沒有 `agent_type` 欄位,叫不出自訂角色;`~/` 明明已在 `~/.codex/config.toml` 設成 trusted。
+**根因**:專案層(`.codex/`)只在**該 git repo 的精確路徑**受信任時才載入;上層目錄受信任不涵蓋底下新建的 git repo(`codex app-server` 的 `config/read` 顯示 project layer disabledReason 要求精確路徑)。另外 `-c 'projects."/path".trust_level="trusted"'` 這種 dotted 寫法在 0.157.1 會把引號留進 key,等於沒設;單次 override 要用 inline table:`-c 'projects={"/path"={trust_level="trusted"}}'`。
+**解法/繞法**:確認實際工作的 repo(含 Orca worktree 路徑,例如 `workspaces/<repo>/<name>`)各自在信任清單裡;驗收看 agent_type 清單與一次真的 spawn,不是看 TOML 存在。
+**佐證**:docs/plans/roles-v2.codex-probe.md §1.1(A/B/C 對照,threads 01a0e3a0… / 01a0e3a1… / 01a0e3a2…)
+
+---
+name: codex-agent-toml-unknown-field-drops-role
+type: gotcha
+status: active
+tags: [codex, subagents, toml]
+discovered: 2026-09-28
+confidence: confirmed
+---
+
+**症狀**:`.codex/agents/*.toml` 加了一個 Codex 不認得的欄位(如 `disallowedTools`、`permissionMode`、任意自訂 key)或型別錯誤,該角色從選單消失;主命令照樣 exit 0。
+**根因**:角色定義嚴格解析,未知欄位/型別錯誤 → 整份角色被忽略(JSONL 有 `Ignoring malformed agent role definition`),不是只忽略那一欄。
+**解法/繞法**:產生器只寫 `name` / `description` / `developer_instructions`;ownership 等額外資料放 TOML 註解或外部 manifest。不要把 Claude 的欄位搬過來。
+**佐證**:docs/plans/roles-v2.codex-probe.md §2.1(Codex 0.157.1,逐欄對照)
+
+---
+name: orca-worker-start-writes-codex-trust
+type: gotcha
+status: active
+tags: [orca, codex, config, side-effect]
+discovered: 2026-09-28
+confidence: probable
+---
+
+**症狀**:用 `orca orchestration worker-start --agent codex` 在一個未受信任的 repo 啟動 worker 後,`~/.codex/config.toml` 多了 `[projects."<repo>"] trust_level = "trusted"`。
+**根因**:推測是 Orca 的 worker 啟動流程自動確認信任(worker 本身回報沒改設定);未追原始碼。
+**解法/繞法**:在暫存/測試 repo 用 worker-start 後,檢查並移除多出的信任項;不要宣稱 worker-start 零設定寫入。也因此 Orca 管理過的 repo 通常已受信任,而沒跑過 worker 的 worktree 路徑可能沒有。
+**佐證**:docs/plans/roles-v2.codex-probe.md §4(Run run_2519f2f6a349,已比對 SHA-256 復原)
+
+---
+name: codex-custom-agent-sandbox-not-enforced
+type: gotcha
+status: active
+tags: [codex, subagents, sandbox, security]
+discovered: 2026-09-27
+confidence: probable
+---
+
+**症狀**:`.codex/agents/<id>.toml` 設 `sandbox_mode = "read-only"`,主 session 以 workspace-write 啟動並成功衍生該 agent(子 rollout 帶有定義裡的 developer_instructions),子 agent 用 shell 與 apply_patch 都**寫檔成功**;子 rollout 的 effective `sandbox_policy.type` 是 workspace-write。
+**根因**:未完全確定。推測自訂 agent 檔只是一層 config,衍生時父 turn 的 live permission 會重套(官方 Subagents 文件有此描述),因此不能當成優先於 runtime 的政策。現象本身已在一個隔離環境重現(Codex 0.157.1);TUI、Orca worker、既有使用者設定未逐一驗證。
+**解法/繞法**:不要把「產生了 read-only 的 agent 定義檔」當成強制唯讀。需要唯讀時,本次同環境實測以唯讀啟動**整個 session**(`codex exec -s read-only`)可擋 shell 與 apply_patch;其他方式與 MCP 遠端副作用未驗證。文件與產出若有權限意圖,只能標 guidance。
+**佐證**:2026-09-27 roles v2 審查,Codex 暫存實測(父 thread 01a0e395-d1a8…、子 thread 01a0e395-f61e…),見 docs/plans/roles-v2.review-codex.md 第二節
+
+---
+name: codex-exec-project-hooks-not-loaded
+type: gotcha
+status: active
+tags: [codex, hooks, testing]
+discovered: 2026-09-27
+confidence: suspected
+---
+
+**症狀**:在暫存 repo 放 `.codex/hooks.json`(SessionStart/Stop/UserPromptSubmit 探針 hook,寫檔留痕),用 `codex exec` 跑,探針檔始終沒有產生。加 `--dangerously-bypass-hook-trust`、`-c 'projects."<path>".trust_level="trusted"'`、放在已信任的 `~` 底下、補空的 `.codex/config.toml`,全都一樣。輸出裡的 `hook: SessionStart` 行是全域 `~/.codex/hooks.json`(Orca 的 hook)觸發的,不是專案 hook。
+**根因**:未確定。推測 `codex exec` 在「沒有持久化信任紀錄的新專案 hook」時不載入專案層 hook;真實 repo 的 Stop hook 是在 TUI 裡被信任過(`~/.codex/config.toml` 的 `[hooks.state]` 有 trusted_hash)才生效。
+**解法/繞法**:不要用 `codex exec` 驗證新的專案 hook,改在 TUI 開新對話、信任 hook 後再驗。需要「/clear 後仍在」的內容,優先寫進 `AGENTS.md`,它不需要信任就會載入。實測 Codex 0.157.0 只讀 AGENTS.md、不讀 CLAUDE.md,Claude Code 2.1.283 則相反。
+**佐證**:2026-09-27 roles 調研,Codex 0.157.0;同一個 hook 腳本在 Claude Code `claude -p` 下的 SessionStart 注入實測成功
+
+---
 name: macos-mktemp-symlink-cwd-mismatch
 type: gotcha
 status: active

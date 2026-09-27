@@ -3,7 +3,7 @@ name: fw-handoff
 description: flightwake セッションをまたぐ引き継ぎ — 「まだ終わっておらず、後で続ける」作業のために CONTEXT を書く。Use when stopping mid-build on multi-session work, when the user says 引き継ぎ/handoff/次回続き, or before context runs out on a large task.
 ---
 
-# fw-handoff — セッションをまたぐ引き継ぎ(作業がフェーズに昇格する唯一の場面)
+# fw-handoff — セッションをまたぐ引き継ぎ
 
 目的:どのセッションからでも、未完成の工事にコールドスタートで入れるようにする。**トリガーは手を止める前であって、始める前ではない**——
 現実に触れた後に書かれた CONTEXT だけが本物になる。
@@ -22,7 +22,7 @@ description: flightwake セッションをまたぐ引き継ぎ — 「まだ終
 3. STATE を更新:進行中 + 次の入口をこの CONTEXT に向ける
 4. コミットする。その後ユーザーに push を提案する(引き継ぎはこのマシンを離れて初めて安全になるが、push するかはユーザーの判断)
 
-## フェーズ駆動の進め方との関係
+## CONTEXT の置き場所
 
-これは flightwake 版の「フェーズを開く」:CONTEXT 1 枚だけで、事前の計画分解はしない——計画は実行するセッションのその場の判断に委ねる。
-repo に歴史的な `.planning/` ディレクトリが残っている場合、既存の索引を活かすため CONTEXT をその phases/ に置いてもよい(形式はこのファイルと同じ)。
+CONTEXT は 1 枚、事前の計画分解はしない——計画は実行するセッションがその場で立てる。
+repo に古い `.planning/` ディレクトリがあれば、その索引を活かすため CONTEXT を phases/ に置いてもよい(形式は同じ)。

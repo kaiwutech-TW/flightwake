@@ -6,6 +6,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 Releases before 0.7.1 predate the public launch and were never published; the history starts there.
 
+## [Unreleased]
+
+## [0.14.0] — 2026-09-28
+
+### Added
+- **`flightwake roles` — opt-in team roles that survive `/clear` (preview, en + zh-TW).** Never installed by
+  `init`. `roles` installs a `fw-roles` skill in which the agent itself scans the project, recommends 3–5 roles
+  from nine presets (pm, tech-lead, coder, reviewer, qa, researcher, plus conditional release, security, designer —
+  each with an explicit **Never** list aimed at a documented failure mode: loosening tests to get green, self-review,
+  dispatching without "done when", claiming "live" before verification), shows
+  a preview, and takes customizations in conversation into one human-edited `.flightwake/ROLES.md`.
+  `roles apply [--dry-run]` renders each role into the instruction file its agent reads at every session start
+  (Claude Code → `CLAUDE.md`, Codex → `AGENTS.md`, Gemini CLI → `GEMINI.md`), inside
+  `<!-- flightwake-roles:begin/end -->` markers at the top of the file — no hook, no trust prompt. A team may
+  span repos: one ROLES.md, and apply writes into every repo it names (member repos find the source again from
+  the block's `src=`). Routing key is (folder, agent): two roles on the same agent in one folder are refused.
+  `roles remove` and `uninstall` strip the blocks and the skill; ROLES.md is user data and is kept; `update`
+  refreshes the skill only where it is already installed.
+- **Seats and on-call roles.** An optional `## seats` table (`| repo | vendor | role |`) decides who sits where; a role
+  without a seat is **on call** and costs no seat. `roles apply` generates every on-call role as a native agent definition in
+  each seated (repo, vendor) — `.claude/agents/fw-<id>.md`, `.codex/agents/fw-<id>.toml` — so a seated agent can spawn
+  `fw-security` directly (seated roles get no native copy, so no seat can spawn another seat's job and bypass the
+  review split), and `roles card <id>` prints any role as a dispatch card for a cross-vendor worker
+  (stdout only; on error nothing on stdout and a non-zero exit, so a worker is never dispatched without its role).
+  Seat blocks now say they are the *main session's* role and that an explicit card overrides them for that task.
+  `### When to call` in a role feeds every seat's team list. `roles assign <repo>:<vendor> <id> [--add] [--dry-run]`
+  edits exactly one seats cell and re-applies (legacy files without a table are asked to migrate first).
+- **Ownership manifest.** `.flightwake/roles-manifest.json` records every generated output with a hash; apply rewrites or
+  removes only output that still matches, so a same-named user file, a hand-edited generated file, or another team's
+  output is reported as a conflict and nothing is written. A role or a whole repo leaving ROLES.md is cleaned up.
+- Roles are documented and generated as **guidance, not permissions**: in testing, a Codex custom agent defined as
+  read-only still wrote files when spawned from a writable session, so nothing claims enforcement.
+
 ## [0.13.0] — 2026-09-02
 
 ### Added
@@ -171,7 +204,8 @@ First public release. ✈️
 
 Initial npm publish; superseded within the day by 0.7.2.
 
-[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.14.0
 [0.13.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.13.0
 [0.11.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.11.0
 [0.10.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.10.0

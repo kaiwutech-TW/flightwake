@@ -10,7 +10,7 @@
    已做串流去重;`--since=<ISO>` 可切單一 turn)。`/cost` 降為人工 cross-check;
    transcript 格式是內部實作,工具失效時退回 /cost。讀取面可用
    `wc -c <讀到的檔案>` 精算下界(中文 ≈ 1 token/字 ≈ 0.35 token/byte)。
-2. **冷啟動時間**:skill 內建計時(讀取起訖);另記「回報後使用者確認方向」的主觀正確性。
+2. **冷啟動時間**:由 transcript 時間戳量(讀取起訖),不靠 skill 自報;另記「回報後使用者確認方向」的主觀正確性。
 3. **每任務總量**:同一個真實任務分別在兩框架流程下完成,比 `/cost` 總量與 wall time
    (樣本少,僅供方向感;冷啟動指標才是可重複的)。
 
@@ -28,3 +28,7 @@
 - 本表 GSD 側目前是「讀取面實量」,未含 GSD 指令本身的 prompt 注入(通常不小)→ 差距被低估
 - flightwake 側含 session 既有 context 的攤提困難 → 一律用「全新 session 單指令」測
 - 中文 token 率隨 tokenizer 版本浮動,以 /cost 實測為準,byte 精算只當下界
+
+## 量 token 成本的方法
+
+模型端看不到自己的用量。優先零 token 解析本機 transcript(Claude Code:`~/.claude/projects/<專案>/*.jsonl` 每條訊息帶 usage;hook stdin 也帶 transcript_path;其他工具依其 session 紀錄位置),拿不到再向使用者要用量(Claude Code 的 `/cost`)。
