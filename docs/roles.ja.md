@@ -35,7 +35,7 @@ npx flightwake roles                  # install the fw-roles skill into this rep
 そして agent にこう頼む:**「fw-roles を実行して」**(Claude Code:`/fw-roles`、Codex:`$fw-roles`)。agent は次のことをする:
 
 1. **スキャン**:プロジェクト——README、マニフェスト、ディレクトリ構成、テスト、`.flightwake/STATE.md`——を調べ、チームがどのフォルダーにまたがるか、どの agent を持っているかを尋ねる。
-2. **推薦**:6 つのプリセット `pm`、`tech-lead`、`coder`、`reviewer`、`qa`、`researcher` から 3–5 個のロールを、それぞれあなたのプロジェクトに結びついた理由付きで提案する。
+2. **推薦**:9 つのプリセット(中核 `pm`、`tech-lead`、`coder`、`reviewer`;必要に応じて `qa`、`researcher`;条件を満たすときだけ `release`(デプロイする)、`security`(認証・決済・個人情報)、`designer`(フロントエンドがある))から 3–5 個のロールを、それぞれあなたのプロジェクトに結びついた理由付きで提案する。
 3. **プレビュー**:表(ロール / agent / フォルダー / 役割)を示し、続けて各ロールの*あなたがやること / 禁止 / 引き継ぎ先*を示す。
 4. **カスタマイズ**:あなたの言うとおりに変え(「reviewer は誤字を自分で直してよい」)、`.flightwake/ROLES.md` に書き込む。
 5. **適用**:`npx flightwake roles apply --dry-run` を見せ、あなたが確認したら `npx flightwake roles apply` を実行する。
@@ -115,3 +115,7 @@ ROLES.md からロールを削除して再度 apply する → そのブロッ�
 - 1 つのフォルダーで同じ agent に 2 つのロールを持たせることはできない(上のルールを参照)。
 - ロールはモデルが読むガイダンスであって、サンドボックスではない。agent が何を選んでするかは変えるが、ツール呼び出しを
   止めはしない。本当のガードレール(レビュー、ブランチ保護、権限)はそのまま維持すること。
+
+## 先行事例
+
+参考にしたロール集(参照のみ、文章の複製はなし):[BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) · [ruflo](https://github.com/ruvnet/ruflo) · [wshobson/agents](https://github.com/wshobson/agents) · [multi-agent-shogun](https://github.com/yohey-w/multi-agent-shogun)。中でも multi-agent-shogun のロールごとの禁止行動リストが、私たちの Never リストに最も近い発想です。

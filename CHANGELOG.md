@@ -11,7 +11,9 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 ### Added
 - **`flightwake roles` — opt-in team roles that survive `/clear` (preview, en + zh-TW).** Never installed by
   `init`. `roles` installs a `fw-roles` skill in which the agent itself scans the project, recommends 3–5 roles
-  from six presets (pm, tech-lead, coder, reviewer, qa, researcher — each with an explicit **Never** list), shows
+  from nine presets (pm, tech-lead, coder, reviewer, qa, researcher, plus conditional release, security, designer —
+  each with an explicit **Never** list aimed at a documented failure mode: loosening tests to get green, self-review,
+  dispatching without "done when", claiming "live" before verification), shows
   a preview, and takes customizations in conversation into one human-edited `.flightwake/ROLES.md`.
   `roles apply [--dry-run]` renders each role into the instruction file its agent reads at every session start
   (Claude Code → `CLAUDE.md`, Codex → `AGENTS.md`, Gemini CLI → `GEMINI.md`), inside

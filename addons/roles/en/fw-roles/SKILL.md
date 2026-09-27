@@ -22,7 +22,9 @@ of them moves to another vendor.
      Which agents are available (Claude Code / Codex / Gemini CLI)? If `.flightwake/ROLES.md` exists, read it —
      this is an edit, not a fresh start.
 2. **Recommend a team** (3–5 roles; more and they step on each other)
-   - Pick from this skill's `presets/`: pm, tech-lead, coder, reviewer, qa, researcher. If none fits, write one in the same format.
+   - Pick from this skill's `presets/`. Core: pm, tech-lead, coder, reviewer; as needed: qa, researcher; **only when the condition holds**:
+     release (the project actually deploys), security (auth, payments, personal data), designer (there is a frontend). If none fits, write one in the same format.
+   - Seats are limited (one role per vendor per folder): when a conditional role has no free seat, say it needs another folder/worktree or vendor and let the user decide — don't squeeze it in.
    - Give each role a (folder, vendor) pair that respects the routing rule.
    - Prefer coder and reviewer on **different vendors** (a different model catches the same-model blind spots);
      pm is steadier in a folder where no code is written.
@@ -49,7 +51,7 @@ of them moves to another vendor.
    pm's repo; other repos need no copy — apply writes into them too.
 5. **Apply**: run `npx flightwake roles apply --dry-run` first so the user sees exactly which files change and how;
    after they confirm, `npx flightwake roles apply`. It only touches the `<!-- flightwake-roles:begin/end -->`
-   blocks. If an instruction file still has **hand-written role sections**, point them out and remove them once the
+   blocks, always placed at the **top** of the file (the first thing the agent reads) — describe it that way to the user. If an instruction file still has **hand-written role sections**, point them out and remove them once the
    user confirms — old and new side by side contradict each other.
 6. **Verify**: in each role's folder, open a **new session** with that agent and ask the same bait question, e.g.
    "a frontend button has a typo — which role are you and what's your next step? Don't touch anything." pm /

@@ -33,7 +33,7 @@ npx flightwake roles                  # install the fw-roles skill into this rep
 Then ask your agent: **"run fw-roles"** (Claude Code: `/fw-roles`, Codex: `$fw-roles`). It will:
 
 1. **Scan** the project — README, manifests, layout, tests, `.flightwake/STATE.md` — and ask which folders the team spans and which agents you have.
-2. **Recommend** 3–5 roles from six presets: `pm`, `tech-lead`, `coder`, `reviewer`, `qa`, `researcher`, each with a reason tied to your project.
+2. **Recommend** 3–5 roles from nine presets — core `pm`, `tech-lead`, `coder`, `reviewer`; as needed `qa`, `researcher`; only when the condition holds `release` (you deploy), `security` (auth, payments, personal data), `designer` (there is a frontend) — each with a reason tied to your project.
 3. **Preview** them: a table (role / agent / folder / duty), then each role's *You do / Never / Hand off to*.
 4. **Customize** whatever you say ("the reviewer may fix typos itself") and write `.flightwake/ROLES.md`.
 5. **Apply**: show `npx flightwake roles apply --dry-run`, and after you confirm, run `npx flightwake roles apply`.
@@ -113,3 +113,7 @@ next apply overwrites it.
 - Two roles on the same agent in one folder are not supported (see the rule above).
 - The role is guidance the model reads, not a sandbox. It changes what the agent chooses to do; it does not stop a
   tool call. Keep your real guardrails (reviews, branch protection, permissions) in place.
+
+## Prior art
+
+Role catalogs we studied (reference only — no text copied): [BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) · [ruflo](https://github.com/ruvnet/ruflo) · [wshobson/agents](https://github.com/wshobson/agents) · [multi-agent-shogun](https://github.com/yohey-w/multi-agent-shogun). multi-agent-shogun's per-role forbidden actions are the closest idea to our Never lists.

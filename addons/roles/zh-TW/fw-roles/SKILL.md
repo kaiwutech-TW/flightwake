@@ -19,7 +19,9 @@ description: flightwake 團隊角色 — 掃專案、推薦一組 agent 角色�
    - 問使用者(能自己查到就別問):團隊橫跨哪些資料夾?(用 Orca 時可 `orca repo list` 看)手上有哪些 agent
      (Claude Code/Codex/Gemini CLI)?已經有 `.flightwake/ROLES.md` 就讀它,這次是修改不是新建。
 2. **推薦一組角色**(3–5 個就好,多了互相踩線)
-   - 從本 skill 的 `presets/` 挑:pm、tech-lead、coder、reviewer、qa、researcher。都不合就自己寫一個,同樣格式。
+   - 從本 skill 的 `presets/` 挑。核心:pm、tech-lead、coder、reviewer;視需要:qa、researcher;**有條件才推薦**:
+     release(專案真的會部署上線)、security(碰到登入、金流、個資)、designer(有前端畫面)。都不合就自己寫一個,同樣格式。
+   - 位子有限(每個資料夾每個廠牌一個):條件型角色搶不到位子時,說明要多開資料夾/worktree 或換廠牌,讓使用者決定,不要硬塞。
    - 每個角色配一個 (資料夾, 廠牌),遵守路由規則。
    - 建議 coder 與 reviewer 用**不同廠牌**(異質模型互審抓得到同模型的盲點);pm 放在不寫程式的資料夾更穩。
    - 每個推薦附一句理由,連到你在步驟 1 看到的具體事實。
@@ -44,7 +46,7 @@ description: flightwake 團隊角色 — 掃專案、推薦一組 agent 角色�
    `repo:` 相對於本 repo 根目錄(可用絕對路徑或 `~/`)。一個團隊**只寫一份** ROLES.md,放在 pm 所在的 repo;
    其他 repo 不必複製,apply 會一起寫過去。
 5. **套用**:先 `npx flightwake roles apply --dry-run` 給使用者看實際會寫進哪些檔、長什麼樣,確認後再
-   `npx flightwake roles apply`。它只動 `<!-- flightwake-roles:begin/end -->` 標記區塊,其他內容不碰。
+   `npx flightwake roles apply`。它只動 `<!-- flightwake-roles:begin/end -->` 標記區塊,區塊一律放在檔案**最前面**(agent 開場第一眼讀到),其他內容不碰——向使用者說明時照這個講,別說成「加在後面」。
    指令檔裡如果還有**手寫的舊角色段落**,指給使用者看並在確認後刪掉——新舊並存會互相矛盾。
 6. **驗收**:在每個角色的資料夾用對應 agent 開一個**新對話**,問同一個誘導題,例如「前端有個按鈕打錯字,
    你是哪個角色、下一步做什麼?不要動手」。pm/tech-lead/reviewer 應該轉派而不是自己改。有人自己動手 →

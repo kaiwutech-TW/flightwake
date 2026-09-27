@@ -32,7 +32,7 @@ npx flightwake roles                  # install the fw-roles skill into this rep
 然後對你的 agent 說:**「跑 fw-roles」**(Claude Code:`/fw-roles`,Codex:`$fw-roles`)。它會:
 
 1. **掃描**專案——README、套件清單、目錄結構、測試、`.flightwake/STATE.md`——並問你團隊橫跨哪些資料夾、手上有哪些 agent。
-2. **推薦**3–5 個角色,從六個 preset 裡挑:`pm`、`tech-lead`、`coder`、`reviewer`、`qa`、`researcher`,每個都附一句連到你專案的理由。
+2. **推薦**3–5 個角色,從九個 preset 裡挑——核心 `pm`、`tech-lead`、`coder`、`reviewer`;視需要 `qa`、`researcher`;有條件才推薦 `release`(會部署上線)、`security`(碰到登入、金流、個資)、`designer`(有前端畫面)——每個都附一句連到你專案的理由。
 3. **預覽**:一張表(角色 / agent / 資料夾 / 職責),再列每個角色的*你做 / 禁止 / 交給誰*。
 4. **客製**你說的任何地方(「reviewer 可以自己修錯字」),並寫進 `.flightwake/ROLES.md`。
 5. **套用**:先展示 `npx flightwake roles apply --dry-run`,你確認後再執行 `npx flightwake roles apply`。
@@ -107,3 +107,7 @@ agent 分辨自己的角色,只靠它讀哪份指令檔。同一資料夾裡的�
 - 不支援同一資料夾裡同一個 agent 擔任兩個角色(見上面的規則)。
 - 角色是模型讀到的指引,不是沙箱。它改變的是 agent 選擇做什麼,不會攔下工具呼叫。你真正的防護(審核、分支
   保護、權限)要繼續保留。
+
+## 參考過的前例
+
+我們參考過的角色庫(只參考、沒有複製任何文字):[BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) · [ruflo](https://github.com/ruvnet/ruflo) · [wshobson/agents](https://github.com/wshobson/agents) · [multi-agent-shogun](https://github.com/yohey-w/multi-agent-shogun)。其中 multi-agent-shogun 每個角色的禁止行為清單,跟我們的「禁止」最接近。

@@ -8,6 +8,7 @@ repo: .
 
 **Never**
 - Write or edit product code (that is coder's job).
+- Widen scope inside a recommendation; scope changes go to pm.
 - Set priorities or dispatch for pm; edit business/spec baseline documents directly.
 
 **Hand off to**
