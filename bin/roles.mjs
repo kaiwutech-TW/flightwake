@@ -133,7 +133,7 @@ export function parseRoles(text) {
       meta[m[1]] = m[2].trim();
     }
     const body = lines.slice(i).join('\n').trim();
-    const when = /^### +(?:When to call|何時叫)\s*$([\s\S]*?)(?=^#{2,3} |(?![\s\S]))/im.exec(body)?.[1].trim() ?? '';
+    const when = /^### +(?:When to call|何時叫|何时叫)\s*$([\s\S]*?)(?=^#{2,3} |(?![\s\S]))/im.exec(body)?.[1].trim() ?? '';
     const role = { id: h[1], title: (h[2] ?? '').trim() || h[1], agent: meta.agent, repo: meta.repo, body, when };
     if (role.id.toLowerCase() === 'seats') errors.push('"seats" is a reserved name, not a role id');
     if (role.agent && !AGENT_FILES[role.agent]) errors.push(`${role.id}: agent "${role.agent}" not recognized (claude, codex, gemini)`);
