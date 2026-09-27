@@ -10,6 +10,7 @@
     "hooks/",
     "templates/",
     "skills/",
+    "addons/",
     "snippets/",
     "README.md",
     "LICENSE"

@@ -15,6 +15,7 @@ import { join, dirname, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
+import { runRoles, removeRoleArtifacts, refreshRolesSkill } from './roles.mjs';
 
 const FW_SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = process.cwd();
@@ -30,16 +31,18 @@ const LANGS = ['en', 'zh-TW', 'zh-CN', 'ja'];
 const log = (s) => console.log(s);
 const noJunk = (src) => !/(^|[\\/])\.(DS_Store|AppleDouble)$/.test(src);
 
-if (!['init', 'update', 'uninstall'].includes(cmd) || args.includes('--help') || args.includes('-h')) {
-  log(`flightwake — usage: npx flightwake init [--force] [--lang=en|zh-TW|zh-CN|ja] [--private] [--statusline] [--agents=claude,codex,gemini] | update | uninstall [--purge]
+if (!['init', 'update', 'uninstall', 'roles'].includes(cmd) || args.includes('--help') || args.includes('-h')) {
+  log(`flightwake — usage: npx flightwake init [--force] [--lang=en|zh-TW|zh-CN|ja] [--private] [--statusline] [--agents=claude,codex,gemini] | update | uninstall [--purge] | roles [install|apply [--dry-run]|remove]
   Run at the target repo root.
   init        install; --force updates existing skills/hooks/snippets; --lang picks the language of installed content
               and CLI output (default en); --private keeps records local, out of git (.git/info/exclude + settings.local.json);
               --statusline installs the bottom gauge (health / STATE lag / context usage; never overwrites an existing statusline);
               --agents picks which platform instruction files get the obligation table (auto-detected by default)
   update      re-install with the options detected from the existing install (lang / statusline / private) — the in-place upgrade
-  uninstall   reverse-remove framework files and marker blocks; keeps .flightwake/ user data unless --purge`);
-  process.exit(['init', 'update', 'uninstall', 'help'].includes(cmd) ? 0 : 1);
+  uninstall   reverse-remove framework files and marker blocks; keeps .flightwake/ user data unless --purge
+  roles       opt-in add-on: install the fw-roles skill; apply renders .flightwake/ROLES.md into CLAUDE.md/AGENTS.md/GEMINI.md;
+              remove strips role blocks (ROLES.md kept)`);
+  process.exit(['init', 'update', 'uninstall', 'roles', 'help'].includes(cmd) ? 0 : 1);
 }
 
 const git = (...a) => execFileSync('git', a, { cwd: TARGET, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
@@ -141,6 +144,11 @@ if (IS_UPDATE && !marker && !existsSync(join(TARGET, '.flightwake'))) {
   process.exit(1);
 }
 
+// ── roles: opt-in add-on (bin/roles.mjs) — never part of init ──
+if (cmd === 'roles') {
+  process.exit(runRoles({ target: TARGET, fwSrc: FW_SRC, version: VERSION, lang: LANG, args, log, M, noJunk }));
+}
+
 // ── uninstall: reverse-remove init's fixed write set; .flightwake/ user data kept unless --purge ──
 if (cmd === 'uninstall') {
   const PURGE = args.includes('--purge');
@@ -159,6 +167,8 @@ if (cmd === 'uninstall') {
     rm(`.agents/skills/${s}`);
   }
   rm('.flightwake/TEMPLATE-record.md');
+  // roles add-on: its skill and role blocks are framework-written too (ROLES.md is user data, kept like STATE)
+  removeRoleArtifacts(TARGET, log);
   rm('.flightwake/hooks/state-check.mjs');
   rm('.flightwake/hooks/statusline.mjs');
   try { rmdirSync(join(TARGET, '.flightwake', 'hooks')); } catch {}
@@ -339,6 +349,8 @@ const installSkills = (baseRel) => {
 };
 installSkills('.claude/skills');
 if (AGENTS_SKILLS) installSkills('.agents/skills');
+// roles add-on: refreshed on update only where the user already installed it (opt-in, never added here)
+if (IS_UPDATE) refreshRolesSkill({ target: TARGET, fwSrc: FW_SRC, lang: LANG, noJunk, log });
 
 // 4. Stop hook merged into .claude/settings.json (--private → settings.local.json, stays out of the repo)
 {

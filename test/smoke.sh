@@ -418,5 +418,99 @@ grep -q 'not json' "$REG" || fail "壞 registry 應原樣保留供檢查,不得�
 node "$CLI" uninstall >/dev/null || fail "registry 壞檔不得讓 uninstall 失敗"
 pass "registry 登記/移除/壞檔容錯"
 
+# 21. roles 附加元件:init 不裝;install/apply/dry-run/冪等/跨 repo/src 回溯/撤角色/路由衝突/remove/uninstall
+TEAM="$TMP/team"; HOME_R="$TEAM/plan"; WORK_R="$TEAM/work"
+for r in "$HOME_R" "$WORK_R"; do
+  mkdir -p "$r" && (cd "$r" && git init -q && git config user.email t@t.t && git config user.name t)
+done
+cd "$HOME_R"
+node "$CLI" roles apply >/dev/null 2>&1 && fail "未 init 的 repo 跑 roles 應退出非零"
+echo "# 使用者自己的規則" > AGENTS.md; echo "# plan 說明" > CLAUDE.md
+node "$CLI" init --lang=zh-TW >/dev/null
+[ -d .claude/skills/fw-roles ] && fail "init 不應安裝 fw-roles(選配)"
+node "$CLI" roles >/dev/null
+[ -f .claude/skills/fw-roles/SKILL.md ] && [ -f .agents/skills/fw-roles/presets/pm.md ] || fail "roles install 應裝 skill 與 presets 到兩個 skill 樹"
+grep -q '禁止' .claude/skills/fw-roles/presets/reviewer.md || fail "zh-TW 安裝應帶中文 presets"
+(cd "$WORK_R" && echo "# work" > CLAUDE.md && node "$CLI" init --agents=claude,codex --lang=zh-TW >/dev/null)
+cat > .flightwake/ROLES.md <<'ROLES'
+# 團隊角色
+說明文字會被忽略。
+
+## pm — 專案經理
+agent: codex
+repo: .
+
+**你做**
+- 派工
+**禁止**
+- 寫程式碼 PM-NEVER
+
+## lead — 技術總監
+agent: claude
+
+**你做**
+- 審技術 LEAD-BODY
+
+## coder — 主寫程式
+agent: claude
+repo: ../work
+
+**你做**
+- 寫程式 CODER-BODY
+
+## reviewer — 審核
+agent: codex
+repo: ../work
+
+**你做**
+- 審核 REVIEWER-BODY
+ROLES
+before=$(cat AGENTS.md CLAUDE.md "$WORK_R/AGENTS.md" "$WORK_R/CLAUDE.md" | shasum)
+node "$CLI" roles apply --dry-run | grep -q 'PM-NEVER' || fail "dry-run 應印出將寫入的區塊"
+[ "$before" = "$(cat AGENTS.md CLAUDE.md "$WORK_R/AGENTS.md" "$WORK_R/CLAUDE.md" | shasum)" ] || fail "dry-run 不得寫檔"
+node "$CLI" roles apply >/dev/null || fail "roles apply 應成功"
+head -1 AGENTS.md | grep -q 'flightwake-roles:begin' || fail "角色區塊應放在指令檔最前面"
+grep -q 'PM-NEVER' AGENTS.md && ! grep -q 'LEAD-BODY' AGENTS.md || fail "plan/AGENTS.md 應只有 pm 角色"
+grep -q 'LEAD-BODY' CLAUDE.md && ! grep -q 'PM-NEVER' CLAUDE.md || fail "plan/CLAUDE.md 應只有 lead 角色"
+grep -q '使用者自己的規則' AGENTS.md && grep -q 'flightwake:begin' AGENTS.md || fail "apply 不得動使用者內容與義務表"
+grep -q 'CODER-BODY' "$WORK_R/CLAUDE.md" && grep -q 'REVIEWER-BODY' "$WORK_R/AGENTS.md" || fail "跨 repo 角色應寫進 work"
+grep -q 'src=../plan/.flightwake/ROLES.md' "$WORK_R/AGENTS.md" || fail "區塊 marker 應帶相對 src"
+grep -q "$WORK_R" AGENTS.md && grep -q '← 你' AGENTS.md || fail "團隊清單應列他 repo 路徑並標出自己"
+grep -q '不適用於你' CLAUDE.md || fail "同資料夾有他廠牌角色時應提示"
+snap=$(cat AGENTS.md CLAUDE.md "$WORK_R/AGENTS.md" "$WORK_R/CLAUDE.md" | shasum)
+node "$CLI" roles apply >/dev/null
+[ "$snap" = "$(cat AGENTS.md CLAUDE.md "$WORK_R/AGENTS.md" "$WORK_R/CLAUDE.md" | shasum)" ] || fail "roles apply 重跑應冪等"
+[ "$(grep -c 'flightwake-roles:begin' AGENTS.md)" = 1 ] || fail "區塊應恰好一份"
+(cd "$WORK_R" && node "$CLI" roles apply >/dev/null) || fail "無 ROLES.md 的成員 repo 應能從 src 回溯套用"
+[ "$snap" = "$(cat AGENTS.md CLAUDE.md "$WORK_R/AGENTS.md" "$WORK_R/CLAUDE.md" | shasum)" ] || fail "從成員 repo 套用結果應一致"
+# 撤掉 reviewer → work/AGENTS.md 的區塊被拿掉,義務表留著
+node -e "const f='.flightwake/ROLES.md',fs=require('fs');fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/## reviewer[\s\S]*$/,''))"
+node "$CLI" roles apply >/dev/null
+grep -q 'flightwake-roles:begin' "$WORK_R/AGENTS.md" && fail "撤掉的角色區塊應被移除"
+grep -q 'flightwake:begin' "$WORK_R/AGENTS.md" || fail "撤角色不得動義務表"
+# 路由衝突:同資料夾兩個 claude → 退出非零、不寫檔
+cp .flightwake/ROLES.md "$TMP/roles.bak"
+printf '\n## qa — 測試\nagent: claude\n\n- QA\n' >> .flightwake/ROLES.md
+snap=$(cat AGENTS.md CLAUDE.md | shasum)
+node "$CLI" roles apply >/dev/null 2>&1 && fail "同資料夾同廠牌兩角色應退出非零"
+[ "$snap" = "$(cat AGENTS.md CLAUDE.md | shasum)" ] || fail "驗證失敗時不得寫任何檔"
+printf '\n## x — 未知\nagent: cursor\n\n- X\n' > .flightwake/ROLES.md
+node "$CLI" roles apply >/dev/null 2>&1 && fail "不認得的 agent 應退出非零"
+cp "$TMP/roles.bak" .flightwake/ROLES.md
+# update 只刷新已裝的 fw-roles;work 沒裝就不會長出來
+echo "local edit" >> .claude/skills/fw-roles/SKILL.md
+node "$CLI" update >/dev/null
+grep -q 'local edit' .claude/skills/fw-roles/SKILL.md && fail "update 應刷新已安裝的 fw-roles"
+(cd "$WORK_R" && node "$CLI" update >/dev/null); [ -d "$WORK_R/.claude/skills/fw-roles" ] && fail "update 不得替未安裝者裝 fw-roles"
+# remove:區塊與 skill 清掉、ROLES.md 保留;uninstall 也清
+node "$CLI" roles remove >/dev/null
+grep -q 'flightwake-roles' AGENTS.md CLAUDE.md && fail "roles remove 應移除本 repo 角色區塊"
+[ -d .claude/skills/fw-roles ] && fail "roles remove 應移除 fw-roles skill"
+[ -f .flightwake/ROLES.md ] || fail "ROLES.md 是使用者資料,不得刪"
+(cd "$WORK_R" && node "$CLI" uninstall >/dev/null)
+grep -q 'flightwake-roles' "$WORK_R/CLAUDE.md" && fail "uninstall 應移除角色區塊"
+grep -q '# work' "$WORK_R/CLAUDE.md" || fail "uninstall 不得傷使用者內容"
+pass "roles 附加元件(選配/跨 repo/冪等/撤角色/路由衝突/remove/uninstall)"
+
 echo ""
 echo "✅ smoke 全過"

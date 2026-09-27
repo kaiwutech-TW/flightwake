@@ -103,3 +103,21 @@ grep -n 'fw-coldstart' CLAUDE.md AGENTS.md GEMINI.md
 
 Then in each tool, open the folder and ask for the cold start in that tool's syntax. All three should answer with
 the same "where we were / where I'll pick up / anything unverified" summary — read from the same STATE.
+
+## Roles: every agent still knows who it is after /clear (opt-in, preview)
+
+With Claude as tech lead and Codex as project manager in the same folder, a role that only lives in the chat is
+gone after /clear — the PM wakes up to "next: do X" and the path of least resistance is to code it. `flightwake
+roles` writes each role into the instruction file its agent reads at every session start, so no hook is needed
+and the role comes back after /clear:
+
+```bash
+npx flightwake roles                 # install the fw-roles skill (init never does)
+# then ask your agent to run fw-roles: scan → recommend → you preview and customize → .flightwake/ROLES.md
+npx flightwake roles apply --dry-run # see what would be written
+npx flightwake roles apply           # write marker blocks into CLAUDE.md / AGENTS.md / GEMINI.md
+```
+
+- **One ROLES.md per team**, across folders: a role with `repo: ../other-repo` is written into that repo.
+- **The one limit**: an agent tells its role apart by which instruction file it reads, so each vendor holds at most one role per folder.
+- Every preset has a **Never** list — in testing, those lines are what kept the PM dispatching instead of coding.

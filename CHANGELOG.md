@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 Releases before 0.7.1 predate the public launch and were never published; the history starts there.
 
+## [Unreleased]
+
+### Added
+- **`flightwake roles` — opt-in team roles that survive `/clear` (preview, en + zh-TW).** Never installed by
+  `init`. `roles` installs a `fw-roles` skill in which the agent itself scans the project, recommends 3–5 roles
+  from six presets (pm, tech-lead, coder, reviewer, qa, researcher — each with an explicit **Never** list), shows
+  a preview, and takes customizations in conversation into one human-edited `.flightwake/ROLES.md`.
+  `roles apply [--dry-run]` renders each role into the instruction file its agent reads at every session start
+  (Claude Code → `CLAUDE.md`, Codex → `AGENTS.md`, Gemini CLI → `GEMINI.md`), inside
+  `<!-- flightwake-roles:begin/end -->` markers at the top of the file — no hook, no trust prompt. A team may
+  span repos: one ROLES.md, and apply writes into every repo it names (member repos find the source again from
+  the block's `src=`). Routing key is (folder, agent): two roles on the same agent in one folder are refused.
+  `roles remove` and `uninstall` strip the blocks and the skill; ROLES.md is user data and is kept; `update`
+  refreshes the skill only where it is already installed.
+
 ## [0.13.0] — 2026-09-02
 
 ### Added
