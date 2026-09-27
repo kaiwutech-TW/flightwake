@@ -8,6 +8,8 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-09-28
+
 ### Added
 - **`flightwake roles` — opt-in team roles that survive `/clear` (preview, en + zh-TW).** Never installed by
   `init`. `roles` installs a `fw-roles` skill in which the agent itself scans the project, recommends 3–5 roles
@@ -202,7 +204,8 @@ First public release. ✈️
 
 Initial npm publish; superseded within the day by 0.7.2.
 
-[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.14.0
 [0.13.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.13.0
 [0.11.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.11.0
 [0.10.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.10.0
