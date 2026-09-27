@@ -22,6 +22,19 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   the block's `src=`). Routing key is (folder, agent): two roles on the same agent in one folder are refused.
   `roles remove` and `uninstall` strip the blocks and the skill; ROLES.md is user data and is kept; `update`
   refreshes the skill only where it is already installed.
+- **Seats and on-call roles.** An optional `## seats` table (`| repo | vendor | role |`) decides who sits where; a role
+  without a seat is **on call** and costs no seat. `roles apply` generates every role as a native agent definition in
+  each seated (repo, vendor) — `.claude/agents/fw-<id>.md`, `.codex/agents/fw-<id>.toml` — so a seated agent can spawn
+  `fw-security` directly, and `roles card <id>` prints the same role as a dispatch card for a cross-vendor worker
+  (stdout only; on error nothing on stdout and a non-zero exit, so a worker is never dispatched without its role).
+  Seat blocks now say they are the *main session's* role and that an explicit card overrides them for that task.
+  `### When to call` in a role feeds every seat's team list. `roles assign <repo>:<vendor> <id> [--add] [--dry-run]`
+  edits exactly one seats cell and re-applies (legacy files without a table are asked to migrate first).
+- **Ownership manifest.** `.flightwake/roles-manifest.json` records every generated output with a hash; apply rewrites or
+  removes only output that still matches, so a same-named user file, a hand-edited generated file, or another team's
+  output is reported as a conflict and nothing is written. A role or a whole repo leaving ROLES.md is cleaned up.
+- Roles are documented and generated as **guidance, not permissions**: in testing, a Codex custom agent defined as
+  read-only still wrote files when spawned from a writable session, so nothing claims enforcement.
 
 ## [0.13.0] — 2026-09-02
 

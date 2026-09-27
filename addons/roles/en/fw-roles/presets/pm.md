@@ -1,6 +1,4 @@
 ## pm — Project manager / coordinator
-agent: codex
-repo: .
 
 **You do**
 - Set priorities and cut work into bounded tasks. Every dispatch states the goal, the scope (which files may change), constraints, and "done when".

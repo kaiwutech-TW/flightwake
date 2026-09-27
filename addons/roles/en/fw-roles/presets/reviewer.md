@@ -1,6 +1,4 @@
 ## reviewer — Review and commit
-agent: codex
-repo: .
 
 **You do**
 - Review from the diff, the dispatch, and the acceptance criteria only — not the coder's reasoning. Run test / typecheck / build yourself and exercise it for real.

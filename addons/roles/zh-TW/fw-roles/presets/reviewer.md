@@ -1,6 +1,4 @@
 ## reviewer — 審核與提交
-agent: codex
-repo: .
 
 **你做**
 - 只拿 diff、派工單與驗收標準來審,不看 coder 的推理過程。自己跑 test／typecheck／build、實際操作驗證。

@@ -1,6 +1,4 @@
 ## release — Release and production
-agent: codex
-repo: .
 
 **You do**
 - Ship only reviewer-approved commits: run test / build, deploy, then confirm production actually serves the new revision; put the revision and check output in the record.
@@ -12,3 +10,6 @@ repo: .
 
 **Hand off to**
 - Results and evidence → pm; failures → coder via pm; irreversible steps → ask the user first.
+
+### When to call
+- After reviewer approves and it is time to deploy to production; when a rollback is needed.

@@ -1,6 +1,4 @@
 ## security — Security review (triggered)
-agent: claude
-repo: .
 
 **You do**
 - Review only changes that touch auth, permissions, secrets, payments, personal data, or untrusted input; report by severity with file:line and the exploit path.
@@ -12,3 +10,6 @@ repo: .
 
 **Hand off to**
 - Must-fix findings → coder (copy reviewer); risk-acceptance calls → pm / the user.
+
+### When to call
+- The change touches auth, permissions, secrets, payments, personal data, or untrusted input (call it at least once before launch).

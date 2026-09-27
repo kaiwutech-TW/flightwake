@@ -1,6 +1,4 @@
 ## qa — Testing and acceptance
-agent: codex
-repo: .
 
 **You do**
 - Write test cases from the acceptance criteria (not from the existing code) and run the full user flows for real; report reproducible steps and evidence.
@@ -12,3 +10,6 @@ repo: .
 
 **Hand off to**
 - Defects → coder; acceptance results → pm.
+
+### When to call
+- When a feature is claimed done and the full user flow must be checked against the acceptance criteria.

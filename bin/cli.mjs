@@ -32,7 +32,7 @@ const log = (s) => console.log(s);
 const noJunk = (src) => !/(^|[\\/])\.(DS_Store|AppleDouble)$/.test(src);
 
 if (!['init', 'update', 'uninstall', 'roles'].includes(cmd) || args.includes('--help') || args.includes('-h')) {
-  log(`flightwake — usage: npx flightwake init [--force] [--lang=en|zh-TW|zh-CN|ja] [--private] [--statusline] [--agents=claude,codex,gemini] | update | uninstall [--purge] | roles [install|apply [--dry-run]|remove]
+  log(`flightwake — usage: npx flightwake init [--force] [--lang=en|zh-TW|zh-CN|ja] [--private] [--statusline] [--agents=claude,codex,gemini] | update | uninstall [--purge] | roles [install|apply [--dry-run]|card <id>|assign <repo>:<vendor> <id> [--add] [--dry-run]|remove]
   Run at the target repo root.
   init        install; --force updates existing skills/hooks/snippets; --lang picks the language of installed content
               and CLI output (default en); --private keeps records local, out of git (.git/info/exclude + settings.local.json);
@@ -40,8 +40,9 @@ if (!['init', 'update', 'uninstall', 'roles'].includes(cmd) || args.includes('--
               --agents picks which platform instruction files get the obligation table (auto-detected by default)
   update      re-install with the options detected from the existing install (lang / statusline / private) — the in-place upgrade
   uninstall   reverse-remove framework files and marker blocks; keeps .flightwake/ user data unless --purge
-  roles       opt-in add-on: install the fw-roles skill; apply renders .flightwake/ROLES.md into CLAUDE.md/AGENTS.md/GEMINI.md;
-              remove strips role blocks (ROLES.md kept)`);
+  roles       opt-in add-on: install the fw-roles skill; apply renders .flightwake/ROLES.md — seats into CLAUDE.md/AGENTS.md/GEMINI.md,
+              every role into native on-call agents (.claude/agents, .codex/agents); card prints a dispatch card; assign changes a seat;
+              remove strips this repo's role output (ROLES.md kept). Roles are guidance, not permissions`);
   process.exit(['init', 'update', 'uninstall', 'roles', 'help'].includes(cmd) ? 0 : 1);
 }
 

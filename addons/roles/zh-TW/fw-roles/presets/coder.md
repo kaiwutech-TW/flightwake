@@ -1,6 +1,4 @@
 ## coder — 主寫程式
-agent: claude
-repo: .
 
 **你做**
 - 依派工寫程式與測試,跑 test／typecheck／build 全綠才算完成。

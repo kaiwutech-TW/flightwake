@@ -1,6 +1,4 @@
 ## designer — UI/UX and visual design (when there is a frontend)
-agent: claude
-repo: .
 
 **You do**
 - Turn requirements into a design spec: page structure and user flow, layout, color and type tokens, every component state (empty, loading, error), and the phone-width view.
@@ -13,3 +11,6 @@ repo: .
 
 **Hand off to**
 - Design spec → pm (pm dispatches it to coder); implementation vs. spec differences → pm, back to coder.
+
+### When to call
+- Before building a new screen or changing layout or interaction flow; after coder finishes, to check against the spec.

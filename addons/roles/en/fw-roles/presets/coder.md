@@ -1,6 +1,4 @@
 ## coder — Primary implementer
-agent: claude
-repo: .
 
 **You do**
 - Implement dispatched tasks with tests; done means test / typecheck / build all green.
