@@ -38,7 +38,7 @@ flightwake **v0.13.0(2026-09-02 已發,npm latest)**,**已開源上線(2026-07-1
 
 # 下一步入口
 
-0. **發 0.14.0(roles + v2 合併)**:版號 0.14.0、CHANGELOG 日期 → 開 PR(CI 綠)→ merge commit → GitHub Release → npm 驗證;開 PR 與發 Release 前各問使用者一次。下游兩個 repo 的 roles v2 變更待 commit。見 [[260928-roles-v2]]
+0. **發 0.14.0 進行中**:PR #10 已開(版號 4f6427a;CodeQL js/bad-tag-filter 對自家 marker 解析的誤報已改寫 6c587d8)→ CI 全綠後 merge commit → `gh release create v0.14.0` → 驗 npm。下游兩個 repo 的 roles v2 已 commit。見 [[260928-roles-v2]]
 1. **發宣傳**:三稿最終版(已改寫為不點名 GSD,含 HN 留言預備)在使用者桌面 `~/Desktop/flightwake-launch-copy.md`;截圖三張在使用者手上;HN 挑能盯留言的時段發
 2. HN 後續:等 hn@ycombinator.com 回覆(作者留言被 auto-flag)→ 解 flag 後補「v0.9.0 已兌現 English defaults」留言
 3. **0.13.0 後續**:常用 repo `npx flightwake update`(**有 AGENTS.md 的 16 個機隊 repo 會長出 `.agents/skills` 與 `.codex/hooks.json`,每個 repo 首次開 Codex 會被問一次信任 hook**)→ 建 kaiwutech-TW/flightwake-tower repo + trusted publishing → 發 tower 0.1.0
