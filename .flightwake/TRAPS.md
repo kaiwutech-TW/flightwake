@@ -5,6 +5,48 @@
 # 坑 Registry
 
 ---
+name: codex-project-trust-exact-path
+type: gotcha
+status: active
+tags: [codex, trust, subagents, config]
+discovered: 2026-09-28
+confidence: confirmed
+---
+
+**症狀**:repo 有有效的 `.codex/agents/fw-x.toml`,Codex 的 spawn 工具卻沒有 `agent_type` 欄位,叫不出自訂角色;`~/` 明明已在 `~/.codex/config.toml` 設成 trusted。
+**根因**:專案層(`.codex/`)只在**該 git repo 的精確路徑**受信任時才載入;上層目錄受信任不涵蓋底下新建的 git repo(`codex app-server` 的 `config/read` 顯示 project layer disabledReason 要求精確路徑)。另外 `-c 'projects."/path".trust_level="trusted"'` 這種 dotted 寫法在 0.157.1 會把引號留進 key,等於沒設;單次 override 要用 inline table:`-c 'projects={"/path"={trust_level="trusted"}}'`。
+**解法/繞法**:確認實際工作的 repo(含 Orca worktree 路徑,例如 `workspaces/<repo>/<name>`)各自在信任清單裡;驗收看 agent_type 清單與一次真的 spawn,不是看 TOML 存在。
+**佐證**:docs/plans/roles-v2.codex-probe.md §1.1(A/B/C 對照,threads 01a0e3a0… / 01a0e3a1… / 01a0e3a2…)
+
+---
+name: codex-agent-toml-unknown-field-drops-role
+type: gotcha
+status: active
+tags: [codex, subagents, toml]
+discovered: 2026-09-28
+confidence: confirmed
+---
+
+**症狀**:`.codex/agents/*.toml` 加了一個 Codex 不認得的欄位(如 `disallowedTools`、`permissionMode`、任意自訂 key)或型別錯誤,該角色從選單消失;主命令照樣 exit 0。
+**根因**:角色定義嚴格解析,未知欄位/型別錯誤 → 整份角色被忽略(JSONL 有 `Ignoring malformed agent role definition`),不是只忽略那一欄。
+**解法/繞法**:產生器只寫 `name` / `description` / `developer_instructions`;ownership 等額外資料放 TOML 註解或外部 manifest。不要把 Claude 的欄位搬過來。
+**佐證**:docs/plans/roles-v2.codex-probe.md §2.1(Codex 0.157.1,逐欄對照)
+
+---
+name: orca-worker-start-writes-codex-trust
+type: gotcha
+status: active
+tags: [orca, codex, config, side-effect]
+discovered: 2026-09-28
+confidence: probable
+---
+
+**症狀**:用 `orca orchestration worker-start --agent codex` 在一個未受信任的 repo 啟動 worker 後,`~/.codex/config.toml` 多了 `[projects."<repo>"] trust_level = "trusted"`。
+**根因**:推測是 Orca 的 worker 啟動流程自動確認信任(worker 本身回報沒改設定);未追原始碼。
+**解法/繞法**:在暫存/測試 repo 用 worker-start 後,檢查並移除多出的信任項;不要宣稱 worker-start 零設定寫入。也因此 Orca 管理過的 repo 通常已受信任,而沒跑過 worker 的 worktree 路徑可能沒有。
+**佐證**:docs/plans/roles-v2.codex-probe.md §4(Run run_2519f2f6a349,已比對 SHA-256 復原)
+
+---
 name: codex-custom-agent-sandbox-not-enforced
 type: gotcha
 status: active
