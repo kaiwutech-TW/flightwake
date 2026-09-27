@@ -90,7 +90,14 @@ const fileFor = (repo, agent) => {
 };
 const readOr = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : null);
 const blockOf = (text) => text?.match(ROLE_BLOCK_RE)?.[0].replace(/\n*$/, '\n') ?? null;
-const srcOf = (text) => { const m = /\bsrc=(\S+)/.exec(text ?? ''); return m ? decodeURI(m[1].replace(/-->$/, '')) : null; };
+// Reads the src= token of our own marker line (not an HTML sanitizer); a marker written without a space before its
+// closing comment delimiter would glue the delimiter onto the token, so trim it by plain string comparison.
+const srcOf = (text) => {
+  const m = /\bsrc=(\S+)/.exec(text ?? '');
+  if (!m) return null;
+  const tok = m[1].endsWith('-->') ? m[1].slice(0, -3) : m[1];
+  return decodeURI(tok);
+};
 
 // ── parse ──────────────────────────────────────────────────────────────────────────────────────────────────
 
