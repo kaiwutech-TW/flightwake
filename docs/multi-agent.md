@@ -120,4 +120,5 @@ npx flightwake roles apply           # write marker blocks into CLAUDE.md / AGEN
 
 - **One ROLES.md per team**, across folders: a role with `repo: ../other-repo` is written into that repo.
 - **The one limit**: an agent tells its role apart by which instruction file it reads, so each vendor holds at most one role per folder.
+- Full guide: [roles.md](roles.md).
 - Every preset has a **Never** list — in testing, those lines are what kept the PM dispatching instead of coding.

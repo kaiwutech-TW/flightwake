@@ -111,4 +111,5 @@ npx flightwake roles apply           # 寫進 CLAUDE.md / AGENTS.md / GEMINI.md 
 
 - **一個團隊一份 ROLES.md**,可以跨資料夾:`repo: ../other-repo` 的角色會被寫進那個 repo。
 - **唯一限制**:agent 靠「讀哪個指令檔」分辨角色,所以同一資料夾每個廠牌最多一個角色。
+- 完整說明:[roles.zh-TW.md](roles.zh-TW.md)。
 - 每個預設角色都有「禁止」清單——實測中讓專案經理乖乖派工而不自己寫的,就是那幾行。

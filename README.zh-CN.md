@@ -78,6 +78,8 @@ STATE 的 health 诚不诚实(green/yellow/red)。框架的质量指标只有一
 
 同一个 repo 用不止一个模型?[docs/multi-agent.zh-TW.md](docs/multi-agent.zh-TW.md) 说明 Claude Code、Codex、Gemini CLI 怎么共用同一份 `.flightwake/`——init 替各家装了什么、各工具怎么叫 skill、以及让交接不分模型都一样的「收尾 → commit → 冷启动」循环。(英文版:[multi-agent.md](docs/multi-agent.md))
 
+用一组 agent 组团队(项目经理、技术总监、写手、审核)?[docs/roles.zh-CN.md](docs/roles.zh-CN.md) 说明 `flightwake roles`(选配,v0.14.0 起):agent 依你的项目推荐一组角色,你预览、定制,每个角色被写进该 agent 每次开场都会重读的指令文件——`/clear` 之后没人忘记自己的工作,团队横跨多个 repo 也行。(英文版:[roles.md](docs/roles.md))
+
 ## 为什么会有这个项目
 
 Fable 5 级的模型不需要人教它怎么做事——但有四件事再强的模型也做不到,而且全是**结构性**的,不会随模型变强而消失:

@@ -86,6 +86,8 @@ New to working with a strong model? [docs/workflow.md](docs/workflow.md) is a st
 
 Using more than one model on the same repo? [docs/multi-agent.md](docs/multi-agent.md) shows how Claude Code, Codex, and Gemini CLI share one `.flightwake/` — what init installs for each, how to invoke the skills in each tool, and the wrap-up → commit → cold-start loop that makes the handover identical whichever model wrote last. (繁體中文版:[multi-agent.zh-TW.md](docs/multi-agent.zh-TW.md))
 
+Running a team of agents (a project manager, a tech lead, a coder, a reviewer)? [docs/roles.md](docs/roles.md) covers `flightwake roles` (opt-in, v0.14.0+): the agent recommends a set of roles for your project, you preview and customize them, and each role is written into the instruction file its agent re-reads at every session start — so nobody forgets their job after `/clear`, across repos if your team spans several. (繁體中文:[roles.zh-TW.md](docs/roles.zh-TW.md) · 简体中文:[roles.zh-CN.md](docs/roles.zh-CN.md) · 日本語:[roles.ja.md](docs/roles.ja.md))
+
 ## Why this project exists
 
 A Fable 5-class model doesn't need to be taught how to do the work — but there are four things no model can do however strong it gets, because they are **structural** and don't disappear as models improve:

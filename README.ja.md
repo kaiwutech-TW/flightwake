@@ -79,6 +79,8 @@ STATE の health が正直かどうか(green/yellow/red)。フレームワーク
 
 同じ repo で複数のモデルを使うなら:[docs/multi-agent.md](docs/multi-agent.md) は Claude Code・Codex・Gemini CLI が一つの `.flightwake/` を共有する方法——init が各プラットフォームに何を入れるか、各ツールでの skill の呼び方、どのモデルが最後に書いても引き継ぎが同じになる「締め → commit → コールドスタート」のループ。(繁體中文版:[multi-agent.zh-TW.md](docs/multi-agent.zh-TW.md))
 
+エージェントでチームを組むなら(プロジェクトマネージャー、テックリード、実装担当、レビュアー):[docs/roles.ja.md](docs/roles.ja.md) は `flightwake roles`(オプトイン、v0.14.0 以降)の説明——エージェントがプロジェクトに合った役割の組み合わせを推薦し、あなたがプレビュー・カスタマイズすると、各役割はそのエージェントが毎セッション開始時に読み直す指示ファイルに書き込まれる。だから `/clear` の後も誰も自分の仕事を忘れない。チームが複数の repo にまたがっても使える。(English:[roles.md](docs/roles.md))
+
 ## なぜこのプロジェクトが存在するか
 
 Fable 5 級のモデルに仕事のやり方を教える必要はない——だが、どれほど強いモデルにもできないことが四つある。すべて**構造的**なもので、モデルが強くなっても消えない:
