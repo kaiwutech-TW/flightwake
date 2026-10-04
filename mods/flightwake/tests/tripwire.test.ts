@@ -258,6 +258,6 @@ describe('tripwire: caveats and results', () => {
     const w = setup(on, traps(entry('sql', { paths: '["*.sql"]' })))
     await $.tool.call(write('/repo/a.sql'))
     expect(w.writes).toEqual([])
-    expect(w.reads.every((p) => p.startsWith('/repo/.flightwake/') || p.startsWith('/repo/CLAUDE') || p.startsWith('/repo/.claude/'))).toBe(true)
+    expect(w.reads.every((p) => p.startsWith('/repo/.flightwake/') || p.startsWith('/repo/CLAUDE') || p.startsWith('/repo/.claude/') || p === '/repo/AGENTS.md' || p === '/repo/GEMINI.md')).toBe(true)
   })
 })

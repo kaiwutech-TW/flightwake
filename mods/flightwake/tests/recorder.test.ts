@@ -352,12 +352,13 @@ describe('recorder: /fw-log', () => {
     expect((await run($)).text).toContain('セッション')
   })
 
-  test('works without .flightwake/, and says so', async ($, on) => {
-    boot(on, { files: {} })
+  test('without .flightwake/: nothing recorded, /fw-log falls through to the engine (acceptance 2026-10-05)', async ($, on) => {
+    const { w } = boot(on, { files: {} })
+    on('command.run', () => ({ text: 'engine: unknown command' }))
     await $.tool.call({ tool: 'Write', file_path: '/repo/a.ts', content: 'x' })
-    const text = (await run($)).text as string
-    expect(text).toContain('`a.ts`')
-    expect(text).toContain("flightwake isn't set up")
+    expect((await run($)).text).toBe('engine: unknown command')
+    expect(getLog()).toBe(null)
+    expect(w.gitCalls).toEqual([])
   })
 
   test('STATE template, not a git repo, no marker: still fine', async ($, on) => {

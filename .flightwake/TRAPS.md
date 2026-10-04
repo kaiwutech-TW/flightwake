@@ -5,6 +5,21 @@
 # 坑 Registry
 
 ---
+name: plain-git-status-rewrites-index
+type: gotcha
+status: active
+tags: [git, read-only, mods, hooks]
+discovered: 2026-10-05
+confidence: confirmed
+paths: ["mods/**", "hooks/*.mjs"]
+---
+
+**症狀**:號稱唯讀的工具只跑了 `git status --porcelain`,stdout 為空,`.git/index` 的位元組卻變了(Astra 驗收 diff 時在暫存 repo 實測到 mod 的 F2 指令)。
+**根因**:`git status` 發現工作樹檔案的 stat 資訊與 index 不符(內容相同、mtime 變了)時,會順手刷新並寫回 index——這是 optional lock 下的寫入;`git --no-optional-locks` 關掉它。
+**解法/繞法**:唯讀承諾的 git 呼叫一律 `git --no-optional-locks …`;驗證要比對真實 `.git/index` 位元組並附對照組(普通 status 確實會改),見 `mods/flightwake/scripts/git-readonly-check.sh`。既有 `hooks/state-check.mjs` 與 `statusline.mjs` 也跑普通 `git status`,屬核心、本分支未改。
+**佐證**:`git-readonly-check.sh` 對照組 index 雜湊改變、帶旗標的同組指令不變(records/261005-flightwake-mod.md 驗收補記)
+
+---
 name: mod-options-not-read-from-project-settings
 type: gotcha
 status: active

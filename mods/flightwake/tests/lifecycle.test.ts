@@ -121,7 +121,7 @@ describe('lifecycle: all features side by side', () => {
     await start($, w)
     const first = await compose($)
     await bash($, 'bash test/smoke.sh')
-    await ($ as any).command.run({ command: 'fw-role-release', args: 'all' })
+    await ($ as any).command.run({ command: 'fw-role-release', args: 'all', origin: { kind: 'composer' } })
     w.files['.flightwake/STATE.md'] = STATE_FILLED.replace('migrate', 'CHANGED')
     await start($, w) // a module reload fires session.start again with the same id
     expect(await compose($)).toBe(first) // stable: no mid-session rewrite of the system prompt
@@ -129,7 +129,7 @@ describe('lifecycle: all features side by side', () => {
     expect((await write($, '/repo/src/a.ts')).deny).toBeUndefined() // release survives the reload
   })
 
-  test('working-directory switch: the snapshot stays; tripwires and the guard follow the new root', ALL_ON, async ($, on) => {
+  test('working-directory switch: the STATE snapshot stays; tripwires and the guard follow the new root', ALL_ON, async ($, on) => {
     const w = installWorld(on, { files: files(), git: gitBehind(0) })
     engineBelow(on, w)
     await start($, w)
@@ -138,7 +138,8 @@ describe('lifecycle: all features side by side', () => {
     w.files = {} // …that has no .flightwake/ (the fake world resolves files against the current root)
     expect(await compose($)).toBe(before)
     expect(hintOf(await bash($, 'bash test/smoke.sh'))).toBe('')
-    expect((await write($, '/elsewhere/src/a.ts')).deny).toBeDefined() // role snapshot is per session, not per root
+    // acceptance 2026-10-05: the role snapshot is per (session, root); a root without flightwake guards nothing
+    expect((await write($, '/elsewhere/src/a.ts')).deny).toBeUndefined()
   })
 
   test('subagents: never guarded, still recorded with their id, still hinted', ALL_ON, async ($, on) => {
@@ -197,7 +198,7 @@ describe('lifecycle: all features side by side', () => {
     expect(p.toasts).toEqual([])
   })
 
-  test('read scope: only .flightwake/, the Claude instruction files and package.json are read', ALL_ON, async ($, on) => {
+  test('read scope: only .flightwake/, the instruction-file markers and package.json are read', ALL_ON, async ($, on) => {
     const w = installWorld(on, { files: { ...files(), 'package.json': '{"scripts":{"test":"vitest"}}', 'AGENTS.md': MARKER('ja') }, git: gitBehind(0) })
     engineBelow(on, w)
     await start($, w)
@@ -206,7 +207,7 @@ describe('lifecycle: all features side by side', () => {
     await bash($, 'npm test')
     await bash($, 'bash test/smoke.sh')
     await log($)
-    const allowed = /^\/repo\/(\.flightwake\/|CLAUDE\.md$|\.claude\/CLAUDE\.md$|CLAUDE\.local\.md$|package\.json$)/
+    const allowed = /^\/repo\/(\.flightwake\/|CLAUDE\.md$|\.claude\/CLAUDE\.md$|CLAUDE\.local\.md$|AGENTS\.md$|GEMINI\.md$|package\.json$)/
     expect(w.reads.filter((p) => !allowed.test(p))).toEqual([])
   })
 })

@@ -48,7 +48,8 @@ function engineBelow(on: On): Probe {
 const ON = { options: { roleGuard: true } }
 const start = ($: any) => $.session.start({ cwd: '/repo', surface: null, isInteractive: true })
 const write = ($: any, file_path: string, extra: object = {}) => $.tool.call({ tool: 'Write', file_path, content: 'x', ...extra })
-const release = ($: any, args: string) => $.command.run({ command: 'fw-role-release', args })
+// The person's own Enter at the prompt: the engine stamps origin composer; the guard refuses every other origin.
+const release = ($: any, args: string) => $.command.run({ command: 'fw-role-release', args, origin: { kind: 'composer' } })
 
 describe('guard on the main session', () => {
   test('seat with deny-write blocks Write into src, allows docs and paths outside root', ON, async ($, on) => {
@@ -141,11 +142,11 @@ describe('off and degrade', () => {
     expect(p.statuses).toEqual([])
   })
 
-  test('seat in a repo without STATE.md still guards (roles do not need STATE)', ON, async ($, on) => {
+  test('seat in a folder without .flightwake/STATE.md guards nothing (acceptance 2026-10-05: same install test as every feature)', ON, async ($, on) => {
     installWorld(on, { files: { 'CLAUDE.md': SEAT() }, git: null })
     engineBelow(on)
     await start($)
-    expect((await write($, '/repo/src/x.ts')).deny).toBeDefined()
+    expect((await write($, '/repo/src/x.ts')).deny).toBeUndefined()
   })
 
   test('zh-TW install language localizes the denial', ON, async ($, on) => {

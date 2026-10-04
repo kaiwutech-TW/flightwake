@@ -5,7 +5,7 @@
 
 ## 第 2 版修訂(優先於正文)
 
-- **讀取範圍**明列唯讀來源:`.flightwake/`、git 狀態、CLAUDE.md / `.claude/CLAUDE.md` / CLAUDE.local.md 的 flightwake 與 roles marker、package.json 的 scripts、`.claude/settings` 的 statusLine 設定(取有效設定);其餘不讀。
+- **讀取範圍**明列唯讀來源:`.flightwake/`、git 狀態、CLAUDE.md / `.claude/CLAUDE.md` / CLAUDE.local.md 的 flightwake 與 roles marker、AGENTS.md / GEMINI.md 的 flightwake marker(只為取得語言;驗收修正加入)、package.json 的 scripts、`.claude/settings` 的 statusLine 設定(取有效設定);其餘不讀。git 一律帶 `--no-optional-locks`(嚴格零寫入,含 `.git/index`)。
 - **F1** session 開始時取一次穩定快照,不每回合重讀重寫系統提示;過長時不截前 N 字,優先保留 health、進行中、下一步入口與原檔路徑。
 - **F2** 落後量對齊 state-check 完整語意(STATE 有未 commit 變更=正在更新;尚未 commit 過的基線不計;計算出錯不可顯示成同步);偵測舊儀表看有效設定而非檔案存在;重複時由 mod 自己隱藏重複欄位,不改使用者設定。
 - **F3** 只記觀測到的指令完成結果:已知測試指令 + 可靠完成事件 + 退出碼才標通過/失敗;逾時、取消、背景未完成、結果缺失標 unknown;含 `|| true`、管線或複合指令者不以整體退出碼宣稱通過;`npm test` 類要確認 script 內容;每筆記 cwd、時間、當時 revision 與 dirty 狀態;不推算通過數;只存本 session,不建跨 session 歷史;指令參數可能含敏感資訊,要遮蔽。
@@ -115,6 +115,16 @@ flightwake 有幾處靠「模型自覺」或外部 node 腳本在撐,Claude Code
 4. F1 把 STATE 放進系統提示,對每個 session 的固定成本與提示快取有沒有不良影響?
 5. 這五個功能有沒有哪一個其實違反「記錄追隨工作,不引導工作」?
 
+## 驗收修正(2026-10-05,驗收者採納 `docs/plans/mods.diff-review-astra.md` 七項;優先於上文)
+
+1. **F3** 不把未通過或未執行的測試記成通過:package script 的本體與輸入的指令同樣判定(複合、管線、指令替換 → `unknown`/`script-compound`;吞錯 → `script-masks-exit`);runner 帶 `--help`/`--version`/`--list`/`--collect-only`/`--listTests`/`--watch` 等、或 `vitest list` 這類只列不跑的模式,不收錄。
+2. **F5** 目標路徑命中多條 `deny-write` 時,全部命中的規則都已放行才放行;放行 `src/**` 不連帶放行 `src/private/**`。
+3. 沒有安裝 flightwake(缺 `.flightwake/STATE.md`)的目錄一律靜默:F3 不記錄、不註冊 `/fw-log`;F5 不攔、不註冊 `/fw-role-release`。F5 的快照綁定 (session, root),同一 session 換到另一個 root 不沿用舊座位與放行。
+4. 嚴格零寫入:所有 git 呼叫帶 `--no-optional-locks`;`mods/flightwake/scripts/git-readonly-check.sh` 以真 git 驗證 `.git/index` 位元組不變(含對照組證明普通 `git status` 會改寫)。
+5. **F4** 相對路徑依實際 cwd 與指令中的 `cd` 解析後再比對;共用指令解析遇 `#` 只略過該行剩餘部分。提示在工具執行**後**才出現(維持既有決策):它防的是**下一次**,不是這一次——提示文字本身也這樣說。
+6. **F1** 未初始化只認範本自己的 frontmatter 欄位(`{{DATE}}`、`{{SESSION_OR_PERSON}}`、`{{YYMMDD}}`、`{{slug}}`),STATE 內容裡合法的 `{{…}}` 不算;marker 解析容忍額外屬性(`lang=zh-TW profile=notes`),語言另可從 AGENTS.md / GEMINI.md 的 marker 取得。
+7. `/fw-role-release` 只接受來源為 composer(使用者本人在輸入框按 Enter);沒有來源的一律拒絕。
+
 ## 介面約定(管理者,2026-10-05;實作者照此開發)
 
 外掛:`mods/flightwake/`,名稱 `flightwake-mod`(之後安裝到 `.claude/skills/flightwake-mod/`)。
@@ -147,7 +157,7 @@ tests/<f>.test.ts            各功能測試
 | F1 state-inject | `session.start`(取快照)、`session.end` reason=clear(作廢)、`prompt.compose`(加 `flightwake-mod:state` 區段,scope session) | `stateSnapshot` | 不讀 git;快照以 session id 為鍵 |
 | F2 band | `session.start`、`turn.complete`、`tool.call`(Bash commit 後重算)、`ui.render` AbovePrompt;toast | `bandView`、`bandToastSession` | render 內只讀 state、不打 git |
 | F3 recorder | `tool.call`(Edit/Write/NotebookEdit/Bash)、`session.start`、指令 `/fw-log` | `flightLog` | 不改寫工具結果;只記觀測 |
-| F4 tripwire | `tool.call`(Edit/Write/NotebookEdit/Bash),結果後附 `context` | `trapsHinted` | 永不 deny |
+| F4 tripwire | `tool.call`(Edit/Write/NotebookEdit/Bash),結果後附 `context`(防下一次,不是這一次) | `trapsHinted` | 永不 deny |
 | F5 role-guard | `session.start`、`prompt.submit`(派工卡)、`tool.call`(Edit/Write/NotebookEdit,僅主 loop)、指令 `/fw-role-release` | `roleGuard` | 只 deny 寫入 deny-write 路徑;無 roles 時完全不作用 |
 
 顯示文字一律經 `M(lang, { en, 'zh-TW', 'zh-CN', ja })`,lang 來自 `fwContext(io)`。沒有 `.flightwake/STATE.md` 時 `fwContext` 為 null,所有功能靜默。

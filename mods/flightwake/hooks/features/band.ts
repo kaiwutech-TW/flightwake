@@ -26,7 +26,7 @@ function ioOf($: EngineInterface): Io {
       try { if (!(await $.fs.exists(p))) return null; const t = await $.fs.read(p); return typeof t === 'string' ? t : null } catch { return null }
     },
     git: async (args, cwd) => {
-      try { const r = await $.process.run(['git', ...args], { cwd, timeoutMs: 5000 }); return r.exitCode === 0 ? r.stdout.trim() : null } catch { return null }
+      try { const r = await $.process.run(['git', '--no-optional-locks', ...args], { cwd, timeoutMs: 5000 }); return r.exitCode === 0 ? r.stdout.trim() : null } catch { return null }
     },
     settings: async () => { try { return await $.settings.read({}) } catch { return {} } },
   }

@@ -28,7 +28,7 @@ function ioOf($: EngineInterface): Io {
       try { if (!(await $.fs.exists(p))) return null; const t = await $.fs.read(p); return typeof t === 'string' ? t : null } catch { return null }
     },
     git: async (args, cwd) => {
-      try { const r = await $.process.run(['git', ...args], { cwd, timeoutMs: 5000 }); return r.exitCode === 0 ? r.stdout.trim() : null } catch { return null }
+      try { const r = await $.process.run(['git', '--no-optional-locks', ...args], { cwd, timeoutMs: 5000 }); return r.exitCode === 0 ? r.stdout.trim() : null } catch { return null }
     },
     settings: async () => { try { return await $.settings.read({}) } catch { return {} } },
   }
@@ -52,9 +52,15 @@ function matchFile(entries: TrapEntry[], root: string, filePath: string): Hit[] 
   return out
 }
 
-function matchBash(entries: TrapEntry[], root: string, command: string): Hit[] {
+/**
+ * Bash: command prefixes per segment, and path-like words resolved the way the shell would see them — against the
+ * session's cwd, moved by any `cd <dir>` earlier in the same command (`cd pkg && rm src/a.ts` touches pkg/src/a.ts).
+ * A `cd` we can't resolve without guessing (`cd -`, `~`, `$VAR`, bare `cd`) stops path matching for what follows.
+ */
+function matchBash(entries: TrapEntry[], root: string, cwd0: string, command: string): Hit[] {
   const parsed = parseCommand(command)
   const out = new Map<TrapEntry, string>()
+  let cwd: string | null = cwd0
   for (const seg of parsed.segments) {
     for (const entry of entries) {
       if (out.has(entry)) continue
@@ -63,15 +69,20 @@ function matchBash(entries: TrapEntry[], root: string, command: string): Hit[] {
         out.set(entry, prefix.trim().split(/\s+/).join(' '))
         continue
       }
-      if (!entry.paths.length) continue
+      if (!entry.paths.length || cwd === null) continue
       for (const tok of seg.tokens) {
         if (!looksLikePath(tok)) continue
-        const rel = relToRoot(root, tok)
+        const rel = relToRoot(root, tok.startsWith('/') ? tok : `${cwd}/${tok}`)
         if (rel !== null && rel !== '' && matchAny(entry.paths, rel) !== null) {
           out.set(entry, rel)
           break
         }
       }
+    }
+    if (seg.tokens[0] === 'cd' && seg.op !== '|') {
+      const dir = seg.tokens[1]
+      if (seg.tokens.length !== 2 || dir === undefined || dir === '-' || dir.startsWith('~') || dir.includes('$')) cwd = null
+      else if (cwd !== null) cwd = dir.startsWith('/') ? dir : `${cwd}/${dir}`
     }
   }
   return [...out].map(([entry, via]) => ({ entry, via }))
@@ -99,6 +110,12 @@ function render(lang: Lang, shown: Hit[], more: number): string {
   if (more > 0) {
     lines.push(M(lang, { en: `+${more} more`, 'zh-TW': `另有 ${more} 條`, 'zh-CN': `另有 ${more} 条`, ja: `ほか ${more} 件` }))
   }
+  lines.push(M(lang, {
+    en: 'This note arrives after this call ran: it cannot stop this one; it is for the next time you touch this.',
+    'zh-TW': '這則提示在本次呼叫執行之後才出現:它擋不了這一次,是提醒你下一次碰到這裡時注意。',
+    'zh-CN': '这则提示在本次调用执行之后才出现:它拦不住这一次,是提醒你下一次碰到这里时注意。',
+    ja: 'この注意は今回の呼び出しが実行された後に届きます。今回は防げません。次にここに触れるときのためのものです。',
+  }))
   lines.push(M(lang, { en: `Full entry: ${TRAPS_REL}`, 'zh-TW': `完整條目:${TRAPS_REL}`, 'zh-CN': `完整条目:${TRAPS_REL}`, ja: `全文: ${TRAPS_REL}` }))
   if (isLead) {
     lines.push(
@@ -129,7 +146,11 @@ async function hintFor($: EngineInterface, e: Record<string, unknown>): Promise<
   const entries = parseTraps(text).filter((t) => isActive(t) && hasMatchers(t))
   if (!entries.length) return null
 
-  const hits = isFile ? matchFile(entries, ctx.root, target) : matchBash(entries, ctx.root, target)
+  let cwd0 = ctx.root
+  if (!isFile) {
+    try { cwd0 = (await $.session.cwd()).replace(/\/+$/, '') || ctx.root } catch {}
+  }
+  const hits = isFile ? matchFile(entries, ctx.root, target) : matchBash(entries, ctx.root, cwd0, target)
   if (!hits.length) return null
 
   const sessionId = await io.sessionId()

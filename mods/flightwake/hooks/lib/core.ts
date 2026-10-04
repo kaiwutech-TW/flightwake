@@ -3,7 +3,8 @@
  *
  * READ SCOPE (docs/plans/mods.md, revised 2026-10-05) — the mod reads only:
  *   .flightwake/ · git state · the flightwake / roles markers in CLAUDE.md, .claude/CLAUDE.md, CLAUDE.local.md ·
- *   package.json `scripts` · the effective `statusLine` setting. Nothing else, and no network. Everything outside the module goes through `$`; every helper here
+ *   the flightwake marker in AGENTS.md / GEMINI.md (language only) · package.json `scripts` · the effective
+ *   `statusLine` setting. Nothing else, and no network. Everything outside the module goes through `$`; every helper here
  * swallows its own errors and answers null/false, so a feature built on them degrades silently (no
  * .flightwake/, not a git repo, git missing, unreadable file) instead of surfacing an error to the person.
  * Read-only by contract: nothing here writes outside the mod's own $.state / $.store.
@@ -35,7 +36,10 @@ export type Io = {
   exists: (abs: string) => Promise<boolean>
   /** $.fs.read(abs) as text; null when absent/unreadable. */
   read: (abs: string) => Promise<string | null>
-  /** `git <args>` in cwd: trimmed stdout on exit 0, null otherwise (not a repo, git missing, timeout). */
+  /**
+   * `git --no-optional-locks <args>` in cwd: trimmed stdout on exit 0, null otherwise (not a repo, git missing,
+   * timeout). The flag is part of the zero-write promise: a plain `git status` may refresh and rewrite .git/index.
+   */
   git: (args: readonly string[], cwd: string) => Promise<string | null>
   /** $.settings.read({}) — the merged, effective settings; {} on error. */
   settings: () => Promise<Record<string, unknown>>
@@ -56,7 +60,7 @@ export type Io = {
  *         try { if (!(await $.fs.exists(p))) return null; const t = await $.fs.read(p); return typeof t === 'string' ? t : null } catch { return null }
  *       },
  *       git: async (args, cwd) => {
- *         try { const r = await $.process.run(['git', ...args], { cwd, timeoutMs: 5000 }); return r.exitCode === 0 ? r.stdout.trim() : null } catch { return null }
+ *         try { const r = await $.process.run(['git', '--no-optional-locks', ...args], { cwd, timeoutMs: 5000 }); return r.exitCode === 0 ? r.stdout.trim() : null } catch { return null }
  *       },
  *       settings: async () => { try { return await $.settings.read({}) } catch { return {} } },
  *     }
@@ -127,23 +131,33 @@ export function parseInlineList(v: string | undefined): string[] {
   return items
 }
 
-/** Claude's instruction files, in bin/cli.mjs detectMarker order. AGENTS.md / GEMINI.md are outside the mod's read scope. */
-export const CLAUDE_INSTRUCTION_FILES = ['.claude/CLAUDE.md', 'CLAUDE.md', 'CLAUDE.local.md'] as const
-const MARKER_RE = /<!-- flightwake:begin v(\d+\.\d+\.\d+[^\s]*)(?:\s+lang=([\w-]+))?\s*-->/
-
 /**
- * The language recorded at install time: the `lang=` of the flightwake marker in the first Claude instruction
- * file that carries one (bin/cli.mjs detectMarker order, minus AGENTS.md/GEMINI.md). A pre-0.9 marker without
- * lang was zh-TW; no marker or an unknown value → en.
+ * Files whose flightwake marker carries the install language, in bin/cli.mjs detectMarker order: Claude's first,
+ * then AGENTS.md / GEMINI.md (read for the marker only — a repo installed for Codex/Gemini alone has just those).
  */
+export const MARKER_FILES = ['.claude/CLAUDE.md', 'CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', 'GEMINI.md'] as const
+/** `<!-- flightwake:begin v<version> [attr=value …] -->`; attributes in any order (e.g. `lang=zh-TW profile=notes`). */
+const MARKER_RE = /<!-- flightwake:begin v(\d+\.\d+\.\d+\S*)((?:\s+[\w-]+=[^\s>]+)*)\s*-->/
+
+/** The language attribute of a marker line, or what its absence means; null when the text holds no marker. */
+export function markerLang(text: string): Lang | null {
+  const m = MARKER_RE.exec(text)
+  if (!m) return null
+  const attrs = m[2] ?? ''
+  const lang = /(?:^|\s)lang=([\w-]+)/.exec(attrs)?.[1]
+  // A pre-0.9 marker carried no attributes at all, and every install back then was zh-TW. A marker that has other
+  // attributes but no lang is a newer writer that left the language out: fall back to the default, English.
+  if (lang === undefined) return attrs.trim() === '' ? 'zh-TW' : 'en'
+  return (LANGS as readonly string[]).includes(lang) ? (lang as Lang) : 'en'
+}
+
+/** The language recorded at install time: the first marker found in MARKER_FILES; none → en. */
 export async function detectLang(io: Io, root: string): Promise<Lang> {
-  for (const rel of CLAUDE_INSTRUCTION_FILES) {
+  for (const rel of MARKER_FILES) {
     const t = await readRel(io, root, rel)
     if (t === null) continue
-    const m = MARKER_RE.exec(t)
-    if (!m) continue
-    const l = (m[2] ?? 'zh-TW') as Lang
-    return LANGS.includes(l) ? l : 'en'
+    const l = markerLang(t)
+    if (l !== null) return l
   }
   return 'en'
 }
@@ -156,14 +170,18 @@ export function healthOf(stateText: string): Health {
   return h === 'green' || h === 'yellow' || h === 'red' ? h : 'unknown'
 }
 
+/** The shipped STATE template's own frontmatter placeholders (identical in all four languages). */
+const TEMPLATE_FIELDS = ['{{DATE}}', '{{SESSION_OR_PERSON}}', '{{YYMMDD}}', '{{slug}}'] as const
+
 /**
- * STATE is still the unfilled template: its frontmatter `updated:` is a `{{…}}` placeholder, or the body holds
- * two or more `{{…}}` placeholders (the shipped template has ~10 in every language).
+ * STATE is still the unfilled template: its frontmatter still holds one of the template's own placeholders.
+ * Only those count — a filled STATE may legitimately document `{{customer}}`-style placeholders in its body.
  */
 export function isUninitializedState(stateText: string): boolean {
-  const fm = parseFrontmatter(stateText)
-  if (fm && /\{\{.*\}\}/.test(fm.updated ?? '')) return true
-  return (stateText.match(/\{\{[^}\n]+\}\}/g) ?? []).length >= 2
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(stateText)
+  if (!m || m[1] === undefined) return false
+  const front = m[1]
+  return TEMPLATE_FIELDS.some((f) => front.includes(f))
 }
 
 /**

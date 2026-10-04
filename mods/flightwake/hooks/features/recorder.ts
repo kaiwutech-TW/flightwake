@@ -14,7 +14,7 @@ import { atom, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
 import type { FwFlightLog, FwTestRun } from '../../types'
-import { M, STATE_REL, detectLang, packageScripts, readRel, relToRoot } from '../lib/core'
+import { M, STATE_REL, fwContext, packageScripts, readRel, relToRoot } from '../lib/core'
 import type { Io, Lang } from '../lib/core'
 import { parseCommand } from '../lib/shell'
 import type { Segment } from '../lib/shell'
@@ -38,7 +38,7 @@ function ioOf($: EngineInterface): Io {
       try { if (!(await $.fs.exists(p))) return null; const t = await $.fs.read(p); return typeof t === 'string' ? t : null } catch { return null }
     },
     git: async (args, cwd) => {
-      try { const r = await $.process.run(['git', ...args], { cwd, timeoutMs: 5000 }); return r.exitCode === 0 ? r.stdout.trim() : null } catch { return null }
+      try { const r = await $.process.run(['git', '--no-optional-locks', ...args], { cwd, timeoutMs: 5000 }); return r.exitCode === 0 ? r.stdout.trim() : null } catch { return null }
     },
     settings: async () => { try { return await $.settings.read({}) } catch { return {} } },
   }
@@ -131,10 +131,28 @@ function isRunner(t: readonly string[]): boolean {
   return false
 }
 
+/**
+ * Words that make a runner print help/version, list or collect tests, or watch instead of running them once: such an
+ * invocation proves nothing about the tests, so it is not recorded at all (acceptance 2026-10-05).
+ */
+const NO_RUN_FLAGS = new Set([
+  '--help', '-h', '--version', '-V', '--collect-only', '--co', '--listTests', '--list-tests', '--list', '-list',
+  '--showConfig', '--show-config', '--watch', '--watchAll', '--init', '--dry-run',
+])
+const NO_RUN_SUBCOMMANDS: Record<string, readonly string[]> = { vitest: ['list', 'watch', 'dev', 'init'], jest: [], playwright: ['show-report', 'codegen'] }
+
+export function isNoRun(tokens: readonly string[]): boolean {
+  if (tokens.some((t) => NO_RUN_FLAGS.has(t) || t.startsWith('--help=') || t.startsWith('--list='))) return true
+  const t = unwrapExec(tokens) ?? [...tokens]
+  const sub = NO_RUN_SUBCOMMANDS[t[0] ?? '']
+  return sub !== undefined && t[1] !== undefined && sub.includes(t[1])
+}
+
 export function classify(tokensIn: readonly string[]): Candidate | null {
   const t = stripRedirects(tokensIn)
   const first = t[0]
   if (first === undefined) return null
+  if (isNoRun(t)) return null
   const wrapped = unwrapExec(t)
   if (wrapped !== null) {
     const w0 = wrapped[0]
@@ -188,6 +206,8 @@ type Planned = {
   kind: FwTestRun['kind']
   script?: string
   isMasked: boolean
+  /** The package script's own body is compound / piped / not plainly readable: its exit code proves nothing. */
+  isScriptCompound?: boolean
 }
 
 type Plan = {
@@ -241,7 +261,13 @@ async function planBash(io: Io, root: string, cwd0: string, command: string): Pr
       const body = scripts?.[c.script]
       if (body === undefined || body.trim() === '') continue
       if (c.isNpmTest && /no test specified/i.test(body)) continue // npm's placeholder is not a test
-      items.push({ kind: 'package-script', script: redact(body, CAP_SCRIPT), isMasked: masksExit(body) })
+      // The script body gets the same reading as a typed command: a body that only prints help or lists tests is not
+      // a test run (not recorded); a compound, piped or substituted body can't turn its exit code into pass/fail.
+      const bodyParsed = parseCommand(body.trim())
+      const bodySegs = bodyParsed.segments
+      if (bodySegs.length === 1 && !bodyParsed.isComplex && isNoRun(stripRedirects((bodySegs[0] as Segment).tokens))) continue
+      const isScriptCompound = bodyParsed.isComplex || bodySegs.length !== 1 || bodySegs.some((x) => x.op !== '')
+      items.push({ kind: 'package-script', script: redact(body, CAP_SCRIPT), isMasked: masksExit(body), isScriptCompound })
       continue
     }
     items.push({ kind: c.kind, isMasked: false })
@@ -293,6 +319,8 @@ const freshLog = (sessionId: string, now: number): FwFlightLog => ({ sessionId, 
 
 /** Applies `change` to this session's log (a log of another session id is replaced: that is the /clear behaviour). */
 async function record($: EngineInterface, io: Io, change: (log: FwFlightLog) => void): Promise<void> {
+  // Same install test as every feature: no .flightwake/STATE.md under the root → this folder is not ours, keep nothing.
+  if ((await fwContext(io)) === null) return
   const sid = await io.sessionId()
   const now = await $.clock.now()
   await update($, flightLog, (cur) => {
@@ -321,17 +349,9 @@ const when = (ms: number): string => new Date(ms).toISOString().replace('T', ' '
 const cell = (s: string): string => s.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|')
 const code = (s: string): string => (s.includes('`') ? cell(s) : `\`${cell(s)}\``)
 
-export function renderLog(lang: Lang, log: FwFlightLog | null, isFlightwakeHere: boolean): string {
+export function renderLog(lang: Lang, log: FwFlightLog | null): string {
   const lines: string[] = []
   lines.push(`## ${M(lang, { en: 'flightwake session log', 'zh-TW': 'flightwake 本 session 記錄', 'zh-CN': 'flightwake 本 session 记录', ja: 'flightwake セッション記録' })}`, '')
-  if (!isFlightwakeHere) {
-    lines.push(M(lang, {
-      en: "_flightwake isn't set up in this folder (no .flightwake/STATE.md); this log still covers the current session._",
-      'zh-TW': '_這個資料夾尚未安裝 flightwake(沒有 .flightwake/STATE.md);以下仍是本 session 的觀測記錄。_',
-      'zh-CN': '_这个文件夹尚未安装 flightwake(没有 .flightwake/STATE.md);以下仍是本 session 的观测记录。_',
-      ja: '_このフォルダには flightwake が未導入です(.flightwake/STATE.md なし)。以下は現在のセッションの観測記録です。_',
-    }), '')
-  }
   const isEmpty = log === null || (log.files.length === 0 && log.tests.length === 0 && log.commits.length === 0)
   if (isEmpty || log === null) {
     lines.push(M(lang, {
@@ -406,8 +426,12 @@ async function ensureCommand($: EngineInterface): Promise<void> {
   isCommandRegistered = true
   try {
     const io = ioOf($)
-    const root = await io.root()
-    const lang = root ? await detectLang(io, root) : 'en'
+    const ctx = await fwContext(io)
+    if (ctx === null) {
+      isCommandRegistered = false // not installed here: no command (a later record in an installed root registers it)
+      return
+    }
+    const lang = ctx.lang
     await $.command.register({
       name: 'fw-log',
       description: M(lang, {
@@ -432,13 +456,12 @@ export function registerRecorder(on: On): void {
   on('command.run', { command: 'fw-log' }, async ($, e, next) => {
     try {
       const io = ioOf($)
-      const root = await io.root()
+      const ctx = await fwContext(io)
+      if (ctx === null) return next(e) // not installed here: as if the command did not exist
       const sid = await io.sessionId()
       const cur = (await $.state.get({ plugin: 'flightwake-mod', key: 'flightLog' } as const)).value ?? null
       const log = cur !== null && cur.sessionId === sid ? cur : null
-      const lang = root ? await detectLang(io, root) : 'en'
-      const isHere = root ? await io.exists(`${root}/${STATE_REL}`) : false
-      return { text: renderLog(lang, log, isHere) }
+      return { text: renderLog(ctx.lang, log) }
     } catch {
       return next(e)
     }
@@ -474,7 +497,7 @@ export function registerRecorder(on: On): void {
     let isDirty: boolean | null = null
     let startedAt = 0
     try {
-      if (typeof command === 'string' && command.trim()) {
+      if (typeof command === 'string' && command.trim() && (await fwContext(ioOf($))) !== null) {
         const io = ioOf($)
         const root = await io.root()
         let cwd0 = root
@@ -502,7 +525,10 @@ export function registerRecorder(on: On): void {
         const runs: FwTestRun[] = []
         if (plan !== null && typeof command === 'string') {
           for (const item of plan.items) {
-            const o = outcomeOf(res, isBackground, plan.isCompound, item.isMasked)
+            // A masked script reports why it is masked; any other compound script body reports script-compound.
+            const o = item.isScriptCompound === true && !plan.isCompound && !item.isMasked
+              ? { result: 'unknown' as const, exitCode: null, reason: 'script-compound' }
+              : outcomeOf(res, isBackground, plan.isCompound, item.isMasked)
             const run: FwTestRun = {
               command: redact(command.trim()),
               kind: item.kind,

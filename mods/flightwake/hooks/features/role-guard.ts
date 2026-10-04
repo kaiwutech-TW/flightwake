@@ -13,8 +13,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
 import type { FwRoleGuard } from '../../types'
-import { detectLang, M, readRel, relToRoot, type Io, type Lang } from '../lib/core'
-import { matchAny } from '../lib/glob'
+import { fwContext, M, readRel, relToRoot, type Io, type Lang } from '../lib/core'
+import { matchGlob } from '../lib/glob'
 import { parseCard, parseSeatBlock } from '../lib/roles'
 
 // Pasted from IO_OF_TEMPLATE (hooks/lib/core.ts): `$` cannot cross an import, so each feature file builds its own.
@@ -27,7 +27,7 @@ function ioOf($: EngineInterface): Io {
       try { if (!(await $.fs.exists(p))) return null; const t = await $.fs.read(p); return typeof t === 'string' ? t : null } catch { return null }
     },
     git: async (args, cwd) => {
-      try { const r = await $.process.run(['git', ...args], { cwd, timeoutMs: 5000 }); return r.exitCode === 0 ? r.stdout.trim() : null } catch { return null }
+      try { const r = await $.process.run(['git', '--no-optional-locks', ...args], { cwd, timeoutMs: 5000 }); return r.exitCode === 0 ? r.stdout.trim() : null } catch { return null }
     },
     settings: async () => { try { return await $.settings.read({}) } catch { return {} } },
   }
@@ -43,15 +43,19 @@ async function readSeat(io: Io, root: string, sid: string): Promise<FwRoleGuard>
     const t = await readRel(io, root, rel)
     if (t === null) continue
     const seat = parseSeatBlock(t)
-    if (seat) return { sessionId: sid, role: seat.id, source: 'seat', denyWrite: seat.denyWrite, released: [] }
+    if (seat) return { sessionId: sid, root, role: seat.id, source: 'seat', denyWrite: seat.denyWrite, released: [] }
   }
-  return { sessionId: sid, role: null, source: 'none', denyWrite: [], released: [] }
+  return { sessionId: sid, root, role: null, source: 'none', denyWrite: [], released: [] }
 }
 
-/** This session's snapshot: the stored one when it carries the current id, else read the seat and store it. */
+/**
+ * This session's snapshot for this root: the stored one when it carries the current (session id, root), else read
+ * the seat of this root and store it. Another root in the same session (a /cd, a worktree move) never inherits the
+ * old seat — nor its releases.
+ */
 async function ensureSnapshot($: EngineInterface, io: Io, root: string, sid: string): Promise<FwRoleGuard> {
   const stored = await read($, guardAtom)
-  if (stored && stored.sessionId === sid) return stored
+  if (stored && stored.sessionId === sid && stored.root === root) return stored
   const fresh = await readSeat(io, root, sid)
   await update($, guardAtom, () => fresh)
   return fresh
@@ -111,11 +115,9 @@ function listText(lang: Lang, g: FwRoleGuard): string {
   return [head, ...(rules.length ? rules : [`  ${none}`]), usage].join('\n')
 }
 
-async function runRelease($: EngineInterface, io: Io, args: string): Promise<string> {
-  const root = await io.root()
-  const lang = root ? await detectLang(io, root) : 'en'
+async function runRelease($: EngineInterface, io: Io, root: string, lang: Lang, args: string): Promise<string> {
   const sid = await io.sessionId()
-  const g = root ? await ensureSnapshot($, io, root, sid) : null
+  const g = await ensureSnapshot($, io, root, sid)
   if (!g || g.role === null || g.denyWrite.length === 0) {
     return M(lang, {
       en: 'role guard: nothing to release (no role in force, or its role has no deny-write rules).',
@@ -165,7 +167,7 @@ async function runRelease($: EngineInterface, io: Io, args: string): Promise<str
     })
   }
   const after: FwRoleGuard = { ...g, released: next }
-  await update($, guardAtom, (cur) => (cur && cur.sessionId === sid ? { ...cur, released: next } : after))
+  await update($, guardAtom, (cur) => (cur && cur.sessionId === sid && cur.root === root ? { ...cur, released: next } : after))
   showStatus($, lang, after)
   await trace($, done)
   return done
@@ -175,9 +177,9 @@ export function registerRoleGuard(on: On): void {
   on('session.start', {}, async ($, e, next) => {
     try {
       const io = ioOf($)
-      const root = await io.root()
-      if (root) {
-        const lang = await detectLang(io, root)
+      const ctx = await fwContext(io) // same install test as every feature: no .flightwake/STATE.md → no guard
+      if (ctx !== null) {
+        const { root, lang } = ctx
         try {
           await $.command.register({
             name: 'fw-role-release',
@@ -206,10 +208,10 @@ export function registerRoleGuard(on: On): void {
         if (card) {
           const io = ioOf($)
           const sid = await io.sessionId()
-          const root = await io.root()
-          if (root) {
-            const lang = await detectLang(io, root)
-            const g: FwRoleGuard = { sessionId: sid, role: card.id, source: 'card', denyWrite: card.denyWrite, released: [] }
+          const ctx = await fwContext(io)
+          if (ctx !== null) {
+            const { root, lang } = ctx
+            const g: FwRoleGuard = { sessionId: sid, root, role: card.id, source: 'card', denyWrite: card.denyWrite, released: [] }
             await update($, guardAtom, () => g)
             showStatus($, lang, g)
           }
@@ -229,23 +231,26 @@ export function registerRoleGuard(on: On): void {
       if (typeof target !== 'string' || target === '') return next(e)
 
       const io = ioOf($)
-      const root = await io.root()
-      if (!root) return next(e)
+      const ctx = await fwContext(io)
+      if (ctx === null) return next(e)
+      const { root, lang } = ctx
       const rel = relToRoot(root, target)
       if (rel === null || rel === '') return next(e)
       const g = await ensureSnapshot($, io, root, await io.sessionId())
       if (g.role === null || g.denyWrite.length === 0) return next(e)
-      const glob = matchAny(g.denyWrite, rel)
-      if (glob === null || isReleased(g, glob)) return next(e)
+      // Every rule the path falls under must be released: releasing src/** never releases src/private/**.
+      const blocking = g.denyWrite.filter((r) => matchGlob(r, rel) && !isReleased(g, r))
+      if (blocking.length === 0) return next(e)
+      const glob = blocking.join(', ')
+      const how = blocking.map((r) => `/fw-role-release ${r}`).join(', ')
 
-      const lang = await detectLang(io, root)
       const src = sourceLabel(lang, g.source)
       return {
         deny: M(lang, {
-          en: `Role guard: this session's role "${g.role}" (from the ${src}) may not write ${rel} (rule deny-write: ${glob}). Dispatch the work to the role that owns it, or call an on-call role or a worker (\`npx flightwake roles card <id>\`); or ask the user to run /fw-role-release ${glob} for this session. This guard is a convenience, not a security boundary: Bash and other tools are not checked.`,
-          'zh-TW': `角色守門:本 session 的角色「${g.role}」(來自${src})不可寫入 ${rel}(規則 deny-write: ${glob})。請把這件事派給負責的角色,或召喚待命角色/用 \`npx flightwake roles card <id>\` 派給 worker;也可以請使用者對本 session 執行 /fw-role-release ${glob}。這道守門只是個方便,不是安全邊界:Bash 與其他工具不受檢查。`,
-          'zh-CN': `角色守门:本 session 的角色「${g.role}」(来自${src})不可写入 ${rel}(规则 deny-write: ${glob})。请把这件事派给负责的角色,或召唤待命角色/用 \`npx flightwake roles card <id>\` 派给 worker;也可以请用户对本 session 执行 /fw-role-release ${glob}。这道守门只是个方便,不是安全边界:Bash 与其他工具不受检查。`,
-          ja: `ロールガード:この session のロール「${g.role}」(${src}由来)は ${rel} を書き込めません(ルール deny-write: ${glob})。担当のロールに割り振るか、オンコールロールを呼ぶか、\`npx flightwake roles card <id>\` で worker に渡してください。または本人にこの session で /fw-role-release ${glob} を実行してもらってください。このガードは便宜であってセキュリティ境界ではありません:Bash などほかのツールは検査されません。`,
+          en: `Role guard: this session's role "${g.role}" (from the ${src}) may not write ${rel} (rule deny-write: ${glob}). Dispatch the work to the role that owns it, or call an on-call role or a worker (\`npx flightwake roles card <id>\`); or ask the user to run ${how} for this session. This guard is a convenience, not a security boundary: Bash and other tools are not checked.`,
+          'zh-TW': `角色守門:本 session 的角色「${g.role}」(來自${src})不可寫入 ${rel}(規則 deny-write: ${glob})。請把這件事派給負責的角色,或召喚待命角色/用 \`npx flightwake roles card <id>\` 派給 worker;也可以請使用者對本 session 執行 ${how}。這道守門只是個方便,不是安全邊界:Bash 與其他工具不受檢查。`,
+          'zh-CN': `角色守门:本 session 的角色「${g.role}」(来自${src})不可写入 ${rel}(规则 deny-write: ${glob})。请把这件事派给负责的角色,或召唤待命角色/用 \`npx flightwake roles card <id>\` 派给 worker;也可以请用户对本 session 执行 ${how}。这道守门只是个方便,不是安全边界:Bash 与其他工具不受检查。`,
+          ja: `ロールガード:この session のロール「${g.role}」(${src}由来)は ${rel} を書き込めません(ルール deny-write: ${glob})。担当のロールに割り振るか、オンコールロールを呼ぶか、\`npx flightwake roles card <id>\` で worker に渡してください。または本人にこの session で ${how} を実行してもらってください。このガードは便宜であってセキュリティ境界ではありません:Bash などほかのツールは検査されません。`,
         }),
       }
     } catch {
@@ -256,12 +261,12 @@ export function registerRoleGuard(on: On): void {
   on('command.run', { command: 'fw-role-release' }, async ($, e, next) => {
     try {
       const io = ioOf($)
-      // Only the person's own Enter at the prompt: not a plugin, the bridge, a peer, a schedule, or anything the model can cause.
-      // (The engine always stamps an origin; an absent one only occurs when a test drives the engine's own `$`, which
-      // stands for the REPL — every other kind, plugin included, is refused.)
-      if (e.origin !== undefined && e.origin.kind !== 'composer') {
-        const root = await io.root()
-        const lang = root ? await detectLang(io, root) : 'en'
+      const ctx = await fwContext(io)
+      if (ctx === null) return next(e) // not installed here: as if the command did not exist
+      const lang = ctx.lang
+      // Only the person's own Enter at the prompt (origin composer). Everything else — a plugin, the bridge, the SDK,
+      // a peer, a schedule, and an unstamped origin — is refused: nothing the model can cause releases the guard.
+      if (e.origin?.kind !== 'composer') {
         return {
           text: M(lang, {
             en: 'role guard: /fw-role-release only works when you type it yourself in the prompt. Nothing changed.',
@@ -271,7 +276,7 @@ export function registerRoleGuard(on: On): void {
           }),
         }
       }
-      return { text: await runRelease($, io, e.args) }
+      return { text: await runRelease($, io, ctx.root, lang, e.args) }
     } catch {
       return next(e)
     }

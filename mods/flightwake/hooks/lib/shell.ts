@@ -77,7 +77,11 @@ export function parseCommand(command: string): ParsedCommand {
       pushWord()
       continue
     }
-    if (c === '#' && !hasCur) break // comment to end of line (approximation: rest of command)
+    if (c === '#' && !hasCur) {
+      // a comment runs to the end of its line only; the newline itself still ends the segment
+      while (i + 1 < command.length && command[i + 1] !== '\n') i++
+      continue
+    }
     cur += c
     hasCur = true
   }

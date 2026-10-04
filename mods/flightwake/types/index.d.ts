@@ -66,6 +66,8 @@ export type FwTrapsHinted = { sessionId: string; keys: string[] }
 /** F5 — the role guard's session snapshot. */
 export type FwRoleGuard = {
   sessionId: string
+  /** The project root the seat was read from: a snapshot is valid only for this (session, root) pair. */
+  root: string
   /** Role in force: the seat at session start, or a dispatch card that opened the session. */
   role: string | null
   source: 'seat' | 'card' | 'none'

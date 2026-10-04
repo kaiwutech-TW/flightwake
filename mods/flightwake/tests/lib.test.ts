@@ -145,9 +145,9 @@ describe('world-backed core helpers', () => {
   test('lag: not a git repo → null', async () => {
     expect(await stateLag(fakeIo(newWorld({ git: null })), '/repo')).toBe(null)
   })
-  test('lang from the Claude marker; AGENTS.md is out of scope; pre-0.9 marker is zh-TW', async () => {
+  test('lang from the Claude marker, else AGENTS.md (acceptance 2026-10-05); pre-0.9 marker is zh-TW', async () => {
     expect(await detectLang(fakeIo(newWorld({ files: { 'CLAUDE.md': MARKER('ja') } })), '/repo')).toBe('ja')
-    expect(await detectLang(fakeIo(newWorld({ files: { 'AGENTS.md': MARKER('ja') } })), '/repo')).toBe('en')
+    expect(await detectLang(fakeIo(newWorld({ files: { 'AGENTS.md': MARKER('ja') } })), '/repo')).toBe('ja')
     expect(await detectLang(fakeIo(newWorld({ files: { 'CLAUDE.local.md': '<!-- flightwake:begin v0.8.0 -->' } })), '/repo')).toBe('zh-TW')
   })
   test('legacy gauge: effective setting, not a file', async () => {
