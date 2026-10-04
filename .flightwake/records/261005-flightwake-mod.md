@@ -3,7 +3,7 @@ record_id: 261005-flightwake-mod
 session: Claude(Opus 5.5) 管理者 + 5 個 Claude(Sonnet 5.5) 實作者(各自隔離 worktree)
 date: 2026-10-05
 repos: [flightwake(分支 kaiwutech-TW/mods)]
-tests: claude plugin test mods/flightwake 173 pass / 0 fail(7 檔);claude plugin validate 通過(僅 author 警告);tsc(5.9.3,對 2.1.289 型別檔)clean;bash test/smoke.sh 全過(Python 3.13 在 PATH 前);真機載入 F1–F5 全數實際生效(見下)
+tests: (驗收修正後)claude plugin test mods/flightwake 210 pass / 0 fail(8 檔;初版 173);scripts/git-readonly-check.sh 通過;claude plugin validate 通過(僅 author 警告);tsc(5.9.3,對 2.1.289 型別檔)clean;bash test/smoke.sh 全過(Python 3.13 在 PATH 前);真機載入 F1–F5 全數實際生效(見下)
 prod_changes: none(未 push、未 bump、未發版)
 ---
 
@@ -43,3 +43,14 @@ fa92acd..1bdafff(骨架與計畫第 2 版 → 共用指令切分 → F1–F5 各
 - **未驗證**:`$.session.append` 的放行紀錄列在真機沒有獨立顯示(無錯誤紀錄;可見痕跡是指令輸出 + 狀態列);`/config` 是否列出 mod 選項未在真機看過(文件依 reference 寫);F2 toast(context ≥80%)與桌面版外觀未真機觀察。
 - **安裝器分支合併後**:安裝器整合(複製到 `.claude/skills/flightwake-mod/`、update/uninstall/doctor、首次需信任的提示);fw-record 四語 skill 加「有 /fw-log 時先取用」一句;TRAPS 範本與 fw-trap skill 補 `paths`/`commands` 欄位說明(四語)。
 - 開放問題:沒有 CLAUDE.md、只有 AGENTS.md 的安裝,語言 marker 在讀取範圍外 → mod 顯示英文;`--plugin-dir` 載入時引擎會在外掛資料夾寫入 `tsconfig.json` 與 `.claude-plugin/types/`(skills-dir 載入未觀察到),安裝器需決定是否 ignore。
+
+## 驗收補記(2026-10-05 同 session)
+
+驗收者(Fable 5.1)採納 GPT-6 Astra 讀 diff 的七項(`docs/plans/mods.diff-review-astra.md`);先寫會失敗的測試再修(DECISIONS 2026-10-05「驗收修正」)。
+
+- **先紅後綠**:eb618ff 只加反例(`tests/acceptance.test.ts` + 夾具),該 commit 實跑 `179 pass / 31 fail`;a16e4a0 修正後 `210 pass / 0 fail`。
+- 最值得記的兩件:①F3 原本把 `npm test`(script 是 `… | cat`)與 `pytest --help` 記成 pass——「辨識出 runner + exit 0」不是測試證據;②mod 的 `git status` 會改寫 `.git/index`(TRAPS `plain-git-status-rewrites-index`)。另外,F5 實作者「roles 不需要 STATE」的偏離被推翻:缺 STATE 一律靜默是全功能共同契約。
+- 驗證:`claude plugin validate` 通過(僅 author 警告);tsc clean;`bash mods/flightwake/scripts/git-readonly-check.sh` → 靜態檢查通過、對照組普通 `git status` 讓 index 雜湊改變、mod 的指令組讓 index 位元組不變;`bash test/smoke.sh`(Python 3.13)全過。
+- 真機抽驗(同一暫存 repo、互動 session、`.claude/skills/` 載入):`npm test`(script `node -e "process.exit(1)" | cat`,shell 回報 exit 0)在 `/fw-log` 顯示 `未知 | script-compound`,不是通過;`node --test --help` 未被記錄;放行 `src/**` 後 `src/a.ts` 寫入成功、`src/private/x.ts` 被擋(debug log:`deny: … 不可寫入 src/private/x.ts(規則 deny-write: src/private/**)`)。另做了一次**真的熱重載**(外部 touch 模組檔):debug log `hooks module flightwake-mod@skills-dir reloaded`,重載後 `/fw-log` 仍保有先前兩筆——同 id 的 session.start 測試之外的實證。
+- 清理:五個實作者 worktree 與分支逐一確認「fe04dea 之後恰一個 commit、內容與本分支 cherry-pick 結果相同、無未提交檔」後刪除。
+- 仍未驗證/留給後續:真的 resume、compact 只能靠「同 id 保留」推論;核心 `hooks/state-check.mjs`、`statusline.mjs` 也跑普通 `git status`(同一個 index 改寫問題,屬核心,本分支未改)。
