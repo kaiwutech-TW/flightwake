@@ -1,8 +1,8 @@
 ---
-updated: 2026-09-28
+updated: 2026-10-05
 updated_by: Claude(Opus 5.5)
-latest_record: records/260928-roles-v2.md
-health: green  # v0.14.0 已發佈並驗證(npm latest + provenance);Gemini hook 仍未真機
+latest_record: records/261005-flightwake-mod.md
+health: green  # 分支 kaiwutech-TW/mods:mod 173 測試綠 + 真機載入;未合併、未發版
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
 <!-- 規則:只寫「現在」與「下一步」;歷史去 records/,決策去 DECISIONS.md。 -->
@@ -19,6 +19,8 @@ flightwake **v0.14.0(2026-09-28 已發,npm latest;前版 v0.13.0 2026-09-02)**,*
 **2026-09-05:OKF v0.2 互通定案——不對齊源格式,tower 做單向 `export --okf`**(當天實作完:v0.2 conformant bundle,實跑 19 repo/235 條;不揑造 verified、confidence 以 extension 保留。理由與重評條件見 DECISIONS 2026-09-05,詳見 [[260905-okf-interop-decision]])。
 **2026-09-02:v0.13.0 已發佈並驗證(npm 實回 0.13.0,證據見 latest_record;PR #9 merge commit,含 registry + Codex/Gemini 原生支援)**——起點是使用者在 Codex 裡發現義務表叫它跑 `/fw-coldstart` 但 Codex 沒這指令:多平台安裝原本只是把 Claude 的表貼進 AGENTS.md,skill 只裝 `.claude/skills/`、hook 只進 `.claude/settings.json`。現在偵測到 Codex/Gemini 就多裝 `.agents/skills/fw-*`(兩家共讀)、`.codex/hooks.json`(Stop)/`.gemini/settings.json`(AfterAgent,同腳本以 hook_event_name 切 block/deny)、義務表按平台改寫 `$fw-`/裸名;uninstall 對稱;四語 README + CHANGELOG(含補記 registry)+ **docs/multi-agent.md(en/zh-TW:三個模型共用一個資料夾的實際用法)**。smoke 28/28;Codex 0.147.0 真機:四個 skill 被發現、Stop hook 的 reason 成為續跑 prompt。決策見 DECISIONS 2026-09-02,詳見 [[260902-codex-gemini-native]]。
 **2026-08-05:v0.12.0 已發佈並驗證(npm 實回 0.12.0,證據見 latest_record)**——handoff 教學補強(fw-record 未完節指路 + workflow 分界規則與 CONTEXT 實例;起點數據:本 repo 23 record、0 CONTEXT)連同 260803 的 trap-confidence 批一起出貨,PR #8(merge commit 合併——record 引用了分支 commit hash,rebase/squash 會改寫使其失效)。同 session 完成 **Codex/MCP 原生支援調研**(結論與邊界見 [[260805-v0120-handoff-teaching]] 未完節;方向未拍板,動工前先問使用者)。
+
+**2026-10-05(分支 kaiwutech-TW/mods,未 push):Claude Code mod `flightwake-mod` 完成並真機載入**——`mods/flightwake/` 一個外掛五個可開關功能(STATE 快照注入、輸入框上方橫條、session 行車記錄 `/fw-log`、TRAPS `paths`/`commands` 絆線、選配角色守門 `deny-write`);計畫 `docs/plans/mods.md` 第 2 版,證據與未驗證項見 [[261005-flightwake-mod]]。安裝器整合等 setup-wizard 分支合併後再做。
 
 # 進行中(未完成勿刪)
 
@@ -38,6 +40,7 @@ flightwake **v0.14.0(2026-09-28 已發,npm latest;前版 v0.13.0 2026-09-02)**,*
 
 # 下一步入口
 
+00. **mod 分支後續**(等 setup-wizard 分支合併):安裝器整合(複製到 `.claude/skills/flightwake-mod/`、首次需信任提示、update/uninstall)、fw-record 四語補 `/fw-log` 一句、TRAPS 範本與 fw-trap 補 `paths`/`commands`(四語);未驗證項(session.append 痕跡、/config 列選項、toast)見 [[261005-flightwake-mod]];獨立審查者驗收 diff fa92acd..HEAD
 0. **v0.14.0 已發佈(2026-09-28)**:roles + v2 在 npm latest(驗證見 [[260928-roles-v2]] 補記)。後續:常用 repo `npx flightwake update`;觀察下游團隊日常 /clear 後角色與待命角色派工;Gemini 原生待命定義待驗證後再做
 1. **發宣傳**:三稿最終版(已改寫為不點名 GSD,含 HN 留言預備)在使用者桌面 `~/Desktop/flightwake-launch-copy.md`;截圖三張在使用者手上;HN 挑能盯留言的時段發
 2. HN 後續:等 hn@ycombinator.com 回覆(作者留言被 auto-flag)→ 解 flag 後補「v0.9.0 已兌現 English defaults」留言
