@@ -471,7 +471,26 @@ export function assignSeat(text, { seatRepo, vendor, roleId, add, home }) {
 
 // ── CLI ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-export function runRoles({ target, fwSrc, version, lang, args, log, M, noJunk }) {
+/**
+ * Install the fw-roles skill into the given skill trees. Under a --private install the copies would show up in
+ * git status, so they join the existing flightwake exclude block (addExcludes is a no-op when there is none).
+ */
+export function installRolesSkill({ target, fwSrc, lang, bases, noJunk, log, addExcludes }) {
+  const RL = ROLES_LANGS.includes(lang) ? lang : 'en';
+  const src = join(fwSrc, 'addons', 'roles', RL, 'fw-roles');
+  for (const base of bases) {
+    const dst = join(target, ...base.split('/'), 'fw-roles');
+    const existed = existsSync(dst);
+    if (existed) rmSync(dst, { recursive: true });
+    mkdirSync(dirname(dst), { recursive: true });
+    cpSync(src, dst, { recursive: true, filter: noJunk });
+    log(`  ${existed ? 'update' : 'add '} ${base}/fw-roles`);
+  }
+  if (addExcludes?.(bases.map((b) => `${b}/fw-roles/`))) log('  edit .git/info/exclude ← fw-roles (private install)');
+  if (RL !== lang) log(`  ℹ️  roles content ships in ${ROLES_LANGS.join(' / ')} for now — installed English`);
+}
+
+export function runRoles({ target, fwSrc, version, lang, args, log, M, noJunk, addExcludes }) {
   const pos = args.filter((a) => !a.startsWith('-'));
   const sub = pos[1] ?? 'install';
   const RL = ROLES_LANGS.includes(lang) ? lang : 'en';
@@ -484,17 +503,8 @@ export function runRoles({ target, fwSrc, version, lang, args, log, M, noJunk })
   }
 
   if (sub === 'install') {
-    const src = join(fwSrc, 'addons', 'roles', RL, 'fw-roles');
     const bases = ['.claude/skills', ...(['AGENTS.md', 'GEMINI.md'].some((f) => existsSync(join(target, f))) ? ['.agents/skills'] : [])];
-    for (const base of bases) {
-      const dst = join(target, ...base.split('/'), 'fw-roles');
-      const existed = existsSync(dst);
-      if (existed) rmSync(dst, { recursive: true });
-      mkdirSync(dirname(dst), { recursive: true });
-      cpSync(src, dst, { recursive: true, filter: noJunk });
-      log(`  ${existed ? 'update' : 'add '} ${base}/fw-roles`);
-    }
-    if (RL !== lang) log(`  ℹ️  roles content ships in ${ROLES_LANGS.join(' / ')} for now — installed English`);
+    installRolesSkill({ target, fwSrc, lang, bases, noJunk, log, addExcludes });
     log(M({
       en: '\n✅ fw-roles installed. Ask your agent to run fw-roles: it scans the project, recommends a team, lets you preview and customize, then runs `npx flightwake roles apply`.',
       'zh-TW': '\n✅ fw-roles 已安裝。請你的 agent 跑 fw-roles:它會掃專案、推薦一組角色、讓你預覽與客製,最後跑 `npx flightwake roles apply`。',

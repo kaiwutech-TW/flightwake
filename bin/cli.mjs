@@ -1,141 +1,132 @@
 #!/usr/bin/env node
 /**
- * flightwake CLI — `npx flightwake init [--force] [--lang=en|zh-TW|zh-CN|ja]` (or `npx github:kaiwutech-TW/flightwake init`)
- * Run at the target repo root: installs .flightwake/ templates + 4 skills + Stop hook,
- * and appends the trigger-obligation table to detected agent instruction files
+ * flightwake CLI — `npx flightwake setup` (guided, interactive) or `npx flightwake init [flags]` (non-interactive;
+ * also what a bare `npx flightwake` runs). Run at the target repo root: installs .flightwake/ templates + 4 skills
+ * + Stop hook, and appends the trigger-obligation table to detected agent instruction files
  * (CLAUDE.md/AGENTS.md/GEMINI.md; override with --agents). Each detected platform gets the skills and the
  * wrap-up hook in its own dialect: Claude Code → .claude/skills + .claude/settings.json (`/fw-…`);
  * Codex → .agents/skills + .codex/hooks.json (`$fw-…`); Gemini CLI → .agents/skills + .gemini/settings.json.
  * Pure file copying, cross-platform (Node ≥18). User data (STATE/DECISIONS/TRAPS) is never overwritten;
  * framework-owned files (skills/hooks/TEMPLATE/CLAUDE.md snippet) are not overwritten by default — --force updates them.
- * `update` = re-detect the existing install's options (lang/statusline/private) and force-refresh framework files.
+ * `update` = re-detect the existing install's options (lang/statusline/private/profile) and force-refresh framework files.
+ * The install itself lives in install.mjs (one code path for init, update and setup); setup.mjs only resolves
+ * options by asking; doctor.mjs is read-only.
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, statSync, rmSync, rmdirSync } from 'node:fs';
-import { join, dirname, isAbsolute } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, rmSync, rmdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { homedir } from 'node:os';
-import { runRoles, removeRoleArtifacts, refreshRolesSkill } from './roles.mjs';
+import { runRoles, removeRoleArtifacts } from './roles.mjs';
+import {
+  LANGS, PROFILES, GROUPS, INSTRUCTION_CANDIDATES, ORCA_BLOCK_RE, noJunk, makeM, gitAvailable, repoState, excludePath,
+  addPrivateExcludes, gitMissingMessage, monorepoMessage, notRepoMessage, detectInstall, resolveOptions, install,
+  printNext, unregisterRepo,
+} from './install.mjs';
+import { runDoctor } from './doctor.mjs';
+import { runSetup, readlineIO, realContext } from './setup.mjs';
 
 const FW_SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = process.cwd();
 const args = process.argv.slice(2);
 const cmd = args.find((a) => !a.startsWith('-')) ?? 'init';
-const IS_UPDATE = cmd === 'update';
-const FORCE = args.includes('--force') || IS_UPDATE;
-const PRIVATE_FLAG = args.includes('--private');
-const STATUSLINE_FLAG = args.includes('--statusline');
 const VERSION = JSON.parse(readFileSync(join(FW_SRC, 'package.json'), 'utf8')).version;
-const LANGS = ['en', 'zh-TW', 'zh-CN', 'ja'];
+const COMMANDS = ['init', 'update', 'uninstall', 'roles', 'doctor', 'setup'];
 
 const log = (s) => console.log(s);
-const noJunk = (src) => !/(^|[\\/])\.(DS_Store|AppleDouble)$/.test(src);
 
-if (!['init', 'update', 'uninstall', 'roles'].includes(cmd) || args.includes('--help') || args.includes('-h')) {
-  log(`flightwake — usage: npx flightwake init [--force] [--lang=en|zh-TW|zh-CN|ja] [--private] [--statusline] [--agents=claude,codex,gemini] | update | uninstall [--purge] | roles [install|apply [--dry-run]|card <id>|assign <repo>:<vendor> <id> [--add] [--dry-run]|remove]
+if (!COMMANDS.includes(cmd) || args.includes('--help') || args.includes('-h')) {
+  log(`flightwake — usage:
+  npx flightwake setup [flags]     guided install: asks a few questions, shows every path it will write, then installs
+  npx flightwake init [flags]      non-interactive install (a bare \`npx flightwake\` does the same; never asks anything)
+  npx flightwake update | doctor | uninstall [--purge] | roles [install|apply [--dry-run]|card <id>|assign <repo>:<vendor> <id> [--add] [--dry-run]|remove]
   Run at the target repo root.
-  init        install; --force updates existing skills/hooks/snippets; --lang picks the language of installed content
-              and CLI output (default en); --private keeps records local, out of git (.git/info/exclude + settings.local.json);
+  setup       interactive (needs a terminal); flags given on the command line answer their question; --private is flag-only
+  init        flags: --force updates existing skills/hooks/snippets; --lang=en|zh-TW|zh-CN|ja picks the language of installed
+              content and CLI output (default en); --private keeps records local, out of git (.git/info/exclude + settings.local.json);
               --statusline installs the bottom gauge (health / STATE lag / context usage; never overwrites an existing statusline);
-              --agents picks which platform instruction files get the obligation table (auto-detected by default)
-  update      re-install with the options detected from the existing install (lang / statusline / private) — the in-place upgrade
+              --agents=claude,codex,gemini picks which platform instruction files get the obligation table (auto-detected by default);
+              --profile=code|notes picks the obligation table (notes drops the tests/typecheck and schema/prod duties; default code);
+              --orca adds the Orca collaboration block (opt-in add-on); --git-init creates the git repo first when there is none
+  update      re-install with the options detected from the existing install (lang / statusline / private / profile) — the in-place upgrade
+  doctor      read-only check of the install structure (git, STATE, markers, skills, hooks, private excludes); exit 1 on any failure
   uninstall   reverse-remove framework files and marker blocks; keeps .flightwake/ user data unless --purge
   roles       opt-in add-on: install the fw-roles skill; apply renders .flightwake/ROLES.md — seats into CLAUDE.md/AGENTS.md/GEMINI.md,
               on-call (unseated) roles into native agents (.claude/agents, .codex/agents); card prints a dispatch card; assign changes a seat;
               remove strips this repo's role output (ROLES.md kept). Roles are guidance, not permissions`);
-  process.exit(['init', 'update', 'uninstall', 'roles', 'help'].includes(cmd) ? 0 : 1);
+  process.exit([...COMMANDS, 'help'].includes(cmd) ? 0 : 1);
 }
 
-const git = (...a) => execFileSync('git', a, { cwd: TARGET, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-const isTracked = (rel) => { try { return git('ls-files', '--', rel) !== ''; } catch { return false; } };
-
-// .git checked with existsSync: in worktrees/submodules .git is a file, not a directory
-if (!existsSync(join(TARGET, '.git'))) {
-  let root = null;
-  try { root = git('rev-parse', '--show-toplevel'); } catch {}
-  if (root) {
-    // Monorepo policy: one install per repo, at the git root — sessions cross directories, so records follow the session, not the directory
-    log(`⚠️  flightwake policy: one install per repo, at the git root.\n    Run this in ${root} (a submodule has its own .git and counts as its own repo).`);
-  } else {
-    log(`⚠️  Not a git repo (${TARGET}) — flightwake relies on git as its recording substrate. Run git init first.`);
-  }
-  process.exit(1);
-}
-const excludePath = () => {
-  let p;
-  try { p = git('rev-parse', '--git-path', 'info/exclude'); } catch { p = join('.git', 'info', 'exclude'); }
-  return isAbsolute(p) ? p : join(TARGET, p);
-};
-
-// Cross-repo registry (~/.flightwake/registry.json) — read-only query layers (flightwake-tower) discover
-// installed repos through it. Best-effort by contract: a registry problem must never fail an install,
-// and a corrupt registry is left in place for inspection rather than clobbered.
-const REGISTRY = join(process.env.FLIGHTWAKE_HOME ?? join(homedir(), '.flightwake'), 'registry.json');
-const readRegistry = () => {
-  if (!existsSync(REGISTRY)) return { version: 1, repos: {} };
-  const reg = JSON.parse(readFileSync(REGISTRY, 'utf8'));
-  if (!reg || typeof reg.repos !== 'object' || Array.isArray(reg.repos)) throw new Error('unexpected shape');
-  return reg;
-};
-const registerRepo = () => {
-  try {
-    const reg = readRegistry();
-    const today = new Date().toISOString().slice(0, 10);
-    reg.repos[TARGET] = { ...(reg.repos[TARGET] ?? { registered: today }), fw_version: VERSION };
-    mkdirSync(dirname(REGISTRY), { recursive: true });
-    writeFileSync(REGISTRY, JSON.stringify(reg, null, 2) + '\n');
-    log(`  reg  ${REGISTRY}${M({ en: ' ← repo registered (cross-repo index)', 'zh-TW': ' ← 已登記(跨 repo 索引)', 'zh-CN': ' ← 已登记(跨 repo 索引)', ja: ' ← 登録済(クロス repo インデックス)' })}`);
-  } catch { log(`  ⚠️  ${REGISTRY} could not be updated — skipped (cross-repo tools won't see this repo)`); }
-};
-const unregisterRepo = () => {
-  try {
-    const reg = readRegistry();
-    if (!(TARGET in reg.repos)) return;
-    delete reg.repos[TARGET];
-    writeFileSync(REGISTRY, JSON.stringify(reg, null, 2) + '\n');
-    log(`  edit ${REGISTRY} ← entry removed`);
-  } catch {}
-};
-
-// ── Detect the existing install (marker version/lang, statusline, private) — drives `update` and lang defaults ──
-const INSTRUCTION_CANDIDATES = ['.claude/CLAUDE.md', 'CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', 'GEMINI.md'];
-const detectMarker = () => {
-  for (const rel of INSTRUCTION_CANDIDATES) {
-    const p = join(TARGET, ...rel.split('/'));
-    if (!existsSync(p)) continue;
-    const m = /<!-- flightwake:begin v(\d+\.\d+\.\d+[^\s]*)(?:\s+lang=([\w-]+))?\s*-->/.exec(readFileSync(p, 'utf8'));
-    // Pre-0.9 markers carry no lang attribute — every install back then was zh-TW
-    if (m) return { version: m[1], lang: m[2] ?? 'zh-TW' };
-  }
-  return null;
-};
-const detectStatusline = () => {
-  for (const rel of ['.claude/settings.json', '.claude/settings.local.json']) {
-    const p = join(TARGET, ...rel.split('/'));
-    try { if (existsSync(p) && JSON.stringify(JSON.parse(readFileSync(p, 'utf8')).statusLine ?? null).includes('statusline.mjs')) return true; } catch {}
-  }
-  return false;
-};
-const detectPrivate = () => {
-  try { const ep = excludePath(); return existsSync(ep) && readFileSync(ep, 'utf8').includes('# flightwake:begin'); } catch { return false; }
-};
-
-const marker = detectMarker();
-const langArg = args.find((a) => a.startsWith('--lang='))?.slice('--lang='.length);
+const flagValue = (name) => args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+const langArg = flagValue('lang');
 if (langArg && !LANGS.includes(langArg)) {
   log(`⚠️  --lang not recognized: ${langArg} (available: ${LANGS.join(', ')})`);
   process.exit(1);
 }
-// Language: explicit flag > existing install's language > English
-const LANG = langArg ?? marker?.lang ?? 'en';
-const PRIVATE = PRIVATE_FLAG || (IS_UPDATE && detectPrivate());
-const STATUSLINE = STATUSLINE_FLAG || (IS_UPDATE && detectStatusline());
-// M(): localized CLI output, keyed by language. English default; the install's language (or --lang) picks
-// the rest. Keyed rather than positional — with four languages, positional args silently swap on edit.
-// A missing key falls back to English rather than printing undefined.
-const M = (m) => m[LANG] ?? m.en;
+const profileArg = flagValue('profile');
+if (profileArg && !PROFILES.includes(profileArg)) {
+  log(`⚠️  --profile not recognized: ${profileArg} (available: ${PROFILES.join(', ')})`);
+  process.exit(1);
+}
+const agentsArg = flagValue('agents');
+const wanted = agentsArg !== undefined ? agentsArg.split(',').map((s) => s.trim()).filter(Boolean) : null;
+if (wanted) {
+  const bad = wanted.filter((w) => !GROUPS[w]);
+  if (bad.length) { log(`⚠️  --agents not recognized: ${bad.join(', ')} (available: ${Object.keys(GROUPS).join(', ')})`); process.exit(1); }
+}
+const flags = {
+  force: args.includes('--force'),
+  private: args.includes('--private'),
+  statusline: args.includes('--statusline'),
+  orca: args.includes('--orca'),
+  gitInit: args.includes('--git-init'),
+  lang: langArg,
+  profile: profileArg,
+  agents: wanted,
+};
 
-if (IS_UPDATE && !marker && !existsSync(join(TARGET, '.flightwake'))) {
+// Reading the existing install needs no git (files only; the exclude lookup falls back to .git/info/exclude)
+const det = detectInstall(TARGET);
+// Language: explicit flag > existing install's language > English
+const LANG = langArg ?? det.marker?.lang ?? 'en';
+const M = makeM(LANG);
+
+// ── setup: interactive only. No TTY → explain and fail, never guess answers (agents/CI use init + flags) ──
+if (cmd === 'setup') {
+  if (!process.stdin.isTTY) {
+    log(M({
+      en: '⚠️  setup is interactive and needs a terminal (stdin is not a TTY).\n    For scripts, agents and CI use the non-interactive form, e.g.: npx flightwake init --lang=en --statusline',
+      'zh-TW': '⚠️  setup 是互動式,需要終端機(stdin 不是 TTY)。\n    腳本、agent 與 CI 請改用非互動的 init 加旗標,例如:npx flightwake init --lang=zh-TW --statusline',
+      'zh-CN': '⚠️  setup 是交互式,需要终端(stdin 不是 TTY)。\n    脚本、agent 与 CI 请改用非交互的 init 加旗标,例如:npx flightwake init --lang=zh-CN --statusline',
+      ja: '⚠️  setup は対話式で、端末が必要です(stdin が TTY ではありません)。\n    スクリプト・agent・CI では非対話の init とフラグを使ってください。例:npx flightwake init --lang=ja --statusline',
+    }));
+    process.exit(1);
+  }
+  const io = readlineIO();
+  const code = await runSetup({ io, flags, ctx: realContext({ target: TARGET, fwSrc: FW_SRC, version: VERSION }) });
+  io.close();
+  process.exit(code);
+}
+
+// ── doctor: read-only; reports git/repo problems as findings instead of bailing out ──
+if (cmd === 'doctor') process.exit(runDoctor({ target: TARGET, fwSrc: FW_SRC, version: VERSION, lang: LANG, log }));
+
+// git must be runnable before anything else — with a .git directory but no git binary, the --private
+// tracked-file checks would silently read "untracked" and could write into tracked files
+if (!gitAvailable()) { log(gitMissingMessage(M)); process.exit(1); }
+const repo = repoState(TARGET);
+if (repo.kind === 'sub') {
+  // Monorepo policy: one install per repo, at the git root — sessions cross directories, so records follow the session, not the directory
+  log(monorepoMessage(M, repo.root));
+  process.exit(1);
+}
+if (repo.kind === 'none') {
+  if (cmd !== 'init' || !flags.gitInit) { log(notRepoMessage(M, TARGET)); process.exit(1); }
+  // --git-init: the one write outside the copy-files scope, only when explicitly asked
+  execFileSync('git', ['init'], { cwd: TARGET, stdio: 'ignore' });
+  log(M({ en: `  git init ${TARGET}`, 'zh-TW': `  git init ${TARGET}`, 'zh-CN': `  git init ${TARGET}`, ja: `  git init ${TARGET}` }));
+}
+
+if (cmd === 'update' && !det.installed && !existsSync(join(TARGET, '.flightwake'))) {
   log(M({
     en: '⚠️  No flightwake install detected here — run `npx flightwake init` first.',
     'zh-TW': '⚠️  這裡偵測不到 flightwake 安裝 — 請先跑 `npx flightwake init`。',
@@ -147,7 +138,7 @@ if (IS_UPDATE && !marker && !existsSync(join(TARGET, '.flightwake'))) {
 
 // ── roles: opt-in add-on (bin/roles.mjs) — never part of init ──
 if (cmd === 'roles') {
-  process.exit(runRoles({ target: TARGET, fwSrc: FW_SRC, version: VERSION, lang: LANG, args, log, M, noJunk }));
+  process.exit(runRoles({ target: TARGET, fwSrc: FW_SRC, version: VERSION, lang: LANG, args, log, M, noJunk, addExcludes: (e) => addPrivateExcludes(TARGET, e) }));
 }
 
 // ── uninstall: reverse-remove init's fixed write set; .flightwake/ user data kept unless --purge ──
@@ -199,22 +190,25 @@ if (cmd === 'uninstall') {
     if (!Object.keys(s).length) { rmSync(p); log(`  rm   ${rel} (empty after removal)`); }
     else { writeFileSync(p, JSON.stringify(s, null, 2) + '\n'); log(`  edit ${rel} ← flightwake settings removed`); }
   }
-  // 3. Marker blocks in instruction files; delete the file only if empty after (= flightwake created it)
+  // 3. Marker blocks (obligation table + Orca add-on) in instruction files; delete the file only if empty after
+  //    (= flightwake created it)
   for (const rel of INSTRUCTION_CANDIDATES) {
     const p = join(TARGET, ...rel.split('/'));
     if (!existsSync(p)) continue;
     const cur = readFileSync(p, 'utf8');
-    if (!cur.includes('<!-- flightwake:begin')) {
+    const hasCore = cur.includes('<!-- flightwake:begin');
+    const hasOrca = ORCA_BLOCK_RE.test(cur);
+    if (!hasCore && !hasOrca) {
       if (cur.includes('flightwake 工作紀律')) log(`  ⚠️  ${rel} has a v0.1 unmarked snippet that can't be removed automatically — delete that section by hand`);
       continue;
     }
-    const updated = cur.replace(/\n?<!-- flightwake:begin[\s\S]*?<!-- flightwake:end -->\n?/, '\n').replace(/^\n+/, '');
+    const updated = cur.replace(ORCA_BLOCK_RE, '\n').replace(/\n?<!-- flightwake:begin[\s\S]*?<!-- flightwake:end -->\n?/, '\n').replace(/^\n+/, '');
     if (!updated.trim()) { rmSync(p); log(`  rm   ${rel} (empty after snippet removal)`); }
     else { writeFileSync(p, updated); log(`  edit ${rel} ← snippet removed`); }
   }
   // 4. Marker block in .git/info/exclude (trace of a --private install)
   try {
-    const ep = excludePath();
+    const ep = excludePath(TARGET);
     if (existsSync(ep) && readFileSync(ep, 'utf8').includes('# flightwake:begin')) {
       writeFileSync(ep, readFileSync(ep, 'utf8').replace(/# flightwake:begin[\s\S]*?# flightwake:end\n?/, ''));
       log('  edit .git/info/exclude ← flightwake block removed');
@@ -225,7 +219,7 @@ if (cmd === 'uninstall') {
     try { rmdirSync(join(TARGET, ...rel.split('/'))); } catch {}
   }
   // 5b. Cross-repo registry entry
-  unregisterRepo();
+  unregisterRepo(TARGET, log);
   // 6. User data
   if (PURGE) {
     rm('.flightwake');
@@ -236,371 +230,10 @@ if (cmd === 'uninstall') {
   process.exit(0);
 }
 
-// --private collects entries for .git/info/exclude (relative to repo root); null = not private
-const privateExcludes = PRIVATE ? ['.flightwake/'] : null;
-
-if (IS_UPDATE) {
-  log(`flightwake update v${marker?.version ?? '?'} → v${VERSION} (lang=${LANG}${STATUSLINE ? ', statusline' : ''}${PRIVATE ? ', private' : ''}) → ${TARGET}\n`);
-} else {
-  log(`flightwake init v${VERSION}${PRIVATE ? ' (--private)' : ''} (lang=${LANG}) → ${TARGET}\n`);
-}
-
-// 1. .flightwake/ templates — STATE/DECISIONS/TRAPS are user data, never overwritten (even with --force)
-mkdirSync(join(TARGET, '.flightwake', 'records'), { recursive: true });
-mkdirSync(join(TARGET, '.flightwake', 'hooks'), { recursive: true });
-for (const f of ['STATE.md', 'DECISIONS.md', 'TRAPS.md']) {
-  const dst = join(TARGET, '.flightwake', f);
-  if (existsSync(dst)) log(`  skip .flightwake/${f}${M({
-    en: ' (exists — user data, never overwritten)',
-    'zh-TW': '(已存在,使用者資料不覆蓋)',
-    'zh-CN': '(已存在,用户资料不覆盖)',
-    ja: '(既存 — ユーザーデータは上書きしない)',
-  })}`);
-  else { writeFileSync(dst, readFileSync(join(FW_SRC, 'templates', LANG, f), 'utf8')); log(`  add  .flightwake/${f}`); }
-}
-
-// Local-modification guard. Framework-owned files are overwritten by --force/update, by design — but silently
-// losing someone's hand-edits (most often a hand-translated skill) is what makes that design feel like a bug.
-// Only claim a local edit when the install is already at this exact version *and* language: then the shipped
-// bytes should match exactly, so any difference is the user's. Across a version or language change content
-// legitimately differs, so say nothing rather than cry wolf.
-const SAME_SPEC = !!marker && marker.version === VERSION && marker.lang === LANG;
-const clobbered = [];
-const noteClobber = (dst, rel, next) => {
-  if (!SAME_SPEC || !existsSync(dst)) return;
-  try { if (readFileSync(dst, 'utf8') !== next) clobbered.push(rel); } catch {}
-};
-const noteClobberDir = (srcDir, dstDir, relBase) => {
-  if (!SAME_SPEC || !existsSync(dstDir)) return;
-  for (const f of readdirSync(srcDir)) {
-    if (!noJunk(f)) continue;
-    const s = join(srcDir, f);
-    const d = join(dstDir, f);
-    if (statSync(s).isDirectory()) { noteClobberDir(s, d, `${relBase}/${f}`); continue; }
-    try { if (!existsSync(d) || readFileSync(d, 'utf8') !== readFileSync(s, 'utf8')) clobbered.push(`${relBase}/${f}`); } catch {}
-  }
-};
-
-// 2. Framework-owned files: record template + hooks (--force updates them).
-//    Hooks are stamped at copy time: LANG picks their message language, FW_VERSION feeds the statusline update check.
-const stamp = (src) => readFileSync(src, 'utf8')
-  .replace(/^const LANG = '[^']*';$/m, `const LANG = '${LANG}';`)
-  .replace(/^const FW_VERSION = '[^']*';$/m, `const FW_VERSION = '${VERSION}';`);
-for (const [read, rel] of [
-  [() => readFileSync(join(FW_SRC, 'templates', LANG, 'TEMPLATE-record.md'), 'utf8'), join('.flightwake', 'TEMPLATE-record.md')],
-  [() => stamp(join(FW_SRC, 'hooks', 'state-check.mjs')), join('.flightwake', 'hooks', 'state-check.mjs')],
-  [() => stamp(join(FW_SRC, 'hooks', 'statusline.mjs')), join('.flightwake', 'hooks', 'statusline.mjs')],
-]) {
-  const dst = join(TARGET, rel);
-  const existed = existsSync(dst);
-  if (existed && !FORCE) { log(`  skip ${rel}${M({
-    en: ' (exists — --force to update)',
-    'zh-TW': '(已存在,--force 可更新)',
-    'zh-CN': '(已存在,--force 可更新)',
-    ja: '(既存 — --force で更新)',
-  })}`); continue; }
-  const next = read();
-  noteClobber(dst, rel, next);
-  writeFileSync(dst, next);
-  log(`  ${existed ? 'update' : 'add '} ${rel}`);
-}
-
-// Platform groups: an agent's instruction-file candidates count as the same file (installed into the first
-// that exists; a marker in any of them means no duplicate). The group's last candidate is the creation target
-// for --agents. Default mode targets platforms that already have an instruction file; with none anywhere →
-// codex (AGENTS.md, the widest-compatibility standard). The active set also decides where skills and hooks go.
-const GROUPS = {
-  claude: ['.claude/CLAUDE.md', 'CLAUDE.md'],
-  codex: ['AGENTS.md'],
-  gemini: ['GEMINI.md'],
-};
-const agentsArg = args.find((a) => a.startsWith('--agents='));
-const wanted = agentsArg ? agentsArg.slice('--agents='.length).split(',').map((s) => s.trim()).filter(Boolean) : null;
-if (wanted) {
-  const bad = wanted.filter((w) => !GROUPS[w]);
-  if (bad.length) { log(`⚠️  --agents not recognized: ${bad.join(', ')} (available: ${Object.keys(GROUPS).join(', ')})`); process.exit(1); }
-}
-const hasFile = (rel) => existsSync(join(TARGET, ...rel.split('/')));
-const anyInstructionFile = Object.values(GROUPS).flat().some(hasFile);
-const ACTIVE = new Set(Object.keys(GROUPS).filter((name) => (wanted
-  ? wanted.includes(name)
-  : (GROUPS[name].some(hasFile) || (!anyInstructionFile && name === 'codex')))));
-// Codex and Gemini CLI both read `.agents/skills/` (Gemini treats it as an alias of .gemini/skills)
-const AGENTS_SKILLS = ACTIVE.has('codex') || ACTIVE.has('gemini');
-
-// 3. The four skills → .claude/skills/ always, plus .agents/skills/ when Codex/Gemini is in play
-//    (directories only, junk filtered; --force updates; other skills already in those trees are never touched)
-const installSkills = (baseRel) => {
-  mkdirSync(join(TARGET, ...baseRel.split('/')), { recursive: true });
-  for (const s of readdirSync(join(FW_SRC, 'skills', LANG))) {
-    if (!statSync(join(FW_SRC, 'skills', LANG, s)).isDirectory()) continue;
-    privateExcludes?.push(`${baseRel}/${s}/`);
-    const dst = join(TARGET, ...baseRel.split('/'), s);
-    const existed = existsSync(dst);
-    if (existed && !FORCE) { log(`  skip ${baseRel}/${s}${M({
-      en: ' (exists — --force to update)',
-      'zh-TW': '(已存在,--force 可更新)',
-      'zh-CN': '(已存在,--force 可更新)',
-      ja: '(既存 — --force で更新)',
-    })}`); continue; }
-    noteClobberDir(join(FW_SRC, 'skills', LANG, s), dst, `${baseRel}/${s}`);
-    cpSync(join(FW_SRC, 'skills', LANG, s), dst, { recursive: true, force: true, filter: noJunk });
-    log(`  ${existed ? 'update' : 'add '} ${baseRel}/${s}`);
-  }
-};
-installSkills('.claude/skills');
-if (AGENTS_SKILLS) installSkills('.agents/skills');
-// roles add-on: refreshed on update only where the user already installed it (opt-in, never added here)
-if (IS_UPDATE) refreshRolesSkill({ target: TARGET, fwSrc: FW_SRC, lang: LANG, noJunk, log });
-
-// 4. Stop hook merged into .claude/settings.json (--private → settings.local.json, stays out of the repo)
-{
-  const settingsRel = PRIVATE ? '.claude/settings.local.json' : '.claude/settings.json';
-  const settingsPath = join(TARGET, ...settingsRel.split('/'));
-  privateExcludes?.push(settingsRel);
-  const HOOK_CMD = 'node "$CLAUDE_PROJECT_DIR/.flightwake/hooks/state-check.mjs"';
-  // The two settings files recognize each other: if the other mode already installed the hook, don't duplicate
-  // (Claude Code merges settings.json with local — a duplicate means the Stop reminder fires twice)
-  const otherRel = PRIVATE ? '.claude/settings.json' : '.claude/settings.local.json';
-  const otherPath = join(TARGET, ...otherRel.split('/'));
-  const inOther = (() => { try { return existsSync(otherPath) && readFileSync(otherPath, 'utf8').includes('state-check.mjs'); } catch { return false; } })();
-  let settings = {};
-  let parseOk = true;
-  if (existsSync(settingsPath)) {
-    try { settings = JSON.parse(readFileSync(settingsPath, 'utf8')); }
-    catch { parseOk = false; log(`  ⚠️  ${settingsRel} is not valid JSON — skipping hook install; add to hooks.Stop manually: ${HOOK_CMD}`); }
-  }
-  if (parseOk) {
-    settings.hooks ??= {};
-    settings.hooks.Stop ??= [];
-    if (inOther) {
-      log(`  skip Stop hook${M({
-        en: ` (already set in ${otherRel} — the other mode's install still applies)`,
-        'zh-TW': `(${otherRel} 已設定 — 另一模式的安裝仍生效)`,
-        'zh-CN': `(${otherRel} 已设定 — 另一模式的安装仍生效)`,
-        ja: `(${otherRel} に設定済 — もう一方のモードのインストールが有効)`,
-      })}`);
-    } else if (JSON.stringify(settings.hooks.Stop).includes('state-check.mjs')) {
-      log(`  skip ${settingsRel} Stop hook${M({ en: ' (already set)', 'zh-TW': '(已設定)', 'zh-CN': '(已设定)', ja: '(設定済)' })}`);
-    } else {
-      settings.hooks.Stop.push({ hooks: [{ type: 'command', command: HOOK_CMD }] });
-      writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
-      log(`  add  ${settingsRel} ← Stop hook${M({
-        en: ' (STATE staleness check)',
-        'zh-TW': '(STATE 過期檢查)',
-        'zh-CN': '(STATE 过期检查)',
-        ja: '(STATE 遅れチェック)',
-      })}`);
-    }
-    // --statusline: the bottom gauge (opt-in). statusLine is a single-value setting — never overwrite someone else's
-    if (STATUSLINE) {
-      const SL_CMD = 'node "$CLAUDE_PROJECT_DIR/.flightwake/hooks/statusline.mjs"';
-      const slInOther = (() => {
-        try { return existsSync(otherPath) && JSON.stringify(JSON.parse(readFileSync(otherPath, 'utf8')).statusLine ?? null).includes('statusline.mjs'); }
-        catch { return false; }
-      })();
-      if (slInOther) {
-        log(`  skip statusLine${M({
-        en: ` (already set in ${otherRel} — the other mode's install still applies)`,
-        'zh-TW': `(${otherRel} 已設定 — 另一模式的安裝仍生效)`,
-        'zh-CN': `(${otherRel} 已设定 — 另一模式的安装仍生效)`,
-        ja: `(${otherRel} に設定済 — もう一方のモードのインストールが有効)`,
-      })}`);
-      } else if (settings.statusLine && !JSON.stringify(settings.statusLine).includes('statusline.mjs')) {
-        log(`  ⚠️  ${settingsRel}${M({
-          en: ` already has another statusLine — not overwriting; to switch, set command to: ${SL_CMD}`,
-          'zh-TW': ` 已有其他 statusLine,不覆蓋 — 要換請手動設 command 為:${SL_CMD}`,
-          'zh-CN': ` 已有其他 statusLine,不覆盖 — 要换请手动设 command 为:${SL_CMD}`,
-          ja: ` に別の statusLine が設定済 — 上書きしません。切り替えるには command を次に設定:${SL_CMD}`,
-        })}`);
-      } else if (settings.statusLine) {
-        log(`  skip ${settingsRel} statusLine${M({ en: ' (already set)', 'zh-TW': '(已設定)', 'zh-CN': '(已设定)', ja: '(設定済)' })}`);
-      } else {
-        if (Array.isArray(settings.hooks?.Stop) && !settings.hooks.Stop.length) {
-          delete settings.hooks.Stop;
-          if (!Object.keys(settings.hooks).length) delete settings.hooks;
-        }
-        settings.statusLine = { type: 'command', command: SL_CMD };
-        writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
-        log(`  add  ${settingsRel} ← statusLine${M({ en: ' (flightwake gauge)', 'zh-TW': '(flightwake 儀表)', 'zh-CN': '(flightwake 仪表)', ja: '(flightwake ゲージ)' })}`);
-      }
-    }
-  }
-}
-
-// 4b. Codex (.codex/hooks.json, Stop) and Gemini CLI (.gemini/settings.json, AfterAgent) get the same check.
-//     Neither sets $CLAUDE_PROJECT_DIR; both run hooks with the session cwd, so the repo root comes from git.
-//     --private: these files have no local-only twin (Codex's ~/.codex/hooks.json is per-user, not per-repo) —
-//     write only when the file is untracked and exclude it; a tracked file would carry the trace, so skip and warn.
-{
-  const HOOK_CMD_GIT = 'node "$(git rev-parse --show-toplevel)/.flightwake/hooks/state-check.mjs"';
-  for (const [name, rel, event] of [['codex', '.codex/hooks.json', 'Stop'], ['gemini', '.gemini/settings.json', 'AfterAgent']]) {
-    if (!ACTIVE.has(name)) continue;
-    const p = join(TARGET, ...rel.split('/'));
-    if (PRIVATE && existsSync(p) && isTracked(rel)) {
-      log(`  ⚠️  --private: ${rel}${M({
-        en: ` is git-tracked, writing would leave a trace — skipped; add the ${event} hook yourself: ${HOOK_CMD_GIT}`,
-        'zh-TW': ` 受 git 追蹤,寫入會留下痕跡 — 跳過;${event} hook 請自行加:${HOOK_CMD_GIT}`,
-        'zh-CN': ` 受 git 追踪,写入会留下痕迹 — 跳过;${event} hook 请自行加:${HOOK_CMD_GIT}`,
-        ja: ` は git 管理下のため、書き込むと痕跡が残る — スキップ。${event} hook はご自分で追加:${HOOK_CMD_GIT}`,
-      })}`);
-      continue;
-    }
-    let s = {};
-    if (existsSync(p)) {
-      try { s = JSON.parse(readFileSync(p, 'utf8')); }
-      catch { log(`  ⚠️  ${rel} is not valid JSON — skipping hook install; add to hooks.${event} manually: ${HOOK_CMD_GIT}`); continue; }
-    }
-    s.hooks ??= {};
-    s.hooks[event] ??= [];
-    if (JSON.stringify(s.hooks[event]).includes('state-check.mjs')) {
-      log(`  skip ${rel} ${event} hook${M({ en: ' (already set)', 'zh-TW': '(已設定)', 'zh-CN': '(已设定)', ja: '(設定済)' })}`);
-    } else {
-      s.hooks[event].push({ hooks: [{ type: 'command', command: HOOK_CMD_GIT }] });
-      mkdirSync(dirname(p), { recursive: true });
-      writeFileSync(p, JSON.stringify(s, null, 2) + '\n');
-      log(`  add  ${rel} ← ${event} hook${M({
-        en: ' (STATE staleness check)',
-        'zh-TW': '(STATE 過期檢查)',
-        'zh-CN': '(STATE 过期检查)',
-        ja: '(STATE 遅れチェック)',
-      })}`);
-    }
-    privateExcludes?.push(rel);
-  }
-}
-
-// 5. Trigger-obligation snippet → each active platform's instruction file, in that platform's dialect:
-//    Claude Code invokes skills as `/fw-…`, Codex as `$fw-…`, Gemini CLI activates them by name.
-//    One snippet source per language; the invocation form is rewritten per platform at install time.
-{
-  const BEGIN = '<!-- flightwake:begin';
-  const END = '<!-- flightwake:end -->';
-  const LEGACY = 'flightwake 工作紀律';
-  const body = readFileSync(join(FW_SRC, 'snippets', LANG, 'CLAUDE-md-snippet.md'), 'utf8').replace(/^<!--[\s\S]*?-->\n?/, '');
-  const INVOKE = { claude: (s) => `\`/${s}\``, codex: (s) => `\`$${s}\``, gemini: (s) => `\`${s}\`` };
-  const NOTE = {
-    codex: M({
-      en: 'Codex: the four skills live in `.agents/skills/fw-*` (mention one with `$fw-…`); the wrap-up reminder is the Stop hook in `.codex/hooks.json` — Codex asks you to trust it once.',
-      'zh-TW': 'Codex:四個 skill 在 `.agents/skills/fw-*`(用 `$fw-…` 點名);收尾提醒是 `.codex/hooks.json` 的 Stop hook——Codex 首次會要你信任它一次。',
-      'zh-CN': 'Codex:四个 skill 在 `.agents/skills/fw-*`(用 `$fw-…` 点名);收尾提醒是 `.codex/hooks.json` 的 Stop hook——Codex 首次会要你信任它一次。',
-      ja: 'Codex:4 つの skill は `.agents/skills/fw-*` にある(`$fw-…` で指名);締めのリマインドは `.codex/hooks.json` の Stop hook——初回に Codex が信頼確認を求める。',
-    }),
-    gemini: M({
-      en: 'Gemini CLI: the four skills live in `.agents/skills/fw-*` (activated by name); the wrap-up reminder is the AfterAgent hook in `.gemini/settings.json`.',
-      'zh-TW': 'Gemini CLI:四個 skill 在 `.agents/skills/fw-*`(用名字啟用);收尾提醒是 `.gemini/settings.json` 的 AfterAgent hook。',
-      'zh-CN': 'Gemini CLI:四个 skill 在 `.agents/skills/fw-*`(用名字启用);收尾提醒是 `.gemini/settings.json` 的 AfterAgent hook。',
-      ja: 'Gemini CLI:4 つの skill は `.agents/skills/fw-*` にある(名前で起動);締めのリマインドは `.gemini/settings.json` の AfterAgent hook。',
-    }),
-  };
-  const blockFor = (name) => {
-    const dialect = body.replace(/`\/(fw-[a-z]+)`/g, (_, s) => INVOKE[name](s)).trimEnd();
-    return `${BEGIN} v${VERSION} lang=${LANG} -->\n${dialect}${NOTE[name] ? `\n${NOTE[name]}` : ''}\n${END}\n`;
-  };
-  for (const [name, rels] of Object.entries(GROUPS)) {
-    if (!ACTIVE.has(name)) continue;
-    const block = blockFor(name);
-    const files = rels.map((rel) => ({ rel, path: join(TARGET, ...rel.split('/')) }));
-    // --private: writing to a git-tracked file always leaves a trace (exclude has no effect on tracked files).
-    // claude has a local equivalent, CLAUDE.local.md → detection still scans the originals, writes go to the local file;
-    // other platforms have no equivalent → skip tracked files.
-    const localFile = { rel: 'CLAUDE.local.md', path: join(TARGET, 'CLAUDE.local.md') };
-    const writeFiles = (PRIVATE && name === 'claude') ? [localFile] : files;
-    // Marker scanning recognizes both modes (the claude group always includes CLAUDE.local.md):
-    // a --private install followed by a default init must not paste the snippet twice
-    const scan = (name === 'claude' ? [...files, localFile] : files).filter((f) => existsSync(f.path));
-    const withMarker = scan.find((f) => readFileSync(f.path, 'utf8').includes(BEGIN));
-    const withLegacy = scan.find((f) => readFileSync(f.path, 'utf8').includes(LEGACY));
-    if (withMarker) {
-      if (privateExcludes && !isTracked(withMarker.rel)) privateExcludes.push(withMarker.rel);
-      if (FORCE) {
-        const updated = readFileSync(withMarker.path, 'utf8').replace(/<!-- flightwake:begin[\s\S]*?<!-- flightwake:end -->\n?/, block);
-        writeFileSync(withMarker.path, updated);
-        log(`  update ${withMarker.rel}${M({ en: ' snippet', 'zh-TW': ' 片段', 'zh-CN': ' 片段', ja: ' スニペット' })}`);
-      } else {
-        log(`  skip ${withMarker.rel}${M({
-          en: ' snippet (installed — --force to update)',
-          'zh-TW': ' 片段(已安裝,--force 可更新)',
-          'zh-CN': ' 片段(已安装,--force 可更新)',
-          ja: ' スニペット(インストール済 — --force で更新)',
-        })}`);
-      }
-    } else if (withLegacy) {
-      log(`  skip ${withLegacy.rel}${M({
-        en: ' snippet (v0.1 unmarked version detected — delete that section by hand and rerun to upgrade)',
-        'zh-TW': ' 片段(偵測到 v0.1 無標記版本 — 手動刪除該段後重跑即可升級)',
-        'zh-CN': ' 片段(检测到 v0.1 无标记版本 — 手动删除该段后重跑即可升级)',
-        ja: ' スニペット(マーカー無しの v0.1 を検出 — その節を手で消して再実行すれば更新されます)',
-      })}`);
-    } else {
-      const writeExisting = writeFiles.filter((f) => existsSync(f.path));
-      const dst = writeExisting[0] ?? writeFiles[writeFiles.length - 1];
-      if (PRIVATE && existsSync(dst.path) && isTracked(dst.rel)) {
-        log(`  ⚠️  --private: ${dst.rel}${M({
-          en: ' is git-tracked, writing would leave a trace — skipped; put the obligation table somewhere untracked yourself',
-          'zh-TW': ' 受 git 追蹤,寫入會留下痕跡 — 跳過;觸發義務表請自行放到不進 git 的位置',
-          'zh-CN': ' 受 git 追踪,写入会留下痕迹 — 跳过;触发义务表请自行放到不进 git 的位置',
-          ja: ' は git 管理下のため、書き込むと痕跡が残る — スキップ。義務表は git に入らない場所へご自分で置いてください',
-        })}`);
-        continue;
-      }
-      appendFileSync(dst.path, (existsSync(dst.path) ? '\n' : '') + block);
-      privateExcludes?.push(dst.rel);
-      log(`  add  ${dst.rel} ← ${M({ en: 'obligation table', 'zh-TW': '觸發義務表', 'zh-CN': '触发义务表', ja: '義務表' })}`);
-    }
-  }
-}
-
-// 6. --private: entries written to .git/info/exclude (purely local, never in the repo; worktrees resolved via git)
-if (privateExcludes) {
-  const entries = [...new Set(privateExcludes)];
-  const exBlock = `# flightwake:begin v${VERSION}\n${entries.join('\n')}\n# flightwake:end\n`;
-  try {
-    const ep = excludePath();
-    mkdirSync(dirname(ep), { recursive: true });
-    const cur = existsSync(ep) ? readFileSync(ep, 'utf8') : '';
-    const next = cur.includes('# flightwake:begin')
-      ? cur.replace(/# flightwake:begin[\s\S]*?# flightwake:end\n?/, exBlock)
-      : cur + (cur && !cur.endsWith('\n') ? '\n' : '') + exBlock;
-    writeFileSync(ep, next);
-    log(`  add  .git/info/exclude ← ${entries.length}${M({ en: ' entries (local ignore)', 'zh-TW': ' 條(本地忽略)', 'zh-CN': ' 条(本地忽略)', ja: ' 件(ローカル ignore)' })}`);
-  } catch {
-    log(`  ⚠️  ${M({
-      en: 'Failed to write .git/info/exclude — privacy NOT in effect! Add these entries manually:',
-      'zh-TW': '寫入 .git/info/exclude 失敗 — 隱私未生效!請手動加入以下條目:',
-      'zh-CN': '写入 .git/info/exclude 失败 — 隐私未生效!请手动加入以下条目:',
-      ja: '.git/info/exclude の書き込みに失敗 — プライバシーは有効になっていません!以下を手動で追加してください:',
-    })}\n     ${entries.join('\n     ')}`);
-  }
-  if (isTracked('.flightwake')) {
-    log(M({
-      en: '  ⚠️  .flightwake is already git-tracked; exclude has no effect on tracked files — going private needs git rm -r --cached .flightwake (history is yours to handle)',
-      'zh-TW': '  ⚠️  .flightwake 已被 git 追蹤,exclude 對已追蹤檔案不生效 — 想轉私有需 git rm -r --cached .flightwake(歷史紀錄請自行處理)',
-      'zh-CN': '  ⚠️  .flightwake 已被 git 追踪,exclude 对已追踪文件不生效 — 想转私有需 git rm -r --cached .flightwake(历史记录请自行处理)',
-      ja: '  ⚠️  .flightwake は既に git 管理下です。exclude は追跡済ファイルに効きません — private にするには git rm -r --cached .flightwake(履歴の扱いはご自身で)',
-    }));
-  }
-}
-
-// Local edits to framework files were just replaced — name them, so nobody discovers it three versions later.
-if (clobbered.length) {
-  log(`\n  ⚠️  ${M({
-    en: `${clobbered.length} framework file(s) had local edits and were overwritten (framework files are flightwake-owned; your STATE/DECISIONS/TRAPS/records were untouched). Recover with git diff if you need them:`,
-    'zh-TW': `${clobbered.length} 個框架檔有本地修改、已被覆蓋(框架檔歸 flightwake 所有;你的 STATE/DECISIONS/TRAPS/records 未被動)。需要救回請看 git diff:`,
-    'zh-CN': `${clobbered.length} 个框架档有本地修改、已被覆盖(框架档归 flightwake 所有;你的 STATE/DECISIONS/TRAPS/records 未被动)。需要救回请看 git diff:`,
-    ja: `${clobbered.length} 個のフレームワークファイルにローカルの変更があり、上書きしました(フレームワークファイルは flightwake の管理下。STATE/DECISIONS/TRAPS/records には触れていません)。戻したい場合は git diff を:`,
-  })}\n     ${clobbered.join('\n     ')}`);
-  log(`     ${M({
-    en: 'Want a different language? Reinstall with --lang instead of hand-editing: npx flightwake init --lang=<lang> --force',
-    'zh-TW': '想換語言的話,用 --lang 重裝而不是手改:npx flightwake init --lang=<語言> --force',
-    'zh-CN': '想换语言的话,用 --lang 重装而不是手改:npx flightwake init --lang=<语言> --force',
-    ja: '言語を変えたい場合は手で書き換えず --lang で入れ直す:npx flightwake init --lang=<言語> --force',
-  })}`);
-}
-
-// 7. Cross-repo registry: init and update both register (existing installs enroll on their next update)
-registerRepo();
-
+// ── init / update: one install path (install.mjs) ──
+const IS_UPDATE = cmd === 'update';
+const opts = resolveOptions({ update: IS_UPDATE, flags, det });
+const result = install({ ...opts, target: TARGET, fwSrc: FW_SRC, version: VERSION, marker: det.marker, log });
 if (IS_UPDATE) {
   log(M({
     en: `\n✅ updated to v${VERSION}.`,
@@ -609,64 +242,5 @@ if (IS_UPDATE) {
     ja: `\n✅ v${VERSION} に更新しました。`,
   }));
 } else {
-  const addPaths = ['.flightwake', '.claude',
-    ...(AGENTS_SKILLS ? ['.agents'] : []),
-    ...(ACTIVE.has('codex') ? ['.codex', 'AGENTS.md'] : []),
-    ...(ACTIVE.has('gemini') ? ['.gemini', 'GEMINI.md'] : []),
-    ...(ACTIVE.has('claude') ? ['CLAUDE.md'] : []),
-  ].join(' ');
-  log(PRIVATE ? M({
-    en: `
-✅ done (--private). Records stay local; git does not track them. Costs and caveats:
-   - Records aren't shared with the repo: teammates and other machines can't see STATE/records (you give up flightwake's sharing value)
-   - .git/info/exclude is purely local: after a fresh clone, rerun init --private
-   - To go shared again: delete the flightwake block from .git/info/exclude, then git add .flightwake .claude
-   Next: edit .flightwake/STATE.md with the current situation (or have your agent initialize it with fw-record)`,
-    'zh-TW': `
-✅ done(--private)。紀錄只留本機,git 不追蹤。代價與注意:
-   - 紀錄不隨 repo 共享:隊友與其他機器看不到 STATE/records(放棄 flightwake 的共享價值)
-   - .git/info/exclude 純本地:重新 clone 後需重跑 init --private
-   - 想改回共享:刪除 .git/info/exclude 的 flightwake 區塊,再 git add .flightwake .claude
-   下一步:編輯 .flightwake/STATE.md 填入現況(或讓 agent 用 fw-record 初始化)`,
-    'zh-CN': `
-✅ done(--private)。记录只留本机,git 不追踪。代价与注意:
-   - 记录不随 repo 共享:队友与其他机器看不到 STATE/records(放弃 flightwake 的共享价值)
-   - .git/info/exclude 纯本地:重新 clone 后需重跑 init --private
-   - 想改回共享:删除 .git/info/exclude 的 flightwake 区块,再 git add .flightwake .claude
-   下一步:编辑 .flightwake/STATE.md 填入现况(或让 agent 用 fw-record 初始化)`,
-    ja: `
-✅ 完了(--private)。記録はローカルのみ、git は追跡しません。代償と注意:
-   - 記録は repo と共有されない:チームメイトや別のマシンから STATE/records が見えない(flightwake の共有価値を手放す)
-   - .git/info/exclude は純粋にローカル:clone し直したら init --private を再実行
-   - 共有に戻すには:.git/info/exclude の flightwake ブロックを削除し、git add .flightwake .claude
-   次:.flightwake/STATE.md に現状を書く(または agent に fw-record で初期化させる)`,
-  }) : M({
-    en: `
-✅ done. Next:
-   1. Edit .flightwake/STATE.md with the current situation (or have your agent initialize it with fw-record)
-   2. git add ${addPaths} && git commit`,
-    'zh-TW': `
-✅ done。下一步:
-   1. 編輯 .flightwake/STATE.md 填入現況(或讓 agent 用 fw-record 初始化)
-   2. git add ${addPaths} && git commit`,
-    'zh-CN': `
-✅ done。下一步:
-   1. 编辑 .flightwake/STATE.md 填入现况(或让 agent 用 fw-record 初始化)
-   2. git add ${addPaths} && git commit`,
-    ja: `
-✅ 完了。次:
-   1. .flightwake/STATE.md に現状を書く(または agent に fw-record で初期化させる)
-   2. git add ${addPaths} && git commit`,
-  }));
-  // Language was never chosen — English is the documented default, but the alternatives have to be discoverable.
-  // No auto-detection on purpose: terminal LANG and the OS locale routinely disagree, and a confident wrong
-  // guess is worse than a stated default (field-verified 2026-07-27: LANG=en_US.UTF-8 on a zh_TW machine).
-  if (!langArg && !marker) log(`   ℹ️  Installed in English. Other languages: ${LANGS.filter((l) => l !== 'en').join(', ')} — e.g. npx flightwake init --lang=zh-TW${STATUSLINE ? ' --statusline' : ''}
-       已安裝英文版,要中文/日文請加 --lang(繁中 zh-TW・简中 zh-CN・日本語 ja);已裝好也能改:同指令加 --force`);
-  if (!STATUSLINE) log(M({
-    en: '   ℹ️  Bottom gauge not installed (opt-in) — if you want it: npx flightwake init --statusline (health / STATE lag / context usage)',
-    'zh-TW': '   ℹ️  底部儀表未裝(選配)— 要的話:npx flightwake init --statusline(health/STATE 落後/context 用量)',
-    'zh-CN': '   ℹ️  底部仪表未装(选配)— 要的话:npx flightwake init --statusline(health/STATE 落后/context 用量)',
-    ja: '   ℹ️  下部ゲージは未インストール(オプトイン)— 欲しい場合:npx flightwake init --statusline(health / STATE の遅れ / context 使用量)',
-  }));
+  printNext({ ...opts, langExplicit: !!langArg, marker: det.marker, log }, result);
 }

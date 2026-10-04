@@ -1,6 +1,6 @@
 ---
 name: fw-record
-description: flightwake 收尾記錄 — 寫飛行紀錄並更新 STATE。Use when wrapping up work that touched schema/prod, spanned 3+ commits, or when the session is ending; also when the user says 收尾/記錄一下/record.
+description: flightwake 收尾記錄 — 寫飛行紀錄並更新 STATE。Use when wrapping up: 3+ commits since the last record, the session is ending, or (in code repos) work that touched schema/prod; also when the user says 收尾/記錄一下/record.
 ---
 
 # fw-record — 飛行紀錄收尾

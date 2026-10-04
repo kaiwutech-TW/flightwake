@@ -1,6 +1,6 @@
 ---
 name: fw-record
-description: flightwake wrap-up record — write the flight record and update STATE. Use when wrapping up work that touched schema/prod, spanned 3+ commits, or when the session is ending; also when the user says wrap up / record this.
+description: flightwake wrap-up record — write the flight record and update STATE. Use when wrapping up: 3+ commits since the last record, the session is ending, or (in code repos) work that touched schema/prod; also when the user says wrap up / record this.
 ---
 
 # fw-record — flight-record wrap-up

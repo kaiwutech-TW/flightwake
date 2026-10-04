@@ -6,7 +6,7 @@ repos: [{{repos touched}}]
 tests: {{N passed / tsc clean / or "no runtime surface"}}
 prod_changes: {{migrations/deploys/data operations; none if none}}
 ---
-<!-- flightwake record — a flight record. Triggers: touched schema / touched prod / ≥3 commits since last record / session wrap-up. -->
+<!-- flightwake record — a flight record. Triggers: ≥3 commits since last record / session wrap-up / (code repos) touched schema or prod. -->
 <!-- Filename: records/YYMMDD-slug.md. Write for "a stranger three months from now": no abbreviations, no codenames only you understand. -->
 
 # {{Title: one sentence saying what this stretch of work did}}

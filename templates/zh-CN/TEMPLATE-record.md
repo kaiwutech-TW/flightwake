@@ -6,7 +6,7 @@ repos: [{{涉及的 repo}}]
 tests: {{N passed / tsc clean / 或「无 runtime 面」}}
 prod_changes: {{migration/部署/资料操作,无则 none}}
 ---
-<!-- flightwake record — 飞行记录。触发:动 schema / 动 prod / 自上次 record ≥3 commits / session 收尾。 -->
+<!-- flightwake record — 飞行记录。触发:自上次 record ≥3 commits / session 收尾 /(程序项目)动 schema 或 prod。 -->
 <!-- 档名:records/YYMMDD-slug.md。写给「三个月后的陌生人」:不用缩写、不用只有你懂的代号。 -->
 
 # {{标题:一句话说完这次做了什么}}
