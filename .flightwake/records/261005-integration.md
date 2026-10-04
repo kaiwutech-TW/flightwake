@@ -137,3 +137,34 @@ Astra 列為可延後、未修:未寫入的自加 symlink 仍會讓 update 被�
 **已知現象(不修)**:這次試裝印出「7 個框架檔有本地修改、已被覆蓋」。原因是本分支改了這些框架檔(skill、範本)但版本號仍是 0.14.0,
 「同版同語言才判定本地修改」的覆蓋防護因此把分支的新內容當成使用者修改。正式發版會 bump 版本,使用者不會遇到;開發中的分支(版本未 bump)裝到既有同版安裝時會出現,訊息無害、檔案內容是分支的版本。
 
+## 真機回饋修正(同日,5103430..)
+
+驗收者在全新真實資料夾用真的終端機跑互動式 setup,並在真的 Claude Code session 實測 mod(F1、F2、F4 實際生效;F4 的提示讓 agent 在改 schema 前先備份)。
+回報四項,另追加兩項(Kai 同意)。逐項先紅後綠:
+
+1. **setup 已回答的題目從畫面消失**(Orca 終端機、繁中)。在真的 Orca 終端機重現:正好是「有打字作答」的行讀回來是空白;pyte 在 60/80/100 欄都看不到,
+   純 ASCII 的 `[1] 2` 也會消失 → 不是全形寬度問題,是 readline terminal 模式的重繪序列(`ESC[1G ESC[0J … ESC[<n>G`)。
+   修:`readline` 改 `terminal: false`(cooked tty、驅動回顯、純文字 prompt;Ctrl-C 為真 SIGINT,同樣零寫入 exit 130)。
+   紅:smoke 43.1 `[1G[0J[1] [5G1`;綠:43.1 四語通過(新 `test/pty-answers.py` 等輸出穩定才逐題作答);**在真的 Orca 終端機複驗**:每題與答案都留住
+   (`[1]2`、`…:1`、`[y/N]y` ×4、`[1]2`;Orca 讀取時會吃掉答案前的空格,但答案在)。測試用的兩個 Orca 終端機已確認回到閒置 shell 後關閉。TRAPS `readline-terminal-mode-loses-answer-lines`(probable)。
+2. **F3 漏記 shell 改動** → `lib/shell` 新增 `shellWriteTargets`(重導向、cp/mv/rm/tee/sed -i),`/fw-log` 另成一區「由指令推斷,可能不完整」,與工具確定的改動分開。
+3. **/fw-log 時間是 UTC** → 本地時間+偏移再附 UTC(偏移取自 `date +%z`;讀不到只顯示 UTC)。
+4. **串接執行的測試很少產出 pass** → 判定不變;每 session 一次經工具結果附加說明提示 agent 單獨執行;fw-record 四語加同一句。
+5. **F2 沒有儀表時常駐並帶 context 百分比**(取代「一切正常時保持安靜」;有儀表維持原狀;STATE 範本時顯示 `●?` 與 coldstart 提示)。
+6. **新增唯讀 `/fw-mod`**:五個功能開啟/關閉/閒置、原因、怎麼讓它生效,加上版本、語言、profile;doctor 與安裝結尾改指向它。
+
+測試:`mods/flightwake/tests/feedback.test.ts`(紅:先是 import 失敗、載入後 9 個失敗);既有 band 測試依新規則改寫(健康時不再安靜等 4 條、2 條把「安靜」當代理的斷言改為直接斷言提示與落後量);
+3 條「已註冊指令恰為…」的斷言改為只斷言各自的指令(`/fw-mod` 永遠註冊)。smoke 43.2:MOD_VERSION 與 plugin.json 一致、安裝結尾與 doctor 指向 `/fw-mod`、
+無儀表時的橫條說明、fw-record 四語(關鍵字檢查)。途中 validate 拒載一次:`$.state` 參照必須是本檔字面值 → TRAPS `mod-state-refs-must-be-literal`(confirmed)。
+
+驗證:smoke 43 節 `✅ smoke 全過`;`claude plugin test` 289 pass / 0 fail;validate `✔ Validation passed`;tsc clean;git-readonly-check 三項 ok。
+**真機**(暫存 repo `realload`,以本分支 `update` 刷新 mod,`FLIGHTWAKE_HOME` 指向暫存;Haiku 4.5;Bash 在該暫存 repo 預先允許以免停在權限提示):
+mod 以 `@skills-dir` 載入、hook 失敗行 0;橫條沒有儀表時顯示 `✈ flightwake · ●yellow · STATE 落後1c·27% → …`(27% 在舊規則下不會出現);
+`echo '-- touched' >> notes.txt && cp …` 後 `/fw-log` 的推斷區列出 `notes.txt (>>)`、`notes-copy.txt (cp)`;`echo start && npm test 2>&1; echo exit=$?`
+記為 `未知 | compound`,agent 逐字引出提示「這次的測試是和其他指令串在一起跑的…請把測試指令單獨執行一次」;時間欄 `2026-10-05 04:02:27 +0800 … (20:02:27 UTC)`;
+`/fw-mod` 列出 v0.1.0、zh-TW、code 與五項(STATE 已注入、橫條代替儀表、記錄 2 個 shell 推斷/2 次測試、絆線監看 1 條、角色守門關閉附開啟方式)。
+真機中刷新 mod 時又出現「框架檔有本地修改」的訊息,即上一節記的已知現象(版本未 bump)。
+
+worktree 之外:`~/.claude.json` 的暫存 repo 信任紀錄又加了一次、已再刪(只刪該鍵、0600 保留,備份在 scratchpad);`~/.claude/projects/` 的四個暫存 session 資料夾集合不變(沿用);
+在 Orca 開過兩個測試終端機(已關)。未驗證:有儀表時的真機外觀、F5 開啟時 `/fw-mod` 的真機輸出、Windows 下 `date +%z`(預期退回 UTC)。
+

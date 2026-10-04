@@ -5,6 +5,36 @@
 # 坑 Registry
 
 ---
+name: readline-terminal-mode-loses-answer-lines
+type: gotcha
+status: active
+tags: [setup, readline, tty, orca, terminal]
+discovered: 2026-10-05
+confidence: probable
+paths: ["bin/setup.mjs"]
+---
+
+**症狀**:真實終端機(Orca、繁中)跑 `npx flightwake setup`,已回答的題目從畫面消失;`orca terminal read` 讀回來,正好是「有打字作答」的那幾行是空白(`[1] 2`、`輸入編號…:1`、`安裝 Claude Code mod? [y/N] y`),只按 Enter 的題目保留。pyte 模擬器在 60/80/100 欄都看不到。
+**根因**:`readline` 的 terminal 模式每題送 `ESC[1G ESC[0J <prompt> ESC[<n>G`(移到第 1 欄、清到螢幕尾、寫 prompt、再跳到它自己算的絕對欄位),打字回顯接在絕對欄位之後;Orca 的終端機讀取把這種行讀成空白。不是全形寬度計算問題(純 ASCII 的 `[1] 2` 也消失)。xterm 實際畫面是否也消失未另外驗證。
+**解法/繞法**:問答不需要行編輯時用 `createInterface({ terminal: false })`:tty 維持 cooked、由驅動回顯,prompt 是純文字,Ctrl-C 變成真的 SIGINT(要自己接)。改後同一 Orca 終端機每題與答案都留住。
+**佐證**:record 261005-integration「真機回饋修正」;smoke 43.1(四語、斷言輸出沒有游標/清除控制序列)
+
+---
+name: mod-state-refs-must-be-literal
+type: gotcha
+status: active
+tags: [mods, claude-code, plugin-loader, state]
+discovered: 2026-10-05
+confidence: confirmed
+paths: ["mods/flightwake/hooks/**"]
+---
+
+**症狀**:`claude plugin validate` 失敗、整個外掛不載入(所有 plugin test 跟著失敗):`$.state.get takes a reference whose plugin and key are string literals ({ plugin: "p", key: "k" }, written there or in a const of this file; only id may be computed)`。觸發的寫法是共用 helper `get(key)` 再組 `{ plugin, key }`。
+**根因**:載入器靜態檢查每個 `$.state` 參照,plugin 與 key 必須是本檔裡的字面值(直接寫在呼叫處或本檔的 const),以便對照 `types/index.d.ts` 的契約;用變數組 key 一律拒絕。與 [[mod-dollar-cannot-cross-import]] 同屬載入器的靜態規則。
+**解法/繞法**:每個 key 宣告一個 `const X_REF = { plugin: 'flightwake-mod', key: '…' } as const`,呼叫處直接用。
+**佐證**:validate 錯誤訊息原文(Claude Code 2.1.289);改成字面 const 後 validate 通過、289 測試全過(commit c4d4f42 前後)
+
+---
 name: claude-code-loads-agents-md-when-no-claude-md
 type: gotcha
 status: active
