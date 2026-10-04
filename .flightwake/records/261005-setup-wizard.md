@@ -3,7 +3,7 @@ record_id: 261005-setup-wizard
 session: Claude(Opus 5.5) 主實作 + 兩個 sonnet subagent(四語文件、smoke 案例,產出經主實作者逐檔審閱後採用);任務說明設計者 Fable 5.1 代 Kai 回覆澄清
 date: 2026-10-05
 repos: [flightwake]
-tests: bash test/smoke.sh 34/34 節全過(Python 3.12 在 PATH 前;既有 22 節 + 新增 23–34 節,約 24s);node --check bin/*.mjs hooks/*.mjs test/*.mjs 全過(本 repo 無 TypeScript)
+tests: bash test/smoke.sh 36 節全過(49 個 ok;Python 3.12 在 PATH 前;含驗收後新增的 35、36.1–36.7),node --check bin/*.mjs test/*.mjs 全過(本 repo 無 TypeScript)
 prod_changes: none(未 push、未 bump、未發版)
 ---
 <!-- flightwake record — 飛行紀錄。 -->
@@ -60,3 +60,28 @@ prod_changes: none(未 push、未 bump、未發版)
   update 會寫真實的 `~/.flightwake/registry.json`(worktree 外),留給發版後
 - `roles apply` 在 --private 下仍會把角色區塊寫進受追蹤的指令檔與 `.claude/agents`(本階段範圍外,只修了 install 的排除)
 - Orca 協作區塊與 Gemini AfterAgent hook 均未真機驗證;zh-CN/ja 新文字未經母語者校對;Windows 未測(detectOrca 的 PATH 掃描不檢查執行權限)
+
+## 驗收後修正(同日,393b096..267cf32)
+
+驗收者(Fable 5.1)獨立比對 main 與分支後通過,接著兩批修改:
+
+1. **Kai 的兩項 setup 體驗修改**(393b096):偵測不到任何指令檔時,agent 題改成直接問用哪些工具(可複選、不預選、不可空白),
+   用 Claude Code 的人因此問得到儀表題;最終「確定執行?」改成預設是 `[Y/n]`。smoke 第 35 節 + 調整既有答案序列。
+2. **GPT-6 Astra 審 diff 的六項**(原文 `docs/plans/setup.diff-review-astra.md`,全數採納;2182e99、267cf32)。
+   每項都先寫測試、跑出失敗,再修到通過(smoke 36.1–36.6):
+   - 36.1 doctor private 檢查原本只看「剩下的排除項」→ 刪掉 `.flightwake/` 仍回 0(重現:rc=0)→ 改從安裝產物推導、`check-ignore` 驗實效
+   - 36.2 `init --private --orca` 把 Orca 區塊寫進受追蹤的 CLAUDE.md/AGENTS.md(重現:各 +17 行)→ claude 改寫 CLAUDE.local.md、其他跳過並警告
+   - 36.3 **main 就有**:hook 檔 symlink 到 `../STATE.md`,update 覆蓋 STATE(重現)→ 寫入層拒絕 symlink 與 repo 外落點,非零退出
+   - 36.4 刪 marker 後壞掉的 `.codex/hooks.json` 被忽略(重現:rc=0)→ 平台也從產物推導;hook 驗 type;結構異常逐項回報
+   - 36.5 有 `.git` 無 git 時 uninstall 被擋(重現:rc=1)→ git 前置檢查只限 init/setup
+   - 36.6 fw-coldstart 只剩一行範本也直接跳第 5 步 → 四語改成有歷史就續走第 2–4 步
+   - 測試面:doctor 負向案例改為斷言具體失敗行且不得崩潰;36.7 比對 setup 摘要與實際寫入集合(雜湊 + mtime 快照,同內容重寫也算;
+     故意讓摘要少列一個路徑時確實失敗)
+
+教訓:**doctor 的檢查清單若由「現存的設定」推導,刪掉的東西會連同它該觸發的檢查一起消失**——必要集合要從另一個來源(安裝產物)推導。
+
+### 仍未解決(新增)
+
+- `--private` 下**核心義務表**的 marker 若已在受追蹤檔(先一般安裝、後改 private),`--force`/update 仍會改寫它(main 既有行為;本次只修 Orca)
+- symlink 防護只在安裝寫入層;`uninstall`、`roles` 的寫入與 `refreshRolesSkill` 未套用
+- `CLAUDE.md → AGENTS.md` 這類 repo 內 symlink 現在一律拒寫(DECISIONS 2026-10-05 記重評條件)
