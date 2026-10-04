@@ -686,7 +686,7 @@ pass "無指令 == init(含 TTY 下不提問);pty-run 逾時/Ctrl-C 行為"
 
 # 27. setup 問答流程(driver 注入答案):全預設只裝核心
 newrepo "$TMP/sd-default" >/dev/null
-out=$(node "$DRIVE" --orca=0 -- "" "" "" "" y 2>&1) || fail "全預設 setup 應成功(out: $out)"
+out=$(node "$DRIVE" --orca=0 -- "" 2 "" "" "" 2>&1) || fail "全預設 setup 應成功(out: $out)"
 echo "$out" | grep -q 'Orca collaboration (' && fail "--orca=0 時不得出現 Orca 題目"
 [ -f .flightwake/STATE.md ] && [ -f .claude/skills/fw-record/SKILL.md ] || fail "全預設應裝核心"
 grep -q 'statusLine' .claude/settings.json && fail "全預設不得裝 statusLine"
@@ -701,23 +701,23 @@ grep -q 'statusLine' .claude/settings.json || fail "statusline 答 y 應寫入 s
 [ -e .claude/skills/fw-roles ] && fail "只答 statusline 不得裝 roles"
 grep -q 'flightwake-orca' CLAUDE.md && fail "只答 statusline 不得有 Orca 區塊"
 newrepo "$TMP/sd-roles" >/dev/null
-node "$DRIVE" --orca=0 -- "" "" y "" y >/dev/null || fail "roles 單選 setup 應成功"
+node "$DRIVE" --orca=0 -- "" 2 y "" y >/dev/null || fail "roles 單選 setup 應成功"
 [ -f .claude/skills/fw-roles/SKILL.md ] || [ -f .agents/skills/fw-roles/SKILL.md ] || fail "roles 答 y 應裝 fw-roles"
 grep -q 'statusLine' .claude/settings.json && fail "只答 roles 不得裝 statusLine"
 grep -rq 'flightwake-orca' --include='*.md' . && fail "只答 roles 不得有 Orca 區塊"
 newrepo "$TMP/sd-orca" >/dev/null
-out=$(node "$DRIVE" --orca=1 -- "" "" "" y "" y 2>&1) || fail "Orca 單選 setup 應成功(out: $out)"
+out=$(node "$DRIVE" --orca=1 -- "" 2 "" y "" y 2>&1) || fail "Orca 單選 setup 應成功(out: $out)"
 echo "$out" | grep -q 'Orca collaboration (' || fail "--orca=1 時應出現 Orca 題目"
 grep -q 'flightwake-orca:begin' AGENTS.md || fail "Orca 答 y 應寫入 Orca 區塊"
 [ -e .claude/skills/fw-roles ] || [ -e .agents/skills/fw-roles ] && fail "只答 Orca 不得裝 roles"
 grep -q 'statusLine' .claude/settings.json && fail "只答 Orca 不得裝 statusLine"
 # Orca 題答 n(預設)→ 不寫區塊
 newrepo "$TMP/sd-orca-n" >/dev/null
-node "$DRIVE" --orca=1 -- "" "" "" "" "" y >/dev/null || fail "Orca 預設否 setup 應成功"
+node "$DRIVE" --orca=1 -- "" 2 "" "" "" y >/dev/null || fail "Orca 預設否 setup 應成功"
 grep -q 'flightwake-orca' AGENTS.md && fail "Orca 題預設否,不得寫區塊"
 # repo 類型選 2 → notes
 newrepo "$TMP/sd-notes" >/dev/null
-node "$DRIVE" --orca=0 -- "" "" "" 2 y >/dev/null || fail "筆記型 setup 應成功"
+node "$DRIVE" --orca=0 -- "" 2 "" 2 y >/dev/null || fail "筆記型 setup 應成功"
 grep -q 'flightwake:begin v[0-9.]* lang=en profile=notes' AGENTS.md || fail "選筆記型 marker 應帶 profile=notes"
 # 旗標視為該題答案(不再提問)
 newrepo "$TMP/sd-flags" >/dev/null
@@ -734,7 +734,7 @@ rc=0; node "$DRIVE" --orca=0 -- n >/dev/null || rc=$?
 [ -z "$(ls -A)" ] || fail "拒絕 git init 後目錄應仍為空(got: $(ls -A | tr '\n' ' '))"
 rc=0; node "$DRIVE" --orca=0 -- "" >/dev/null || rc=$?
 [ "$rc" = 1 ] && [ -z "$(ls -A)" ] || fail "git init 題直接 Enter(預設否)應退出 1 且零寫入"
-node "$DRIVE" --orca=0 -- y "" "" "" "" y >/dev/null || fail "同意 git init 並確認應成功"
+node "$DRIVE" --orca=0 -- y "" 2 "" "" y >/dev/null || fail "同意 git init 並確認應成功"
 [ -d .git ] && [ -d .flightwake ] || fail "同意後應建 .git 並安裝"
 # 已有安裝:告知現況;y → 更新(0);n → 1 且沒有檔案被改
 newrepo "$TMP/sd-exist" >/dev/null
@@ -745,7 +745,8 @@ rc=0; out=$(node "$DRIVE" -- n 2>&1) || rc=$?
 echo "$out" | grep -qi 'already installed' || fail "已安裝時應告知「already installed」(got: $out)"
 [ "$b" = "$(snap)" ] || fail "已安裝時確認答 n 不得改任何檔案"
 rc=0; out=$(node "$DRIVE" -- "" 2>&1) || rc=$?
-[ "$rc" = 1 ] && [ "$b" = "$(snap)" ] || fail "已安裝時確認 Enter(預設否)應退出 1 且零寫入"
+[ "$rc" = 0 ] || fail "已安裝時最終確認 Enter(預設是)應執行更新並退出 0(got $rc)"
+echo "$out" | grep -q '\[Y/n\]' || fail "最終確認應顯示 [Y/n]"
 echo "$out" | grep -q 'Language' && fail "已安裝時不應再問語言等題(只有最終確認)"
 sed -i.bak 's/flightwake:begin v[0-9.]*/flightwake:begin v0.0.1/' AGENTS.md && rm -f AGENTS.md.bak
 rc=0; out=$(node "$DRIVE" -- y 2>&1) || rc=$?
@@ -801,24 +802,24 @@ chk_zero() { # $1 描述;其餘 = driver 答案;在目前目錄執行並比對�
   [ "$b" = "$(snap)" ] || fail "$desc:不得有任何寫入"
 }
 newrepo "$TMP/int-repo" >/dev/null
-chk_zero "最終確認 n" "" "" "" "" n
-chk_zero "最終確認 Enter(預設否)" "" "" "" "" ""
+chk_zero "最終確認 n" "" 2 "" "" n
+chk_zero "最終確認 no" "" 2 "" "" no
 chk_zero "語言題 ^D" ^D
 chk_zero "agent 題 ^D" "" ^D
-chk_zero "最終確認 ^D" "" "" "" "" ^D
+chk_zero "最終確認 ^D" "" 2 "" "" ^D
 chk_zero "答案用完(隱含 EOF)" "" ""
 chk_zero "語言題 ^C" ^C
-chk_zero "roles 題 ^C(中間題)" "" "" ^C
-chk_zero "repo 類型題 ^C" "" "" "" ^C
-chk_zero "最終確認 ^C" "" "" "" "" ^C
+chk_zero "roles 題 ^C(中間題)" "" 2 ^C
+chk_zero "repo 類型題 ^C" "" 2 "" ^C
+chk_zero "最終確認 ^C" "" 2 "" "" ^C
 mkdir -p "$TMP/int-nonrepo" && cd "$TMP/int-nonrepo"
 chk_zero "非 repo:git init 題 ^D" ^D
-chk_zero "非 repo:git init 答 y 後最終確認 n" y "" "" "" "" n
-chk_zero "非 repo:git init 答 y 後 ^D" y "" "" "" ^D
-chk_zero "非 repo:git init 答 y 後 ^C" y "" "" ^C
+chk_zero "非 repo:git init 答 y 後最終確認 n" y "" 2 "" "" n
+chk_zero "非 repo:git init 答 y 後 ^D" y "" 2 "" ^D
+chk_zero "非 repo:git init 答 y 後 ^C" y "" 2 ^C
 [ ! -e .git ] || fail "非 repo 中斷後不得有 .git"
 # 帶旗標 gitInit 的非 repo 取消:也不得先建 .git
-b=$(snap); rc=0; node "$DRIVE" --orca=0 --flags='{"gitInit":true}' -- "" "" "" "" n >/dev/null 2>&1 || rc=$?
+b=$(snap); rc=0; node "$DRIVE" --orca=0 --flags='{"gitInit":true}' -- "" 2 "" "" n >/dev/null 2>&1 || rc=$?
 [ "$rc" -ne 0 ] && [ "$b" = "$(snap)" ] && [ ! -e .git ] || fail "旗標 gitInit 但最終確認 n:不得建 .git"
 # 已安裝再中斷
 newrepo "$TMP/int-exist" >/dev/null; node "$CLI" init >/dev/null
@@ -948,6 +949,34 @@ ls .claude/skills/fw-roles/SKILL.md >/dev/null 2>&1 || ls .agents/skills/fw-role
 node "$CLI" update >/dev/null
 [ -z "$(git status --porcelain)" ] || fail "--private + roles 後 update,git status 仍應乾淨(got: $(git status --porcelain | tr '\n' ' '))"
 pass "--private + roles:install 與 update 後 git status 皆乾淨"
+
+# 35. agent 題:偵測不到任何指令檔 → 直接問用哪些工具(可複選、不預選);偵測得到 → 維持「Enter 沿用」;最終確認預設是
+newrepo "$TMP/ag-none" >/dev/null
+out=$(node "$DRIVE" --orca=0 -- "" "" 1 "" "" "" "" 2>&1) || fail "無指令檔時選 claude 的 setup 應成功(out: $out)"
+echo "$out" | grep -q 'Which AI coding tools' || fail "無指令檔時應直接問用哪些工具"
+echo "$out" | grep -q 'detected:' && fail "無指令檔時不得顯示偵測結果或預選"
+echo "$out" | grep -q 'Pick at least one' || fail "無指令檔時直接 Enter 應要求至少選一個(不得預設 codex)"
+echo "$out" | grep -q 'Bottom gauge in Claude Code' || fail "選了 claude 應問到儀表那一題"
+grep -q 'flightwake:begin' CLAUDE.md || fail "選 claude 應寫入 CLAUDE.md"
+[ -e AGENTS.md ] && fail "只選 claude 不得建 AGENTS.md"
+newrepo "$TMP/ag-names" >/dev/null
+node "$DRIVE" --orca=0 -- "" "claude,gemini" "" "" "" "" >/dev/null || fail "以名稱複選應成功"
+grep -q 'flightwake:begin' CLAUDE.md && grep -q 'flightwake:begin' GEMINI.md || fail "複選 claude,gemini 應寫兩個指令檔"
+[ -e AGENTS.md ] && fail "未選 codex 不得建 AGENTS.md"
+newrepo "$TMP/ag-bad" >/dev/null
+out=$(node "$DRIVE" --orca=0 -- "" "9,cursor" 2 "" "" "" 2>&1) || fail "輸入無效後重選應成功(out: $out)"
+echo "$out" | grep -q 'Not recognized' || fail "無效的編號/名稱應被指出並重問"
+grep -q 'flightwake:begin' AGENTS.md || fail "重選 codex 後應寫 AGENTS.md"
+newrepo "$TMP/ag-found" >/dev/null; echo "# a" > AGENTS.md
+out=$(node "$DRIVE" --orca=0 -- "" "" "" "" "" 2>&1) || fail "偵測得到指令檔時 Enter 沿用應成功(out: $out)"
+echo "$out" | grep -q 'detected: codex' || fail "偵測得到指令檔時應顯示偵測結果"
+echo "$out" | grep -q 'Which AI coding tools' && fail "偵測得到指令檔時不應改問工具清單"
+grep -q 'flightwake:begin' AGENTS.md || fail "Enter 沿用偵測結果應寫 AGENTS.md"
+echo "$out" | grep -q 'Proceed? \[Y/n\]' || fail "最終確認應為 [Y/n]"
+[ -f .flightwake/STATE.md ] || fail "最終確認 Enter(預設是)應執行安裝"
+newrepo "$TMP/ag-init" >/dev/null
+node "$CLI" init >/dev/null && grep -q 'flightwake:begin' AGENTS.md || fail "init 非互動預設不變:無指令檔仍建 AGENTS.md"
+pass "agent 題:無指令檔直接問(複選、不預選、選 claude 會問儀表);有指令檔維持沿用;確認預設是;init 預設不變"
 
 echo ""
 echo "✅ smoke 全過"

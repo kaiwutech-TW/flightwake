@@ -12,9 +12,11 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 - **`npx flightwake setup` — guided install.** Interactive (needs a terminal; without one it explains and exits 1).
   Checks git is installed, then that the directory is a repo (offers `git init`, default No, run only after the final
   confirmation). If flightwake is already installed it only offers an in-place upgrade (`update`) or leaving. Then asks
-  language, agents, optional add-ons (each default No: the bottom gauge — only if Claude Code is selected; roles — installs
+  language, agents (detected ones offered; with no instruction file at all it asks which tools you use, multi-select,
+  nothing preselected), optional add-ons (each default No: the bottom gauge — only if Claude Code is selected; roles — installs
   only the `fw-roles` skill; Orca collaboration — only if Orca is detected) and repo type (code / notes), shows every path it
-  will write, and installs through the same path as `init` only after you confirm, then runs `doctor` and prints next steps.
+  will write and asks `Proceed? [Y/n]` (Enter installs), installs through the same path as `init`, then runs `doctor` and
+  prints next steps.
   Flags on the command line answer their question; `--private` is flag-only and never asked. Ctrl-C, EOF, or declining before
   the final confirmation writes nothing. `npx flightwake` (no command) and `init` are unchanged and never ask questions —
   the non-interactive form for automation, agents, CI and advanced users.

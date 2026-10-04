@@ -159,11 +159,15 @@ export function detectInstall(target) {
     installed: !!marker || !!exclude,
   };
 }
-/** Which platforms a default (no --agents) install would target. */
-export function defaultAgents(target) {
+/** Platforms that already have an instruction file here (may be empty). */
+export function detectedAgents(target) {
   const hasFile = (rel) => existsSync(join(target, ...rel.split('/')));
-  const any = Object.values(GROUPS).flat().some(hasFile);
-  return Object.keys(GROUPS).filter((name) => GROUPS[name].some(hasFile) || (!any && name === 'codex'));
+  return Object.keys(GROUPS).filter((name) => GROUPS[name].some(hasFile));
+}
+/** Which platforms a default (no --agents) install would target: the detected ones, or codex when none. */
+export function defaultAgents(target) {
+  const found = detectedAgents(target);
+  return found.length ? found : ['codex'];
 }
 /** Orca present = its CLI is on PATH or the environment Orca exports to its terminals is set. Never executes it. */
 export function detectOrca(env = process.env) {

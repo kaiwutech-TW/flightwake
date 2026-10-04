@@ -20,7 +20,7 @@ cd your-repo
 npx flightwake setup    # 引導式安裝:問幾個問題、列出將寫入的每個路徑,你確認後才安裝
 ```
 
-`setup` 需要終端機。它先檢查 git(目錄不是 repo 時會問要不要 `git init`,預設 No,且只在最後確認後才執行),接著問語言、agent、選配附加項(每項預設 No:底部儀表、roles、Orca 協作)與 repo 類型(code / notes),列出將寫入的所有路徑,你確認後才動手——Ctrl-C 或拒絕都不會寫入任何東西。若已安裝 flightwake,只會提供就地升級(`update`)。它與 `init` 走同一條安裝路徑,裝完跑 `doctor` 並印出下一步。命令列上給的旗標會直接回答對應的問題;`--private` 只能用旗標,從不詢問。
+`setup` 需要終端機。它先檢查 git(目錄不是 repo 時會問要不要 `git init`,預設 No,且只在最後確認後才執行),接著問語言、agent(資料夾已有 CLAUDE.md / AGENTS.md / GEMINI.md 時列出偵測結果;都沒有時直接問你用哪些工具,可複選、不預選)、選配附加項(每項預設 No:底部儀表、roles、Orca 協作)與 repo 類型(code / notes),列出將寫入的所有路徑,再問「確定執行? [Y/n]」——按 Enter 即安裝;`n`、EOF 或 Ctrl-C 都不會寫入任何東西。若已安裝 flightwake,只會提供就地升級(`update`)。它與 `init` 走同一條安裝路徑,裝完跑 `doctor` 並印出下一步。命令列上給的旗標會直接回答對應的問題;`--private` 只能用旗標,從不詢問。
 
 **非互動形式**——`npx flightwake init [旗標]`(直接打 `npx flightwake` 效果相同)從不提問:給自動化、agent、CI 與已經知道要什麼的進階使用者用:
 

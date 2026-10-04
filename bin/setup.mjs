@@ -11,7 +11,7 @@
 import { createInterface } from 'node:readline';
 import { execFileSync } from 'node:child_process';
 import {
-  LANGS, GROUPS, makeM, gitAvailable, repoState, detectInstall, defaultAgents, detectOrca, resolveOptions, install,
+  LANGS, GROUPS, makeM, gitAvailable, repoState, detectInstall, detectedAgents, detectOrca, resolveOptions, install,
   printNext, noJunk, addPrivateExcludes, gitMissingMessage, monorepoMessage,
 } from './install.mjs';
 import { installRolesSkill } from './roles.mjs';
@@ -53,7 +53,7 @@ export function realContext({ target, fwSrc, version, log = (s) => console.log(s
     gitAvailable,
     repoState: () => repoState(target),
     detect: () => detectInstall(target),
-    defaultAgents: () => defaultAgents(target),
+    detectedAgents: () => detectedAgents(target),
     orcaDetected: () => detectOrca(env),
     preview(plan) {
       const r = install({ ...plan.opts, target, fwSrc, version, marker: detectInstall(target).marker, dry: true });
@@ -185,22 +185,41 @@ export async function runSetup({ io, flags = {}, ctx }) {
       lang = LANGS[await choose('Language / 語言 / 语言 / 言語', LANGS.map((l) => `${LANG_LABELS[l]} (${l})`), def < 0 ? 0 : def)];
     }
 
-    // 5. agents
+    // 5. agents. Instruction files found → offer them (Enter keeps). None found → ask outright, nothing preselected:
+    //    init's non-interactive fallback (codex) would otherwise hide the Claude-only gauge question from Claude users.
     let agents = flags.agents;
     if (!agents) {
-      const detected = ctx.defaultAgents();
-      say(M({
-        en: `\nAgents to set up (detected: ${detected.join(', ')}). Available: ${Object.keys(GROUPS).join(', ')}.`,
-        'zh-TW': `\n要設定的 agent(偵測到:${detected.join(', ')})。可選:${Object.keys(GROUPS).join(', ')}。`,
-        'zh-CN': `\n要设定的 agent(检测到:${detected.join(', ')})。可选:${Object.keys(GROUPS).join(', ')}。`,
-        ja: `\n設定する agent(検出:${detected.join(', ')})。選択肢:${Object.keys(GROUPS).join(', ')}。`,
-      }));
+      const detected = ctx.detectedAgents();
+      const NAMES = Object.keys(GROUPS);
+      const LABEL = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini CLI' };
+      if (detected.length) {
+        say(M({
+          en: `\nAgents to set up (detected: ${detected.join(', ')}). Available: ${NAMES.join(', ')}.`,
+          'zh-TW': `\n要設定的 agent(偵測到:${detected.join(', ')})。可選:${NAMES.join(', ')}。`,
+          'zh-CN': `\n要设定的 agent(检测到:${detected.join(', ')})。可选:${NAMES.join(', ')}。`,
+          ja: `\n設定する agent(検出:${detected.join(', ')})。選択肢:${NAMES.join(', ')}。`,
+        }));
+      } else {
+        say(M({
+          en: '\nWhich AI coding tools do you use here? Pick one or more:',
+          'zh-TW': '\n你在這裡用哪些 AI coding 工具?可複選:',
+          'zh-CN': '\n你在这里用哪些 AI coding 工具?可多选:',
+          ja: '\nここで使う AI コーディングツールは?複数選択可:',
+        }));
+        NAMES.forEach((n, i) => say(`  ${i + 1}) ${LABEL[n]} (${n})`));
+      }
+      const prompt = detected.length
+        ? M({ en: 'Press Enter to keep, or type a comma list: ', 'zh-TW': '按 Enter 沿用,或輸入逗號分隔清單:', 'zh-CN': '按 Enter 沿用,或输入逗号分隔清单:', ja: 'Enter でそのまま、またはカンマ区切りで入力:' })
+        : M({ en: 'Numbers or names, comma-separated (e.g. 1,2): ', 'zh-TW': '輸入編號或名稱,逗號分隔(例如 1,2):', 'zh-CN': '输入编号或名称,逗号分隔(例如 1,2):', ja: '番号か名前をカンマ区切りで(例:1,2):' });
       for (;;) {
-        const a = await ask(M({ en: 'Press Enter to keep, or type a comma list: ', 'zh-TW': '按 Enter 沿用,或輸入逗號分隔清單:', 'zh-CN': '按 Enter 沿用,或输入逗号分隔清单:', ja: 'Enter でそのまま、またはカンマ区切りで入力:' }));
-        const list = a ? a.split(/[\s,]+/).filter(Boolean) : detected;
+        const a = await ask(prompt);
+        // Numbers map to the listed order; names pass through
+        const list = (a ? a.split(/[\s,]+/).filter(Boolean) : detected).map((x) => (/^\d+$/.test(x) ? NAMES[Number(x) - 1] ?? x : x));
         const bad = list.filter((x) => !GROUPS[x]);
         if (list.length && !bad.length) { agents = [...new Set(list)]; break; }
-        say(M({ en: `  Not recognized: ${bad.join(', ') || '(empty)'}`, 'zh-TW': `  無法辨識:${bad.join(', ') || '(空白)'}`, 'zh-CN': `  无法识别:${bad.join(', ') || '(空白)'}`, ja: `  認識できない:${bad.join(', ') || '(空)'}` }));
+        say(bad.length
+          ? M({ en: `  Not recognized: ${bad.join(', ')}`, 'zh-TW': `  無法辨識:${bad.join(', ')}`, 'zh-CN': `  无法识别:${bad.join(', ')}`, ja: `  認識できない:${bad.join(', ')}` })
+          : M({ en: '  Pick at least one.', 'zh-TW': '  請至少選一個。', 'zh-CN': '  请至少选一个。', ja: '  少なくとも 1 つ選んでください。' }));
       }
     }
 
@@ -249,7 +268,8 @@ export async function runSetup({ io, flags = {}, ctx }) {
     const paths = ctx.preview(plan);
     say(M({ en: '\nThese paths will be written:', 'zh-TW': '\n將寫入以下路徑:', 'zh-CN': '\n将写入以下路径:', ja: '\n以下のパスに書き込みます:' }));
     for (const p of paths) say(`  ${p}`);
-    if (!await yesNo(M({ en: '\nProceed?', 'zh-TW': '\n確定執行?', 'zh-CN': '\n确定执行?', ja: '\n実行しますか?' }), false)) return cancelled(1);
+    // Default yes: the full list is right above it; n / EOF / Ctrl-C still cancel with zero writes
+    if (!await yesNo(M({ en: '\nProceed?', 'zh-TW': '\n確定執行?', 'zh-CN': '\n确定执行?', ja: '\n実行しますか?' }), true)) return cancelled(1);
     say('');
     return ctx.execute(plan);
   }
