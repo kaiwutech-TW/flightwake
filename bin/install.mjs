@@ -336,6 +336,7 @@ export function createWriter({ target, dry = false, log = () => {}, M = makeM('e
     return statSync(join(dir, f)).isDirectory() ? hasWanted(join(dir, f), filter, r) : filter(r);
   });
   const W = {
+    isDry: dry,
     check,
     refuse,
     write: (p, data, inRepo = true) => {

@@ -21,6 +21,7 @@
 import { existsSync, readFileSync, realpathSync, statSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve, relative, basename, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
+import { removeShippedTree } from './remove.mjs';
 import { createHash } from 'node:crypto';
 
 export const ROLES_LANGS = ['en', 'zh-TW'];
@@ -404,7 +405,7 @@ function findSource(target) {
 
 /** Strip this repo's role output. W = the installer's guarded writer (no deleting or rewriting through a symlink or
  *  outside the repo); callers preflight with a dry W first. */
-export function removeRoleArtifacts(target, log, W) {
+export function removeRoleArtifacts(target, log, W, { fwSrc, M } = {}) {
   for (const rels of Object.values(AGENT_FILES)) {
     for (const rel of rels) {
       const p = join(target, ...rel.split('/'));
@@ -427,9 +428,9 @@ export function removeRoleArtifacts(target, log, W) {
     }
     if (!left) W.rm(d);
   }
+  // The fw-roles skill: only its shipped files (every roles language), kept and named when anything else is in there
   for (const base of SKILL_BASES) {
-    const p = join(target, ...base.split('/'), 'fw-roles');
-    if (existsSync(p) && W.rm(p)) log(`  rm   ${base}/fw-roles`);
+    removeShippedTree({ target, baseRel: `${base}/fw-roles`, srcDirs: ROLES_LANGS.map((l) => join(fwSrc, 'addons', 'roles', l, 'fw-roles')), W, out: log, M });
   }
 }
 function readdirSafe(d) { try { return readdirSync(d); } catch { return []; } }
@@ -526,10 +527,10 @@ export function runRoles({ target, fwSrc, version, lang, args, log, M, noJunk, a
 
   if (sub === 'remove') {
     const pre = writer.make(true);
-    removeRoleArtifacts(target, () => {}, pre.W);
+    removeRoleArtifacts(target, () => {}, pre.W, { fwSrc, M });
     if (pre.refused.length) { log(writer.refusalReport(pre.refused)); return 1; }
     const real = writer.make(false);
-    try { removeRoleArtifacts(target, log, real.W); } catch (e) { log(writer.incompleteReport(e?.message ?? String(e))); return 1; }
+    try { removeRoleArtifacts(target, log, real.W, { fwSrc, M }); } catch (e) { log(writer.incompleteReport(e?.message ?? String(e))); return 1; }
     if (real.refused.length) { log(writer.incompleteReport(real.refused.map((r) => r.path).join(', '))); return 1; }
     log(M({ en: '\n✅ role blocks, generated agents and fw-roles removed from this repo. .flightwake/ROLES.md is user data and was kept.', 'zh-TW': '\n✅ 本 repo 的角色區塊、產生的 agent 與 fw-roles 已移除。.flightwake/ROLES.md 是使用者資料,保留。' }));
     return 0;
