@@ -31,7 +31,9 @@ const ENTRY_RE = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n([\s\S]*?)(?=^---[
 export function parseTraps(text: string): TrapEntry[] {
   const out: TrapEntry[] = []
   // Drop HTML comments first: the shipped header documents the format with example frontmatter-like lines.
-  const clean = text.replace(/<!--[\s\S]*?-->/g, '')
+  // Repeat until nothing changes: one pass can join the text around a removed comment into a new `<!--`.
+  let clean = text
+  for (let prev = ''; prev !== clean;) { prev = clean; clean = clean.replace(/<!--[\s\S]*?-->/g, '') }
   let m: RegExpExecArray | null
   while ((m = ENTRY_RE.exec(clean)) !== null) {
     const fmText = m[1] ?? ''

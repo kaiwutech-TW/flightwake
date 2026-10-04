@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { detectLang, isUninitializedState } from '../hooks/lib/core'
+import { detectLang, isUninitializedState, tableCell } from '../hooks/lib/core'
 import { parseCommand } from '../hooks/lib/shell'
 import { fakeIo, gitBehind, installWorld, MARKER, newWorld, STATE_FILLED, type World } from './world'
 
@@ -93,7 +93,7 @@ describe('(1) F3 never records an unproven pass', () => {
       await start($, w)
       await bash($, cmd)
       const log = await fwLog($)
-      expect(log).toContain(cmd.replace(/\|/g, '\\|'))
+      expect(log).toContain(tableCell(cmd))
       expect(log).not.toMatch(/\| pass \|/)
       expect(log).toMatch(/\| unknown \|/)
     })

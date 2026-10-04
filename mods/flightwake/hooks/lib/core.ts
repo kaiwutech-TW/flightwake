@@ -23,6 +23,9 @@ export const LANGS: readonly Lang[] = ['en', 'zh-TW', 'zh-CN', 'ja']
 export type Msg = { en: string } & Partial<Record<Exclude<Lang, 'en'>, string>>
 export const M = (lang: Lang, m: Msg): string => m[lang] ?? m.en
 
+/** One markdown table cell: newlines become spaces, then `\` before `|` is escaped so a `\|` in the text stays unambiguous. */
+export const tableCell = (s: string): string => s.replace(/\r?\n/g, ' ').replace(/\\/g, '\\\\').replace(/\|/g, '\\|')
+
 /**
  * The world as the shared helpers see it. `$` can't be passed across an import — the engine's loader refuses a
  * module that does (`$ is followed only into a function declared in this same file, never across an import`) —

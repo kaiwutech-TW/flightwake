@@ -14,7 +14,7 @@ import { atom, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
 import type { FwFlightLog, FwShellWrite, FwTestRun } from '../../types'
-import { M, STATE_REL, fwContext, packageScripts, readRel, relToRoot } from '../lib/core'
+import { M, STATE_REL, fwContext, packageScripts, readRel, relToRoot, tableCell as cell } from '../lib/core'
 import type { Io, Lang } from '../lib/core'
 import { parseCommand, shellWriteTargets } from '../lib/shell'
 import type { Segment } from '../lib/shell'
@@ -255,7 +255,6 @@ export function when(ms: number, tz: TzOffset = null): string {
   const off = `${sign}${String(Math.floor(a / 60)).padStart(2, '0')}${String(a % 60).padStart(2, '0')}`
   return `${stamp(ms + tz * 60_000)} ${off} (${stamp(ms).slice(11)} UTC)`
 }
-const cell = (s: string): string => s.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|')
 const code = (s: string): string => (s.includes('`') ? cell(s) : `\`${cell(s)}\``)
 
 export function renderLog(lang: Lang, log: FwFlightLog | null, tz: TzOffset = null): string {

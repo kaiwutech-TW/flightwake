@@ -6,7 +6,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { gitBehind, installWorld, MARKER, STATE_FILLED, type World } from './world'
+import { tableCell } from '../hooks/lib/core'
+import { gitBehind, installWorld, MARKER, STATE_FILLED, tableCells, type World } from './world'
 
 const COMPOSER = { kind: 'composer' as const }
 
@@ -24,8 +25,8 @@ const fwLog = async ($: any): Promise<string> => (await $.command.run({ command:
 const hintOf = (r: { context?: readonly string[] }) => (r.context ?? []).join('\n')
 
 function resultOf(log: string, command: string): string | undefined {
-  const line = log.split('\n').find((l) => l.startsWith(`| \`${command.replace(/\|/g, '\\|')}\` |`))
-  return line?.split(/(?<!\\)\|/).slice(1, -1).map((c) => c.trim())[2]
+  const line = log.split('\n').find((l) => l.startsWith(`| \`${tableCell(command)}\` |`))
+  return line === undefined ? undefined : tableCells(line)[2]
 }
 
 async function logOf($: any, on: On, command: string, scripts?: Record<string, string>): Promise<string> {

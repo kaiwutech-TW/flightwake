@@ -5,7 +5,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { gitBehind, installWorld, MARKER, STATE_FILLED, type World } from './world'
+import { tableCell } from '../hooks/lib/core'
+import { gitBehind, installWorld, MARKER, STATE_FILLED, tableCells, type World } from './world'
 
 const ALL_ON = { options: { stateInject: true, band: true, recorder: true, tripwire: true, roleGuard: true } }
 const COMPOSER = { kind: 'composer' as const }
@@ -34,8 +35,8 @@ const hintOf = (r: { context?: readonly string[] }) => (r.context ?? []).join('\
 
 /** The /fw-log table row of `command` (the first one), split into cells; undefined when it isn't recorded. */
 function rowOf(log: string, command: string): string[] | undefined {
-  const line = log.split('\n').find((l) => l.startsWith(`| \`${command.replace(/\|/g, '\\|')}\` |`))
-  return line?.split(/(?<!\\)\|/).slice(1, -1).map((c) => c.trim())
+  const line = log.split('\n').find((l) => l.startsWith(`| \`${tableCell(command)}\` |`))
+  return line === undefined ? undefined : tableCells(line)
 }
 const resultOf = (log: string, command: string) => rowOf(log, command)?.[2] // command | kind | result | exit | …
 const exitOf = (log: string, command: string) => rowOf(log, command)?.[3]
