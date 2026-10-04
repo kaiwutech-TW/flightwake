@@ -12,6 +12,8 @@ const OK = { result: { stdout: '', stderr: '', interrupted: false }, text: '' }
 const gitClean = { 'rev-parse HEAD': 'abcdef1234567890', 'status --porcelain': '' }
 const RUN = (command: string) => ({ command, args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 100 } }) as never
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
+/** The read-only git query the recorder uses to confirm shell-inferred candidates (paths follow, repo-relative). */
+const GIT_CHANGED = '--literal-pathspecs status --porcelain -z --untracked-files=all --'
 const GAUGE = { statusLine: { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/.flightwake/hooks/statusline.mjs"' } }
 
 /** World + a host for every $.state key + command registry + a scripted tool result. */
@@ -55,11 +57,31 @@ describe('shellWriteTargets: what a command writes, as far as the words say', ()
     expect(t('sed s/a/b/ f.txt')).toEqual([])
     expect(t('cat a > "$OUT"')).toEqual([])
   })
+
+  test('Astra review 2: option values are never paths (sed -e/-f/-E, --expression=, cp/mv -t/-S); globs are skipped', () => {
+    const t = (c: string) => shellWriteTargets(c).map((x) => `${x.path}<${x.via}`)
+    expect(t(`sed -i '' -e 's/foo/bar/' -e 's/password/SECRET_REVIEW/' config.txt`)).toEqual(['config.txt<sed -i'])
+    expect(t('sed -i -e s/a/b/ -f fix.sed -E f.txt')).toEqual(['f.txt<sed -i'])
+    expect(t('sed --in-place=.bak --expression=s/a/b/ f.txt')).toEqual(['f.txt<sed -i'])
+    expect(t('sed -i -n -l 80 s/a/b/ f.txt')).toEqual(['f.txt<sed -i'])
+    expect(t('cp -t dest a.txt b.txt')).toEqual(['dest/a.txt<cp', 'dest/b.txt<cp'])
+    expect(t('mv -S .orig a.ts b.ts')).toEqual(['a.ts<mv', 'b.ts<mv'])
+    expect(t('rm -f *.log tmp/?')).toEqual([])
+  })
+
+  test('effect and directory: rm and mv sources remove; the dir is known only through a leading cd && chain', () => {
+    const one = (c: string) => shellWriteTargets(c).map((x) => `${x.path}<${x.effect}@${x.dir === null ? 'unknown' : x.dir || '.'}`)
+    expect(one('mv a.ts b.ts')).toEqual(['a.ts<remove@.', 'b.ts<write@.'])
+    expect(one('cd pkg && rm a.ts')).toEqual(['a.ts<remove@pkg'])
+    expect(one('cd /tmp; rm private.txt')).toEqual(['private.txt<remove@unknown'])
+    expect(one('echo x > a.txt; cd sub || true; echo y > b.txt')).toEqual(['a.txt<write@.', 'b.txt<write@unknown'])
+    expect(one('(cd sub && echo y > b.txt); echo z > c.txt')).toEqual(['b.txt<write@unknown', 'c.txt<write@unknown'])
+  })
 })
 
 describe('recorder: files changed through shell commands', () => {
   test('listed apart from tool edits, resolved against the cwd, and labelled as inferred in /fw-log', async ($, on) => {
-    const { state } = boot(on)
+    const { state } = boot(on, { git: { ...gitClean, ...gitBehind(0), [`${GIT_CHANGED} db/schema.sql db/backup.sql`]: ' M db/schema.sql\0?? db/backup.sql\0' } })
     await $.session.start(START)
     await $.tool.call({ tool: 'Write', file_path: '/repo/src/a.ts', content: 'x' } as never)
     await $.tool.call({ tool: 'Bash', command: `echo '-- touched' >> db/schema.sql && cp db/schema.sql db/backup.sql && echo x > /tmp/elsewhere` })
@@ -76,6 +98,48 @@ describe('recorder: files changed through shell commands', () => {
     const { state } = boot(on, {}, (e) => (e.tool === 'Bash' ? { deny: 'no' } : OK))
     await $.session.start(START)
     await $.tool.call({ tool: 'Bash', command: 'rm -f important.sql' })
+    expect(logOf(state)?.shellFiles ?? []).toEqual([])
+  })
+})
+
+describe('recorder: only paths git confirms as changed in the repo (Astra review 2) — a record would rather miss than misrecord', () => {
+  const sedSecret = `sed -i '' -e 's/foo/bar/' -e 's/password/SECRET_REVIEW/' config.txt`
+  test('sed with several -e: only the file, and nothing of the expressions reaches the log', async ($, on) => {
+    const { state } = boot(on, { git: { ...gitClean, ...gitBehind(0), [`${GIT_CHANGED} config.txt`]: ' M config.txt\0' } })
+    await $.session.start(START)
+    await $.tool.call({ tool: 'Bash', command: sedSecret })
+    expect(logOf(state).shellFiles.map((f: any) => f.path)).toEqual(['config.txt'])
+    const out = (await $.command.run(RUN('fw-log'))).text as string
+    expect(out).not.toContain('SECRET_REVIEW')
+    expect(out).not.toMatch(/s\/password/)
+  })
+
+  test('a candidate git does not report as changed is not listed', async ($, on) => {
+    const { state } = boot(on, { git: { ...gitClean, ...gitBehind(0), [`${GIT_CHANGED} untouched.txt`]: '' } })
+    await $.session.start(START)
+    await $.tool.call({ tool: 'Bash', command: 'echo x > untouched.txt' })
+    expect(logOf(state)?.shellFiles ?? []).toEqual([])
+  })
+
+  test('cd /tmp; rm private.txt — the cwd is uncertain after it, so the relative path is not inferred', async ($, on) => {
+    const { state, w } = boot(on)
+    await $.session.start(START)
+    await $.tool.call({ tool: 'Bash', command: 'cd /tmp; rm private.txt' })
+    expect(logOf(state)?.shellFiles ?? []).toEqual([])
+    expect(w.gitCalls.some((c) => c.includes('private.txt'))).toBe(false)
+  })
+
+  test('absolute paths outside the repo are not recorded; inside the repo they are, when git confirms', async ($, on) => {
+    const { state } = boot(on, { git: { ...gitClean, ...gitBehind(0), [`${GIT_CHANGED} src/x.ts`]: ' D src/x.ts\0' } })
+    await $.session.start(START)
+    await $.tool.call({ tool: 'Bash', command: 'rm /tmp/x.txt /repo/src/x.ts' })
+    expect(logOf(state).shellFiles.map((f: any) => `${f.path}<${f.via}`)).toEqual(['src/x.ts<rm'])
+  })
+
+  test('not a git repo → nothing can be confirmed → nothing listed', async ($, on) => {
+    const { state } = boot(on, { git: null })
+    await $.session.start(START)
+    await $.tool.call({ tool: 'Bash', command: 'echo x > a.txt' })
     expect(logOf(state)?.shellFiles ?? []).toEqual([])
   })
 })
@@ -171,6 +235,17 @@ describe('/fw-mod: what each feature is doing and why', () => {
     await $.session.start(START)
     const out = (await $.command.run(RUN('fw-mod'))).text as string
     expect(out).toMatch(/tripwire.*off.*"tripwire": true/i)
+  })
+
+  test('read-only where installed: files and session state are the same before and after /fw-mod (Astra review 2)', { options: { roleGuard: true } }, async ($, on) => {
+    const { w, state } = boot(on)
+    await $.session.start(START)
+    await $.tool.call({ tool: 'Bash', command: 'vitest run' })
+    const before = JSON.stringify({ files: w.files, state: [...state.entries()] })
+    const out = (await $.command.run(RUN('fw-mod'))).text as string
+    expect(out).toMatch(/flightwake-mod v/)
+    expect(JSON.stringify({ files: w.files, state: [...state.entries()] })).toBe(before)
+    expect(w.writes).toEqual([])
   })
 
   test('read-only: no writes, and not registered where flightwake is not installed', async ($, on) => {

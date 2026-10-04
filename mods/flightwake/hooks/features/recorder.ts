@@ -186,25 +186,43 @@ function touchShellFile(log: FwFlightLog, w: FwShellWrite): void {
 }
 
 /**
- * Files a Bash command wrote, inferred from its words (lib/shell shellWriteTargets), as repo-relative paths. Relative
- * words resolve against the cwd after a leading `cd X &&` chain (the only certain move); words outside the repo
- * (/tmp, …) are not repo changes and are left out.
+ * Candidate files a Bash command wrote, from its words (lib/shell shellWriteTargets), as repo-relative paths. A record
+ * would rather miss than misrecord (unlike F4's hints, which would rather over-warn): a relative word is resolved only
+ * while the cwd is certain (start, or a leading `cd X &&` chain), and paths outside the repo are dropped. The caller
+ * then keeps only what git confirms as changed.
  */
-function inferShellWrites(root: string, cwd0: string, command: string): Array<{ path: string; via: string }> {
-  let cwdAbs = cwd0 || root
-  const segs = parseCommand(command.trim()).segments
-  for (const seg of segs) {
-    if (!isCdPrefix(seg)) break
-    const dir = seg.tokens.at(-1) as string
-    if (dir === '-' || dir.startsWith('~') || dir.includes('$')) break
-    cwdAbs = dir.startsWith('/') ? dir : `${cwdAbs}/${dir}`
-  }
+function shellCandidates(root: string, cwd0: string, command: string): Array<{ path: string; via: string }> {
   const out: Array<{ path: string; via: string }> = []
   for (const w of shellWriteTargets(command)) {
-    const rel = relToRoot(root, w.path.startsWith('/') ? w.path : `${cwdAbs}/${w.path}`)
-    if (rel !== null && rel !== '' && !out.some((o) => o.path === rel)) out.push({ path: rel, via: w.via })
+    let abs: string
+    if (w.path.startsWith('/')) abs = w.path
+    else if (w.dir === null) continue // the shell may be anywhere by now: don't guess
+    else abs = w.dir.startsWith('/') ? `${w.dir}/${w.path}` : `${cwd0 || root}/${w.dir ? `${w.dir}/` : ''}${w.path}`
+    const rel = relToRoot(root, abs)
+    if (rel !== null && rel !== '' && !rel.startsWith('.git/') && !out.some((o) => o.path === rel)) out.push({ path: rel, via: w.via })
   }
   return out
+}
+
+/**
+ * The candidates git reports as changed after the command — modified, added, untracked or deleted (a removal only
+ * shows for a tracked file, which is the point). Read-only (--no-optional-locks via io.git; --literal-pathspecs so a
+ * path is never a pattern). Not a repo, git failing, or a candidate git does not list → left out.
+ */
+async function confirmedByGit(io: Io, root: string, candidates: Array<{ path: string; via: string }>): Promise<Array<{ path: string; via: string }>> {
+  if (candidates.length === 0) return []
+  const out = await io.git(['--literal-pathspecs', 'status', '--porcelain', '-z', '--untracked-files=all', '--', ...candidates.map((c) => c.path)], root)
+  if (out === null) return []
+  const changed = new Set<string>()
+  const parts = out.split('\0')
+  for (let i = 0; i < parts.length; i++) {
+    // `XY path`; io.git trims the output, so the first entry may have lost the leading space of its status
+    const m = /^([ MADRCUT?!]{1,2}) (.+)$/.exec(parts[i] as string)
+    if (!m) continue
+    changed.add(m[2] as string)
+    if (/[RC]/.test((m[1] as string)[0] as string)) { const from = parts[++i]; if (from) changed.add(from) } // rename: the source follows
+  }
+  return candidates.filter((c) => changed.has(c.path))
 }
 
 /** The one-per-session note for a test run that was chained with other commands (its own exit code is not visible). */
@@ -269,10 +287,10 @@ export function renderLog(lang: Lang, log: FwFlightLog | null, tz: TzOffset = nu
       for (const f of shell.slice(0, LIST_LIMIT)) lines.push(`- ${code(f.path)} (${f.via}${f.agentId ? `, subagent ${f.agentId}` : ''})`)
       if (shell.length > LIST_LIMIT) lines.push(M(lang, { en: `- … and ${shell.length - LIST_LIMIT} more`, 'zh-TW': `- …另有 ${shell.length - LIST_LIMIT} 個`, 'zh-CN': `- …另有 ${shell.length - LIST_LIMIT} 个`, ja: `- …ほか ${shell.length - LIST_LIMIT} 件` }))
       lines.push('', M(lang, {
-        en: 'Read from redirections and cp / mv / rm / tee / sed -i in the commands the agent ran; writes made any other way (scripts, other programs, git) are not listed.',
-        'zh-TW': '依 agent 執行的指令中的重導向與 cp / mv / rm / tee / sed -i 推斷;以其他方式寫入的(腳本、其他程式、git)不會列出。',
-        'zh-CN': '依 agent 执行的命令中的重定向与 cp / mv / rm / tee / sed -i 推断;以其他方式写入的(脚本、其他程序、git)不会列出。',
-        ja: 'エージェントが実行したコマンドのリダイレクトと cp / mv / rm / tee / sed -i から推定。それ以外の方法(スクリプト、他のプログラム、git)による書き込みは載りません。',
+        en: 'Read from redirections and cp / mv / rm / tee / sed -i in the commands the agent ran, and listed only where the path could be confirmed (inside the repo, and reported as changed by git afterwards) — so some changes may be missing. Writes made any other way (scripts, other programs, git) are not listed.',
+        'zh-TW': '依 agent 執行的指令中的重導向與 cp / mv / rm / tee / sed -i 推斷,且只列出能確認的路徑(在 repo 內、事後 git 也顯示有變更)——所以可能漏記。以其他方式寫入的(腳本、其他程式、git)不會列出。',
+        'zh-CN': '依 agent 执行的命令中的重定向与 cp / mv / rm / tee / sed -i 推断,且只列出能确认的路径(在 repo 内、事后 git 也显示有变更)——所以可能漏记。以其他方式写入的(脚本、其他程序、git)不会列出。',
+        ja: 'エージェントが実行したコマンドのリダイレクトと cp / mv / rm / tee / sed -i から推定し、確認できたパスだけを載せる(repo 内で、実行後に git が変更ありと示すもの)——そのため漏れがありうる。それ以外の方法(スクリプト、他のプログラム、git)による書き込みは載りません。',
       }), '')
     }
 
@@ -450,7 +468,7 @@ export function registerRecorder(on: On): void {
             lang = ctx.lang
             let cwd0 = ctx.root
             try { cwd0 = (await $.session.cwd()).replace(/\/+$/, '') || ctx.root } catch {}
-            shellWrites = inferShellWrites(ctx.root, cwd0, command)
+            shellWrites = await confirmedByGit(io, ctx.root, shellCandidates(ctx.root, cwd0, command))
           }
         }
         const agentId = e.agentId
