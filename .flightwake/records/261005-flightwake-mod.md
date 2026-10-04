@@ -3,7 +3,7 @@ record_id: 261005-flightwake-mod
 session: Claude(Opus 5.5) 管理者 + 5 個 Claude(Sonnet 5.5) 實作者(各自隔離 worktree)
 date: 2026-10-05
 repos: [flightwake(分支 kaiwutech-TW/mods)]
-tests: (驗收修正後)claude plugin test mods/flightwake 210 pass / 0 fail(8 檔;初版 173);scripts/git-readonly-check.sh 通過;claude plugin validate 通過(僅 author 警告);tsc(5.9.3,對 2.1.289 型別檔)clean;bash test/smoke.sh 全過(Python 3.13 在 PATH 前);真機載入 F1–F5 全數實際生效(見下)
+tests: (驗收第 2 輪後)claude plugin test mods/flightwake 249 pass / 0 fail(9 檔;初版 173、第 1 輪 210);scripts/git-readonly-check.sh 通過;claude plugin validate 通過(僅 author 警告);tsc(5.9.3,對 2.1.289 型別檔)clean;bash test/smoke.sh 全過(Python 3.13 在 PATH 前);真機載入 F1–F5 全數實際生效(見下)
 prod_changes: none(未 push、未 bump、未發版)
 ---
 
@@ -25,7 +25,7 @@ fa92acd..1bdafff(骨架與計畫第 2 版 → 共用指令切分 → F1–F5 各
 
 ## 驗證證據
 
-- 單元/整合:`claude plugin test mods/flightwake` → `173 pass / 0 fail, Ran 173 tests across 7 files`;其中 `tests/lifecycle.test.ts` 10 個案例同時開五個功能,涵蓋 /clear(新 session id)、reload/compact/resume(同 id)、切工作目錄、子 agent、外部程式改檔與 commit、git 與設定都失敗時其他功能照常、什麼都沒裝時全靜默、全關時不改任何東西、讀取範圍只限明列來源。
+- 單元/整合(初版):`claude plugin test mods/flightwake` → `173 pass / 0 fail, Ran 173 tests across 7 files`。`tests/lifecycle.test.ts` 同時開五個功能,但測試引擎只能手動觸發事件:它**模擬** /clear(session.end + 新 session id)與模組重載(同 id 再觸發 session.start),外加切工作目錄、子 agent、外部程式改檔與 commit、能力失敗、什麼都沒裝、全關、讀取範圍。真正的 reload/resume/compact 不是這些測試證明的(見文末「驗證範圍」)。
 - `claude plugin validate mods/flightwake` → `✔ Validation passed with warnings`(唯一警告為 manifest 沒有 author)。
 - 型別:對 Claude Code 2.1.289 型別檔跑 tsc 5.9.3 → clean。
 - `bash test/smoke.sh`(PATH 前置 Python 3.13)→ `✅ smoke 全過`。
@@ -54,3 +54,18 @@ fa92acd..1bdafff(骨架與計畫第 2 版 → 共用指令切分 → F1–F5 各
 - 真機抽驗(同一暫存 repo、互動 session、`.claude/skills/` 載入):`npm test`(script `node -e "process.exit(1)" | cat`,shell 回報 exit 0)在 `/fw-log` 顯示 `未知 | script-compound`,不是通過;`node --test --help` 未被記錄;放行 `src/**` 後 `src/a.ts` 寫入成功、`src/private/x.ts` 被擋(debug log:`deny: … 不可寫入 src/private/x.ts(規則 deny-write: src/private/**)`)。另做了一次**真的熱重載**(外部 touch 模組檔):debug log `hooks module flightwake-mod@skills-dir reloaded`,重載後 `/fw-log` 仍保有先前兩筆——同 id 的 session.start 測試之外的實證。
 - 清理:五個實作者 worktree 與分支逐一確認「fe04dea 之後恰一個 commit、內容與本分支 cherry-pick 結果相同、無未提交檔」後刪除。
 - 仍未驗證/留給後續:真的 resume、compact 只能靠「同 id 保留」推論;核心 `hooks/state-check.mjs`、`statusline.mjs` 也跑普通 `git status`(同一個 index 改寫問題,屬核心,本分支未改)。
+
+## 驗收第 2 輪(2026-10-05 同 session)
+
+驗收者複核第 1 輪後採納 Astra 第 2 份審查(`docs/plans/mods.diff-review-astra-2.md`:23 個鄰近案例 12 個失敗),並要求**改判定方式而不是補黑名單**(DECISIONS 2026-10-05「F3 改為正面證明」)。
+
+- **先紅後綠**:b9a9335 只加測試(Astra 12 例 + 新契約案例),該 commit `220 pass / 29 fail`;52e11c7 修正後 `249 pass / 0 fail`。
+- F3:新的 `hooks/lib/testcmd.ts`——每個 runner 一張旗標表,只有單一直接呼叫且旗標全在表內才記 pass/fail;script 本體與 STATE 宣告走同一判定;其餘照收、標 unknown、留退出碼(`mvn test -V` 回到 pass,第 1 輪的旗標黑名單把它整筆丟了)。第 1 輪「help/list 不收錄」的測試依新契約改為「收錄為 unknown」。
+- F5:「全部放行」改為獨立旗標 `isAllReleased`;F4:候選 cwd 集合 + 走進子 shell(共用解析器把 `( … )` 變成明確的分組標記,`$( … )` 與反引號留在字內)。
+- 驗證:`claude plugin validate` 通過(僅 author 警告);tsc clean;`git-readonly-check.sh` 三項通過;`bash test/smoke.sh`(Python 3.13)全過。本輪**沒有**重做真機載入(驗收者未要求;改動都在純函式判定與已載入過的 hook 內)。
+
+## 驗證範圍(照實分開寫)
+
+- **自動測試證明的**:各功能在測試引擎內的行為,含手動觸發的 session.start / session.end / prompt.compose / tool.call / command.run;「同 session id 再觸發 session.start」(模組重載會做的事)時狀態保留;「session.end reason clear + 新 id」時重取;切 root、子 agent、能力失敗、未安裝時靜默、讀取範圍、git 帶 `--no-optional-locks`。
+- **真機只觀察過一次的**:`.claude/skills/` 載入(需資料夾信任)、F1–F5 的實際效果(第 1 次與驗收第 1 輪抽驗)、一次真的熱重載後 `/fw-log` 保留先前紀錄。
+- **未驗證**:真的 resume(重開程序後接續)與 compaction 之後各功能的狀態;真的 /clear(只模擬過);桌面版與 VS Code 外觀;F2 的 80% toast;`/config` 是否列出選項;`$.session.append` 放行紀錄列;composer 來源不可被偽造(依引擎文件,未測);worktree / symlink 下引擎回報的 root;各 runner 真實執行時的退出行為(F3 的表依各 runner 文件編寫,只在測試引擎內以模擬結果驗證)。
