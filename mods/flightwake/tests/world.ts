@@ -29,6 +29,14 @@ export type World = {
   reads: string[]
   /** Every fs.write the plugin attempted (must stay empty: the mod never writes files). */
   writes: string[]
+  /** $.session.cwd(); defaults to root when unset. */
+  cwd?: string
+  /** Repo-relative paths whose fs.read is refused (exists still says yes) — a capability failing for one reader. */
+  failReads: string[]
+  /** When true, $.settings.read is refused (throws in the plugin). */
+  isSettingsFailing: boolean
+  /** git argv the plugin ran WITHOUT the leading --no-optional-locks (must stay empty: zero writes, .git/index included). */
+  gitWithoutNoLocks: string[]
 }
 
 const rel = (w: World, p: string): string | null =>
@@ -37,9 +45,9 @@ const rel = (w: World, p: string): string | null =>
 export function installWorld(on: On, init: Partial<World> = {}): World {
   const w = newWorld(init)
   on('session.root', () => ({ value: w.root }))
-  on('session.cwd', () => ({ value: w.root }))
+  on('session.cwd', () => ({ value: w.cwd ?? w.root }))
   on('session.id', () => ({ value: w.sessionId }))
-  on('settings.read', () => ({ value: w.settings }))
+  on('settings.read', () => (w.isSettingsFailing ? { deny: 'settings unavailable' } : { value: w.settings }))
   on('fs.exists', ($, e) => {
     w.reads.push(e.path)
     const r = rel(w, e.path)
@@ -49,6 +57,7 @@ export function installWorld(on: On, init: Partial<World> = {}): World {
   on('fs.read', ($, e) => {
     w.reads.push(e.path)
     const r = rel(w, e.path)
+    if (r !== null && w.failReads.includes(r)) return { deny: `EIO: ${e.path}` }
     const t = r === null ? undefined : w.files[r]
     if (t === undefined) return { deny: `ENOENT: ${e.path}` }
     return { value: t }
@@ -65,8 +74,11 @@ export function installWorld(on: On, init: Partial<World> = {}): World {
     return { deny: 'the mod must not write files' }
   })
   on('process.run', ($, e) => {
-    const [cmd, ...args] = e.argv
+    const [cmd, ...rest] = e.argv
     if (cmd !== 'git') return { value: { exitCode: 127, stdout: '', stderr: 'not found', isStdoutTruncated: false, isStderrTruncated: false } }
+    // The mod promises zero writes: every git call carries --no-optional-locks (plain `git status` may rewrite .git/index).
+    const args = rest[0] === '--no-optional-locks' ? rest.slice(1) : rest
+    if (rest[0] !== '--no-optional-locks') w.gitWithoutNoLocks.push(rest.join(' '))
     const key = args.join(' ')
     w.gitCalls.push(key)
     if (w.git === null) return { value: { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository', isStdoutTruncated: false, isStderrTruncated: false } }
@@ -144,7 +156,7 @@ export function fakeIo(w: World): Io {
     },
     read: async (p) => {
       const r = rel(p)
-      return r === null ? null : (w.files[r] ?? null)
+      return r === null || w.failReads.includes(r) ? null : (w.files[r] ?? null)
     },
     git: async (args) => {
       w.gitCalls.push(args.join(' '))
@@ -152,10 +164,10 @@ export function fakeIo(w: World): Io {
       const out = w.git[args.join(' ')]
       return out === undefined || out === null ? null : out.trim()
     },
-    settings: async () => w.settings,
+    settings: async () => (w.isSettingsFailing ? {} : w.settings),
   }
 }
 
 export function newWorld(init: Partial<World> = {}): World {
-  return { root: '/repo', files: {}, git: {}, settings: {}, sessionId: 'session-1', gitCalls: [], reads: [], writes: [], ...init }
+  return { root: '/repo', files: {}, git: {}, settings: {}, sessionId: 'session-1', gitCalls: [], reads: [], writes: [], failReads: [], isSettingsFailing: false, gitWithoutNoLocks: [], ...init }
 }
