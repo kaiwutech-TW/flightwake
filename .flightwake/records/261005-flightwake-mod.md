@@ -73,6 +73,10 @@ fa92acd..1bdafff(骨架與計畫第 2 版 → 共用指令切分 → F1–F5 各
 - F4:候選 cwd 上限 16,超過降級為路徑尾段比對;`cd -- dir`、重導向目標路徑納入。
 - 驗證:validate 通過(僅 author 警告);tsc clean;`git-readonly-check.sh` 三項通過;smoke(Python 3.13)全過。本輪未重做真機載入。
 
+## 驗收結論
+
+- 2026-10-05:Astra 收尾確認(`docs/plans/mods.diff-review-astra-4.md`,審至 009a074)——兩項必修已修、上輪 10 個失敗案例全過、另加 11 個回歸檢查通過(暫存副本 287 pass / 0 fail),**依約定標準可合併**;它列明未驗證:未重跑真實 pytest/Go 與其他 runner、真機生命週期、tsc、完整 smoke,自動測試的工具結果為模擬值,不保證所有情境都無假 pass(設定檔/外部環境限制已明列,依約不擋合併)。合併順序待 Kai 決定。
+
 ## 驗證範圍(照實分開寫)
 
 - **自動測試證明的**:各功能在測試引擎內的行為,含手動觸發的 session.start / session.end / prompt.compose / tool.call / command.run;「同 session id 再觸發 session.start」(模組重載會做的事)時狀態保留;「session.end reason clear + 新 id」時重取;切 root、子 agent、能力失敗、未安裝時靜默、讀取範圍、git 帶 `--no-optional-locks`。
