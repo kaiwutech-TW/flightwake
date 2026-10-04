@@ -3,7 +3,7 @@ record_id: 261005-setup-wizard
 session: Claude(Opus 5.5) 主實作 + 兩個 sonnet subagent(四語文件、smoke 案例,產出經主實作者逐檔審閱後採用);任務說明設計者 Fable 5.1 代 Kai 回覆澄清
 date: 2026-10-05
 repos: [flightwake]
-tests: bash test/smoke.sh 36 節全過(49 個 ok;Python 3.12 在 PATH 前;含驗收後新增的 35、36.1–36.7),node --check bin/*.mjs test/*.mjs 全過(本 repo 無 TypeScript)
+tests: bash test/smoke.sh 37 節全過(55 個 ok;Python 3.12 在 PATH 前;含驗收後新增的 35、36.1–36.7、37.1–37.6),node --check bin/*.mjs test/*.mjs 全過(本 repo 無 TypeScript)
 prod_changes: none(未 push、未 bump、未發版)
 ---
 <!-- flightwake record — 飛行紀錄。 -->
@@ -74,7 +74,7 @@ prod_changes: none(未 push、未 bump、未發版)
    - 36.3 **main 就有**:hook 檔 symlink 到 `../STATE.md`,update 覆蓋 STATE(重現)→ 寫入層拒絕 symlink 與 repo 外落點,非零退出
    - 36.4 刪 marker 後壞掉的 `.codex/hooks.json` 被忽略(重現:rc=0)→ 平台也從產物推導;hook 驗 type;結構異常逐項回報
    - 36.5 有 `.git` 無 git 時 uninstall 被擋(重現:rc=1)→ git 前置檢查只限 init/setup
-   - 36.6 fw-coldstart 只剩一行範本也直接跳第 5 步 → 四語改成有歷史就續走第 2–4 步
+   - 36.6 fw-coldstart 只剩一行範本也直接跳第 5 步 → 四語 skill 文字改成「有歷史就續走第 2–4 步」(36.6 是文字檢查:確認 skill 文字包含這個指示,未驗證 agent 實際會遵循)
    - 測試面:doctor 負向案例改為斷言具體失敗行且不得崩潰;36.7 比對 setup 摘要與實際寫入集合(雜湊 + mtime 快照,同內容重寫也算;
      故意讓摘要少列一個路徑時確實失敗)
 
@@ -83,5 +83,29 @@ prod_changes: none(未 push、未 bump、未發版)
 ### 仍未解決(新增)
 
 - `--private` 下**核心義務表**的 marker 若已在受追蹤檔(先一般安裝、後改 private),`--force`/update 仍會改寫它(main 既有行為;本次只修 Orca)
-- symlink 防護只在安裝寫入層;`uninstall`、`roles` 的寫入與 `refreshRolesSkill` 未套用
+- symlink 防護只在安裝寫入層;`uninstall`、`roles` 的寫入與 `refreshRolesSkill` 未套用(→ 複審後 refreshRolesSkill 與 roles install 已納入,見下節;uninstall 與 roles apply 仍未套用)
 - `CLAUDE.md → AGENTS.md` 這類 repo 內 symlink 現在一律拒寫(DECISIONS 2026-10-05 記重評條件)
+
+## 複審後修正(同日,182779f..fdc62ed)
+
+Astra 複審(原文 `docs/plans/setup.diff-review-astra-2.md`)確認上次六項的原始反例都不再重現,但找到五個延伸缺口,驗收者全數採納。
+每項先寫測試、跑出失敗再修(37.4–37.6 因 smoke 遇第一個失敗就停,改用暫時複製的單組 smoke 分別跑出失敗,跑完即刪):
+
+- 37.1 `init --agents=constructor` 被接受並寫入(重現:rc=0)→ 工具名稱改以 `Object.hasOwn(GROUPS, x)` 判斷(setup 複選題與 `--agents`)
+- 37.2 `CLAUDE.md` 與 `CLAUDE.local.md` 都受追蹤時,`init --private --orca` 仍把區塊加進後者(重現:+17 行)→ 改寫後對新目的地再查是否受追蹤
+- 37.3 `registry.json` 是 symlink 讓安裝 exit 1(main 是 0)→ registry 問題只提醒、不經由 symlink 寫入、不影響退出碼
+- 37.4 `.claude/skills` 連到 repo 外時 update 刪除並重建外部的 fw-roles(重現:KEEP 檔消失)→ roles 的安裝與刷新改走 install.mjs 的 `createWriter`
+- 37.5 settings.json 是 repo 內 symlink 時留下半套安裝且印 ✅ done(重現);懸空的 `.claude` 會拋 ENOENT → **先預檢、後寫入**:
+  同一條安裝路徑先 dry-run,任何必要路徑被拒就在第一個寫入前整個中止、列出路徑與原因、exit 1;預檢沒料到的中途停止印「未完成」;
+  setup 在 doctor 失敗時不印成功;懸空 symlink 有自己的拒寫原因
+- 37.6 symlink 防護的測試從 hooks 擴到 skills 目錄、settings.json、指令檔、roles skill;settings.json 案例原本目標雖沒被寫,但只回報「不是合法 JSON」並 exit 0 →
+  合併寫入的設定檔改成讀取前先檢查
+- 測試名稱收斂:36.3 改為只宣稱 hook 檔與 hooks 目錄;36.6 改為「skill 文字包含續走流程的指示(未驗證 agent 是否遵循)」
+
+教訓:**「拒寫」與「完成」不能各自判斷**——逐檔拒寫、其餘照寫,最後一定會留下半套安裝和矛盾的成功訊息;判斷要在第一個寫入之前,用同一條程式的 dry-run 做完。
+
+### 仍未解決(更新)
+
+- `uninstall` 與 `roles apply`/`remove`/`assign` 的寫入仍未走受防護的 writer
+- `--private` 下核心義務表若已在受追蹤檔,`--force`/update 仍會改寫(main 既有行為)
+- 預檢與實際寫入之間樹被改動的情況只能事後回報「未完成」,沒有回滾(DECISIONS 2026-10-05 記重評條件)
