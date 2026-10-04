@@ -2,7 +2,7 @@
 updated: 2026-10-05
 updated_by: Claude(Opus 5.5)
 latest_record: records/261005-integration.md
-health: yellow  # 分支 kaiwutech-TW/integration(PR #11,版本 0.15.0 未發版):CI 的 CodeQL 因 5 個 high 警示失敗 → 已在程式修掉(6c63ffc,先紅後綠),本機 smoke 44 節、plugin test 299/299、validate、tsc、零寫入檢查全過;未 push,CodeQL 轉綠前不算完成
+health: green  # 分支 kaiwutech-TW/integration = PR #11(版本 0.15.0 未發版):第二輪 CI 全過(smoke ubuntu/macOS、state-fresh、analyze、CodeQL),code-scanning 警示 0、mergeStateStatus CLEAN;等 Kai 決定合併與發版
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
 <!-- 規則:只寫「現在」與「下一步」;歷史去 records/,決策去 DECISIONS.md。 -->
@@ -41,7 +41,7 @@ flightwake **v0.14.0(2026-09-28 已發,npm latest;前版 v0.13.0 2026-09-02)**,*
 
 # 下一步入口
 
-0a. **integration 分支 → v0.15.0**:第三階段完成;驗收者複核、Astra 最後確認可合併(`docs/plans/integration.diff-review-astra-3.md`)、F5 角色守門真機實測通過。Kai 已決定:只 push 本分支、開一個 PR,版本在 PR 內改為 0.15.0(chore(release) commit 已做;mod 維持 0.1.0,見 DECISIONS 2026-10-05 首條);已 push、PR #11;CI 的 CodeQL 5 個 high 警示已在程式修掉(b82f215 紅、6c63ffc 綠,未 push)——**等驗收者 push 並確認 CodeQL 轉綠 → 合併後才發版**(今天不發;發版後在本 repo `npx flightwake update` 刷新 dogfood 副本)。**待 Kai 決定**:項目 7 對 roles 座位設計的影響(只有 AGENTS.md 的 repo 會讓 Claude 讀到 Codex 座位)、TRAPS 兩條 python 3.11 重複條目的壓實、`~/.claude/projects` 下 scratch session 資料夾(現為五個,見 [[261005-integration]] 末節)。各分支未解項見 [[261005-integration]]、[[261005-setup-wizard]]、[[261005-flightwake-mod]] 未完節
+0a. **integration 分支 → v0.15.0**:第三階段完成;驗收者複核、Astra 最後確認可合併(`docs/plans/integration.diff-review-astra-3.md`)、F5 角色守門真機實測通過。Kai 已決定:只 push 本分支、開一個 PR,版本在 PR 內改為 0.15.0(chore(release) commit 已做;mod 維持 0.1.0,見 DECISIONS 2026-10-05 首條);已 push、PR #11;CI 的 CodeQL 5 個 high 警示已在程式修掉(b82f215 紅、6c63ffc 綠),第二輪 CI 全過、警示 0、CLEAN——**等 Kai 決定合併 → 合併後才發版**(今天不發;發版後在本 repo `npx flightwake update` 刷新 dogfood 副本)。**待 Kai 決定**:項目 7 對 roles 座位設計的影響(只有 AGENTS.md 的 repo 會讓 Claude 讀到 Codex 座位)、TRAPS 兩條 python 3.11 重複條目的壓實、`~/.claude/projects` 下 scratch session 資料夾(現為五個,見 [[261005-integration]] 末節)。各分支未解項見 [[261005-integration]]、[[261005-setup-wizard]]、[[261005-flightwake-mod]] 未完節
 0. **v0.14.0 已發佈(2026-09-28)**:roles + v2 在 npm latest(驗證見 [[260928-roles-v2]] 補記)。後續:常用 repo `npx flightwake update`;觀察下游團隊日常 /clear 後角色與待命角色派工;Gemini 原生待命定義待驗證後再做
 1. **發宣傳**:三稿最終版(已改寫為不點名 GSD,含 HN 留言預備)在使用者桌面 `~/Desktop/flightwake-launch-copy.md`;截圖三張在使用者手上;HN 挑能盯留言的時段發
 2. HN 後續:等 hn@ycombinator.com 回覆(作者留言被 auto-flag)→ 解 flag 後補「v0.9.0 已兌現 English defaults」留言

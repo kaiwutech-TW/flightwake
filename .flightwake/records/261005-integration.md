@@ -218,6 +218,6 @@ Kai 決定:只 push 本分支、開一個 PR,在此 PR 內把版本改成 0.15.0
 - 修(6c63ffc):`tableCell` 移到 `lib/core.ts`(先 `\` → `\\` 再 `|` → `\|`),recorder 與三個測試共用;`tests/world.ts` 的 `tableCells` 是它的反函式(未跳脫的 `|` 才分格,再還原 `\x`),
   取代測試各自的 `(?<!\\)\|` 切法(那種切法遇 `\\|` 會錯)。去註解改為重複 replace 直到不再變化;未閉合的 `<!--` 照舊當一般文字留著(不會吃掉其後的條目)。
 - 取捨:/fw-log 的指令放在反引號 code span 裡,依 GFM 規則表格只會還原 `\|`,所以**渲染後**含反斜線的指令會多顯示一個 `\`;原始文字(fw-record 與模型讀的就是原始文字)則無歧義、可完整還原。
-- 驗證:smoke 44 節全過;外掛測試 299/299;validate;tsc(25 檔);git-readonly-check;node --check。CodeQL 是否轉綠要等驗收者 push 後 CI 結果。
+- 驗證:smoke 44 節全過;外掛測試 299/299;validate;tsc(25 檔);git-readonly-check;node --check。**PR #11 第二輪 CI(head 89b56e9)全數通過**:`smoke (ubuntu-latest)`、`smoke (macos-latest)`、`state-fresh`、`analyze`、`CodeQL` 皆 pass(smoke/state-fresh 由 push 與 pull_request 兩個 run 各跑一次,run 37233553325、37233556587;analyze 在 37233556587);本 PR 未解決 code-scanning 警示 0、mergeStateStatus CLEAN(驗收者回報,另以 `gh pr checks 11` / `gh pr view 11` 唯讀複核)。
 - mod 版本仍 0.1.0:mod 尚未發行過,依 DECISIONS 2026-10-05 的規則不需 bump。`bin/install.mjs` 兩處 `^<!--…-->` 只去自家 snippet 開頭一段,CodeQL 未報,未動。
 
