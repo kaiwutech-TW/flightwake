@@ -15,11 +15,25 @@ import { parseCommand, type ParsedCommand, type Segment } from './shell'
 
 export type RunKind = 'runner' | 'package-script' | 'state-declared' | 'typecheck'
 
+/**
+ * A value-taking flag's allowed values: any value, a pattern the whole value must match, or a closed list. A value
+ * outside it leaves the run unproven — values can stop tests from running (`go test -count=0`, `-run '^$'`).
+ */
+type ValueRule = 'any' | RegExp | readonly string[]
+const INT1 = /^[1-9]\d*$/ // a positive integer
+const INT0 = /^\d+$/
+
 type FlagTable = {
-  /** Flags that change nothing about whether tests run (`-q`, `--ci`). `--flag=value` forms are matched by name. */
+  /** Flags that change nothing about whether tests run (`-q`, `--ci`). */
   safe: readonly string[]
-  /** Flags that take a value, as the next word or after `=` (`-k expr`, `--reporter=dot`). */
-  valued: readonly string[]
+  /** Exact `flag=value` words that are safe although the bare flag is not (`--watchAll=false`). */
+  safeExact?: readonly string[]
+  /**
+   * Flags that take a value (next word or after `=`), with the values that keep the proof. A flag that can select or
+   * configure away every test without failing (name filters in runners that exit 0 on zero tests, config files,
+   * profiles, plugins, `--require`d code) is deliberately absent: it leaves the run unproven.
+   */
+  valued: Readonly<Record<string, ValueRule>>
   /** Flags meaning no test runs (help, version, list, collect, compile-only, watch, skip). */
   noRun: readonly string[]
   /** Flag prefixes that are safe whatever follows (`--allow-` for deno). */
@@ -30,101 +44,112 @@ type RunnerSpec = FlagTable & {
   name: string
   kind: 'runner' | 'typecheck'
   heads: readonly (readonly string[])[]
-  /** Positional words: any (paths, filters), or only these (goals/tasks). */
+  /** Positional words: any (paths — a path without tests fails the runner), or only these (goals/tasks). */
   positional: true | readonly string[]
   /** With a positional set: at least one of these must be present, or nothing test-running was asked for. */
   needsOneOf?: readonly string[]
   /** Maven-style `-Dkey=value`: keys that are safe / that skip tests. Any other key is unproven. */
   defines?: { safe: readonly string[]; noRun: readonly string[] }
   /** Flags after a `--` (cargo test's test-binary flags). Without it, a `--` makes the call unproven. */
-  afterDoubleDash?: FlagTable & { positional: true }
+  afterDoubleDash?: FlagTable & { positional: true | readonly string[] }
 }
 
 const H = (...heads: string[]): string[][] => heads.map((h) => h.split(' '))
 
+// Sources: each tool's CLI reference. pytest exits 5 when no test was collected/selected, so its -k/-m filters keep
+// the proof; go test, cargo test (name filter), jest -t, mocha --grep, dotnet --filter, node --test-name-pattern … exit
+// 0 when the filter matches nothing, so those filters are left out (unknown).
 export const RUNNERS: readonly RunnerSpec[] = [
   { name: 'pytest', kind: 'runner', heads: H('pytest', 'py.test', 'python -m pytest', 'python3 -m pytest'), positional: true,
-    safe: ['-q', '-qq', '-v', '-vv', '-vvv', '-x', '-s', '-l', '-ra', '-rA', '--lf', '--ff', '--sw', '--exitfirst', '--strict-markers', '--no-header', '--showlocals', '--last-failed', '--failed-first'],
-    valued: ['-k', '-m', '-n', '--maxfail', '--tb', '--durations', '-W', '--color', '-p', '--rootdir', '-c', '--junitxml', '--basetemp', '--timeout', '--cov', '--cov-report', '-o'],
+    safe: ['-q', '-qq', '-v', '-vv', '-vvv', '-x', '-s', '-l', '-ra', '-rA', '--lf', '--ff', '--sw', '--exitfirst', '--strict-markers', '--no-header', '--showlocals', '--last-failed', '--failed-first', '--disable-warnings'],
+    valued: { '-k': 'any', '-m': 'any', '-n': /^(\d+|auto|logical)$/, '--maxfail': INT0, '--tb': ['auto', 'long', 'short', 'line', 'native', 'no'], '--durations': INT0, '-W': 'any', '--color': ['yes', 'no', 'auto'], '--junitxml': 'any', '--basetemp': 'any', '--timeout': /^\d+(\.\d+)?$/, '--cov': 'any', '--cov-report': 'any' },
     noRun: ['--help', '-h', '--version', '-V', '--collect-only', '--co', '--fixtures', '--markers', '--setup-plan', '--setup-only', '--fixtures-per-test'] },
   { name: 'jest', kind: 'runner', heads: H('jest'), positional: true,
     safe: ['--ci', '--runInBand', '-i', '--verbose', '--silent', '--coverage', '--bail', '--detectOpenHandles', '--forceExit', '--no-cache', '--colors'],
-    valued: ['-t', '--testNamePattern', '--maxWorkers', '-w', '--config', '-c', '--testPathPattern', '--selectProjects', '--shard', '--reporters', '--testTimeout'],
+    safeExact: ['--watchAll=false', '--watch=false'],
+    valued: { '--maxWorkers': /^\d+%?$/, '-w': /^\d+%?$/, '--testPathPattern': 'any', '--shard': /^\d+\/\d+$/, '--reporters': 'any', '--testTimeout': INT1 },
     noRun: ['--listTests', '--help', '-h', '--version', '-v', '--showConfig', '--watch', '--watchAll', '--init', '--clearCache'] },
-  { name: 'vitest', kind: 'runner', heads: H('vitest run'), positional: true,
+  { name: 'vitest', kind: 'runner', heads: H('vitest run', 'vitest --run'), positional: true,
     safe: ['--run', '--silent', '--coverage', '--no-color'],
-    valued: ['--reporter', '-t', '--testNamePattern', '--config', '-c', '--project', '--bail', '--shard', '--maxWorkers', '--pool', '--environment'],
+    valued: { '--reporter': 'any', '--bail': INT1, '--shard': /^\d+\/\d+$/, '--maxWorkers': /^\d+%?$/, '--pool': ['threads', 'forks', 'vmThreads', 'vmForks'], '--environment': 'any' },
     noRun: ['--help', '-h', '--version', '-v', '--watch', '-w'] },
   { name: 'mocha', kind: 'runner', heads: H('mocha'), positional: true,
     safe: ['--recursive', '--bail', '-b', '--exit', '--forbid-only', '--parallel', '-p'],
-    valued: ['-R', '--reporter', '--timeout', '-t', '--grep', '-g', '--require', '-r', '--spec', '--config'],
+    valued: { '-R': 'any', '--reporter': 'any', '--timeout': 'any', '-t': 'any', '--spec': 'any' },
     noRun: ['--help', '-h', '--version', '-V', '--list-files', '--list-reporters', '--list-interfaces', '--watch', '-w', '--dry-run'] },
   { name: 'go test', kind: 'runner', heads: H('go test'), positional: true,
     safe: ['-v', '-race', '-short', '-cover', '-failfast', '-json'],
-    valued: ['-count', '-run', '-timeout', '-p', '-tags', '-coverprofile', '-covermode', '-cpu', '-parallel', '-skip', '-bench'],
+    valued: { '-count': INT1, '-timeout': 'any', '-p': INT1, '-coverprofile': 'any', '-covermode': ['set', 'count', 'atomic'], '-cpu': /^[\d,]+$/, '-parallel': INT1, '-bench': 'any' },
     noRun: ['-list', '-c', '-h', '-help', '-n'] },
-  { name: 'cargo test', kind: 'runner', heads: H('cargo test'), positional: true,
+  { name: 'cargo test', kind: 'runner', heads: H('cargo test'), positional: [],
     safe: ['--release', '--all-features', '--workspace', '--all', '--lib', '--bins', '--tests', '--doc', '-q', '--quiet', '--locked', '--frozen', '--offline', '--no-default-features', '--all-targets', '--verbose', '-v'],
-    valued: ['--features', '-F', '-p', '--package', '--test', '--bin', '--example', '-j', '--jobs', '--target', '--profile', '--manifest-path', '--exclude'],
+    valued: { '--features': 'any', '-F': 'any', '-p': 'any', '--package': 'any', '-j': INT1, '--jobs': INT1, '--target': 'any', '--profile': 'any', '--manifest-path': 'any', '--exclude': 'any' },
     noRun: ['--no-run', '--help', '-h', '-V', '--version'],
-    afterDoubleDash: { positional: true, safe: ['--nocapture', '--include-ignored', '--ignored', '--exact', '-q', '--quiet', '--show-output'], valued: ['--test-threads', '--skip', '--format', '--color'], noRun: ['--list', '--help', '-h'] } },
+    afterDoubleDash: { positional: [], safe: ['--nocapture', '--include-ignored', '--ignored', '-q', '--quiet', '--show-output'], valued: { '--test-threads': INT1, '--format': ['pretty', 'terse', 'json'], '--color': ['auto', 'always', 'never'] }, noRun: ['--list', '--help', '-h'] } },
   { name: 'mvn', kind: 'runner', heads: H('mvn', './mvnw', 'mvnw'),
     positional: ['clean', 'compile', 'test-compile', 'test', 'verify', 'integration-test', 'package', 'install'],
     needsOneOf: ['test', 'verify', 'integration-test', 'package', 'install'],
     safe: ['-V', '--show-version', '-B', '--batch-mode', '-q', '--quiet', '-e', '--errors', '-U', '--update-snapshots', '-o', '--offline', '-am', '--also-make', '-ntp', '--no-transfer-progress', '-fae', '--fail-at-end', '-ff', '--fail-fast'],
-    valued: ['-T', '--threads', '-pl', '--projects', '-P', '--activate-profiles', '-f', '--file', '-s', '--settings'],
+    valued: { '-T': 'any', '--threads': 'any', '-pl': 'any', '--projects': 'any' },
     noRun: ['-h', '--help', '-v', '--version'],
-    defines: { safe: ['test', 'it.test', 'groups', 'excludedGroups'], noRun: ['skipTests', 'maven.test.skip', 'skip'] } },
+    defines: { safe: ['test', 'it.test'], noRun: ['skipTests', 'maven.test.skip', 'skip'] } },
   { name: 'gradle', kind: 'runner', heads: H('gradle', './gradlew', 'gradlew'),
     positional: ['clean', 'test', 'check', 'build'], needsOneOf: ['test', 'check', 'build'],
     safe: ['--info', '-i', '--stacktrace', '-q', '--quiet', '--no-daemon', '--build-cache', '--offline', '--continue', '--rerun-tasks'],
-    valued: ['--tests', '--console'],
+    valued: { '--tests': 'any', '--console': ['plain', 'auto', 'rich', 'verbose'] },
     noRun: ['--dry-run', '-m', '--help', '-h', '-v', '--version'] },
   { name: 'dotnet test', kind: 'runner', heads: H('dotnet test'), positional: true,
     safe: ['--no-build', '--no-restore', '--nologo', '--blame'],
-    valued: ['-c', '--configuration', '--filter', '-v', '--verbosity', '--logger', '-l', '-f', '--framework', '-r', '--results-directory', '-s', '--settings'],
+    valued: { '-c': 'any', '--configuration': 'any', '-v': 'any', '--verbosity': 'any', '--logger': 'any', '-l': 'any', '-f': 'any', '--framework': 'any', '-r': 'any', '--results-directory': 'any' },
     noRun: ['--list-tests', '-t', '--help', '-h'] },
   { name: 'node --test', kind: 'runner', heads: H('node --test'), positional: true,
     safe: ['--experimental-test-coverage'],
-    valued: ['--test-reporter', '--test-name-pattern', '--test-reporter-destination', '--test-concurrency', '--test-timeout'],
+    valued: { '--test-reporter': 'any', '--test-reporter-destination': 'any', '--test-concurrency': INT1, '--test-timeout': INT1 },
     noRun: ['--help', '-h', '--version', '-v'] },
   { name: 'bun test', kind: 'runner', heads: H('bun test'), positional: true,
-    safe: ['--bail', '--coverage'], valued: ['--timeout', '-t', '--test-name-pattern', '--preload', '--rerun-each'], noRun: ['--help', '-h', '--watch'] },
+    safe: ['--bail', '--coverage'], valued: { '--timeout': INT1, '--rerun-each': INT1 }, noRun: ['--help', '-h', '--watch'] },
   { name: 'deno test', kind: 'runner', heads: H('deno test'), positional: true,
     safe: ['-A', '--allow-all', '--no-check', '--parallel', '--fail-fast'], safePrefixes: ['--allow-'],
-    valued: ['--filter', '--reporter', '--config', '-c'], noRun: ['--help', '-h', '--watch', '--no-run'] },
+    valued: { '--reporter': ['pretty', 'dot', 'junit', 'tap'] }, noRun: ['--help', '-h', '--watch', '--no-run'] },
   { name: 'rspec', kind: 'runner', heads: H('rspec', 'bundle exec rspec'), positional: true,
     safe: ['--fail-fast', '--color', '--no-color', '-b', '--backtrace'],
-    valued: ['-f', '--format', '--tag', '-t', '-e', '--example', '--seed', '--order', '-o', '--out', '-r', '--require'],
+    valued: { '-f': 'any', '--format': 'any', '--seed': INT0, '--order': 'any', '-o': 'any', '--out': 'any' },
     noRun: ['--dry-run', '--help', '-h', '--version', '-v', '--init'] },
   { name: 'phpunit', kind: 'runner', heads: H('phpunit', 'vendor/bin/phpunit', './vendor/bin/phpunit'), positional: true,
-    safe: ['--stop-on-failure', '--colors', '--testdox', '--no-coverage'],
-    valued: ['--filter', '--testsuite', '-c', '--configuration', '--group', '--exclude-group'],
+    safe: ['--stop-on-failure', '--colors', '--testdox', '--no-coverage'], valued: {},
     noRun: ['--list-tests', '--list-suites', '--list-groups', '--help', '-h', '--version'] },
   { name: 'mix test', kind: 'runner', heads: H('mix test'), positional: true,
     safe: ['--trace', '--stale', '--failed', '--cover', '--warnings-as-errors'],
-    valued: ['--only', '--exclude', '--include', '--seed', '--max-failures', '--timeout', '--max-cases'], noRun: ['--help'] },
+    valued: { '--seed': INT0, '--max-failures': INT1, '--timeout': INT1, '--max-cases': INT1 }, noRun: ['--help'] },
   { name: 'make', kind: 'runner', heads: H('make test', 'make check'), positional: [],
-    safe: ['-s', '--silent', '-k', '--keep-going'], valued: ['-j'], noRun: ['-n', '--dry-run', '--just-print', '-q', '--question', '-h', '--help'] },
-  { name: 'claude plugin test', kind: 'runner', heads: H('claude plugin test'), positional: true, safe: [], valued: [], noRun: ['--help', '-h'] },
+    safe: ['-s', '--silent', '-k', '--keep-going'], valued: { '-j': /^\d*$/ }, noRun: ['-n', '--dry-run', '--just-print', '-q', '--question', '-h', '--help'] },
+  { name: 'claude plugin test', kind: 'runner', heads: H('claude plugin test'), positional: true, safe: [], valued: {}, noRun: ['--help', '-h'] },
   { name: 'playwright test', kind: 'runner', heads: H('playwright test'), positional: true,
     safe: ['-x', '--headed', '--quiet', '--fully-parallel'],
-    valued: ['--project', '--workers', '-j', '--grep', '-g', '--grep-invert', '--reporter', '--retries', '--timeout', '--config', '-c', '--shard', '--max-failures'],
+    valued: { '--workers': /^\d+%?$/, '-j': /^\d+%?$/, '--reporter': 'any', '--retries': INT0, '--timeout': INT1, '--shard': /^\d+\/\d+$/, '--max-failures': INT1 },
     noRun: ['--list', '--help', '-h', '--ui', '--debug'] },
   { name: 'ava', kind: 'runner', heads: H('ava'), positional: true,
-    safe: ['--verbose', '-v', '--serial', '-s', '--fail-fast', '--tap', '-t'], valued: ['--match', '-m', '--timeout', '-T', '--concurrency', '-c'],
+    safe: ['--verbose', '-v', '--serial', '-s', '--fail-fast', '--tap', '-t'], valued: { '--timeout': 'any', '-T': 'any', '--concurrency': INT1, '-c': INT1 },
     noRun: ['--help', '-h', '--version', '--watch', '-w'] },
   { name: 'tap', kind: 'runner', heads: H('tap'), positional: true,
-    safe: [], valued: ['-R', '--reporter', '-j', '--jobs', '--timeout', '-t'], noRun: ['--help', '-h', '--version', '--watch', '-w'] },
+    safe: [], valued: { '-R': 'any', '--reporter': 'any', '-j': INT1, '--jobs': INT1, '--timeout': INT1, '-t': INT1 }, noRun: ['--help', '-h', '--version', '--watch', '-w'] },
   { name: 'tsc', kind: 'typecheck', heads: H('tsc', 'vue-tsc'), positional: true,
-    safe: ['--noEmit', '-b', '--build', '--incremental', '--strict', '--pretty', '--listFiles'], valued: ['-p', '--project'],
+    safe: ['--noEmit', '-b', '--build', '--incremental', '--strict', '--pretty', '--listFiles'], valued: { '-p': 'any', '--project': 'any' },
     noRun: ['--help', '-h', '--version', '-v', '--init', '--showConfig', '--watch', '-w'] },
   { name: 'mypy', kind: 'typecheck', heads: H('mypy', 'python -m mypy', 'python3 -m mypy'), positional: true,
-    safe: ['--strict', '--ignore-missing-imports', '--no-error-summary', '--pretty'], valued: ['--config-file', '-p', '--package', '-m', '--module', '--python-version'],
+    safe: ['--strict', '--ignore-missing-imports', '--no-error-summary', '--pretty'], valued: { '-p': 'any', '--package': 'any', '-m': 'any', '--module': 'any', '--python-version': 'any' },
     noRun: ['--help', '-h', '--version', '-V'] },
   { name: 'pyright', kind: 'typecheck', heads: H('pyright'), positional: true,
-    safe: ['--outputjson', '--warnings'], valued: ['-p', '--project', '--pythonversion', '--level'], noRun: ['--help', '-h', '--version', '--watch', '-w'] },
+    safe: ['--outputjson', '--warnings'], valued: { '--pythonversion': 'any', '--level': ['error', 'warning', 'information'] }, noRun: ['--help', '-h', '--version', '--watch', '-w'] },
 ]
+
+/**
+ * Inline environment assignments (`X=1 pytest`) that cannot change whether or which tests run. Any other name leaves
+ * the run unproven — `PYTEST_ADDOPTS=--collect-only pytest` runs nothing and exits 0.
+ */
+export const HARMLESS_ENV = new Set(['CI', 'FORCE_COLOR', 'NO_COLOR', 'TERM', 'COLUMNS', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'RUST_BACKTRACE', 'PYTHONUNBUFFERED', 'PYTHONDONTWRITEBYTECODE'])
+
+const valueOk = (rule: ValueRule, v: string): boolean => (rule === 'any' ? true : rule instanceof RegExp ? rule.test(v) : rule.includes(v))
 
 /** Calls that are recognised as test runs but can never be proven (bare `vitest` may start watch mode). */
 const RECOGNISE_ONLY: readonly (readonly string[])[] = H('vitest', 'playwright')
@@ -204,7 +229,7 @@ function findRunner(t: readonly string[]): { spec: RunnerSpec; rest: string[] } 
   return best ? { spec: best.spec, rest: best.rest } : null
 }
 
-type FlagVerdict = { ok: true } | { ok: false; reason: 'not-a-test-run' | 'unproven-flags' | 'unproven-args' }
+type FlagVerdict = { ok: true } | { ok: false; reason: 'not-a-test-run' | 'unproven-flags' | 'unproven-flag-value' | 'unproven-args' }
 
 function judgeArgs(spec: RunnerSpec, args: readonly string[]): FlagVerdict {
   let table: FlagTable = spec
@@ -219,7 +244,9 @@ function judgeArgs(spec: RunnerSpec, args: readonly string[]): FlagVerdict {
       continue
     }
     if (tok.startsWith('-') && tok !== '-') {
-      const name = tok.includes('=') ? tok.slice(0, tok.indexOf('=')) : tok
+      if (table.safeExact?.includes(tok)) continue
+      const eq = tok.indexOf('=')
+      const name = eq >= 0 ? tok.slice(0, eq) : tok
       if (table.noRun.includes(name)) return { ok: false, reason: 'not-a-test-run' }
       if (spec.defines && table === spec && /^-D./.test(tok)) {
         const key = tok.slice(2).split('=')[0] as string
@@ -227,9 +254,11 @@ function judgeArgs(spec: RunnerSpec, args: readonly string[]): FlagVerdict {
         if (spec.defines.safe.includes(key)) continue
         return { ok: false, reason: 'unproven-flags' }
       }
-      if (table.safe.includes(name)) continue
-      if (table.valued.includes(name)) {
-        if (!tok.includes('=')) i++ // the value is the next word
+      if (table.safe.includes(name) && eq < 0) continue
+      const rule = Object.prototype.hasOwnProperty.call(table.valued, name) ? table.valued[name] : undefined
+      if (rule !== undefined) {
+        const value = eq >= 0 ? tok.slice(eq + 1) : args[++i]
+        if (value === undefined || !valueOk(rule, value)) return { ok: false, reason: 'unproven-flag-value' }
         continue
       }
       if (table.safePrefixes?.some((p) => tok.startsWith(p))) continue
@@ -329,9 +358,13 @@ function recogniseSimple(t0: readonly string[], ctx: JudgeContext): Recognised |
   return null
 }
 
-/** Proof for one simple command (tokens without env assignments or redirections). `isDeclared` allows a script file. */
-function prove(t0: readonly string[], ctx: JudgeContext, isDeclared: boolean, depth: number): { ok: true } | { ok: false; reason: string } {
+/**
+ * Proof for one simple command: its words (redirections removed) and its inline `VAR=value` assignments.
+ * `isDeclared` allows a script file.
+ */
+function prove(t0: readonly string[], env: readonly string[], ctx: JudgeContext, isDeclared: boolean, depth: number): { ok: true } | { ok: false; reason: string } {
   if (t0.length === 0) return { ok: false, reason: 'empty' }
+  if (env.some((a) => !HARMLESS_ENV.has(a.slice(0, a.indexOf('='))))) return { ok: false, reason: 'env' }
   // A declared script file run directly (`bash test/smoke.sh`): exactly interpreter + file, so `bash -c …` never is.
   if (isDeclared && isScriptFile(t0)) return { ok: true }
   if (WRAPPERS.has(t0[0] as string)) return { ok: false, reason: 'wrapper' }
@@ -352,7 +385,7 @@ function prove(t0: readonly string[], ctx: JudgeContext, isDeclared: boolean, de
     const parsed = parseCommand(body.trim())
     if (isCompound(parsed)) return { ok: false, reason: masksExit(body) ? 'script-masks-exit' : 'script-compound' }
     const seg = parsed.segments[0] as Segment
-    return prove([...stripRedirects(seg.tokens), ...pm.extra], ctx, true, depth + 1)
+    return prove([...stripRedirects(seg.tokens), ...pm.extra], seg.env, ctx, true, depth + 1)
   }
   return { ok: false, reason: 'not-a-known-runner' }
 }
@@ -403,6 +436,6 @@ export function judge(segments: readonly Segment[], isComplex: boolean, ctx: Jud
   const base: Judgment = rec.script !== undefined ? { kind: rec.kind, isProven: false, script: rec.script } : { kind: rec.kind, isProven: false }
   if (isCompound(parsed)) return { ...base, reason: 'compound' }
   const seg = segments[0] as Segment
-  const p = prove(stripRedirects(seg.tokens), ctx, isDeclaredText, 0)
+  const p = prove(stripRedirects(seg.tokens), seg.env, ctx, isDeclaredText, 0)
   return p.ok ? { ...base, isProven: true } : { ...base, reason: p.reason }
 }

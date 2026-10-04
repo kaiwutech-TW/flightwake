@@ -82,7 +82,8 @@ type Plan = {
   judgment: Judgment
 }
 
-const isCdPrefix = (s: Segment): boolean => s.tokens[0] === 'cd' && s.tokens.length === 2 && s.op === '&&' && s.env.length === 0
+const isCdPrefix = (s: Segment): boolean =>
+  s.tokens[0] === 'cd' && s.op === '&&' && s.env.length === 0 && (s.tokens.length === 2 || (s.tokens.length === 3 && s.tokens[1] === '--'))
 
 async function planBash(io: Io, root: string, cwd0: string, command: string): Promise<Plan | null> {
   const parsed = parseCommand(command.trim())
@@ -91,7 +92,7 @@ async function planBash(io: Io, root: string, cwd0: string, command: string): Pr
   let hasCdPrefix = false
   // Leading `cd <dir> &&` segments only move the cwd.
   while (segs.length > 1 && isCdPrefix(segs[0] as Segment)) {
-    const dir = (segs[0] as Segment).tokens[1] as string
+    const dir = (segs[0] as Segment).tokens.at(-1) as string // `cd dir` or `cd -- dir`
     if (dir === '-' || dir.startsWith('~') || dir.includes('$')) return null // not resolvable without guessing
     cwdAbs = dir.startsWith('/') ? dir : `${cwdAbs}/${dir}`
     segs = segs.slice(1)
@@ -242,6 +243,11 @@ export function renderLog(lang: Lang, log: FwFlightLog | null): string {
     'zh-TW': '由 flightwake-mod 只在本 session 內觀測:其他程式造成的變更、本 session 以外的執行都不在內。可把這些列原樣作為 fw-record 的 `tests:` 證據與變更清單;`unknown`(未知)的列不是通過的證據。',
     'zh-CN': '由 flightwake-mod 只在本 session 内观测:其他程序造成的变更、本 session 以外的执行都不在内。可把这些行原样作为 fw-record 的 `tests:` 证据与变更清单;`unknown`(未知)的行不是通过的证据。',
     ja: 'flightwake-mod がこのセッション内でのみ観測したものです。他のプログラムによる変更やセッション外の実行は含まれません。各行は fw-record の `tests:` 証拠と変更一覧にそのまま使えます。`unknown` の行は成功の証拠ではありません。',
+  }), '', M(lang, {
+    en: '`pass` means: a directly called runner ran recognisably and returned 0. It cannot see config files or the outside environment that may keep tests from running (e.g. addopts in pytest.ini, a skip in a build profile), and it is not a guarantee that the tests themselves are meaningful.',
+    'zh-TW': '`pass`(通過)的意思是:直接呼叫的 runner 以可辨識的方式執行並回傳 0。它看不到設定檔或外部環境裡會讓測試不執行的設定(例如 pytest.ini 的 addopts、建置 profile 裡的略過設定),也不保證測試內容本身有效。',
+    'zh-CN': '`pass`(通过)的意思是:直接调用的 runner 以可辨识的方式执行并返回 0。它看不到配置文件或外部环境里会让测试不执行的设置(例如 pytest.ini 的 addopts、构建 profile 里的跳过设置),也不保证测试内容本身有效。',
+    ja: '`pass` の意味:直接呼び出した runner が判別できる形で実行され 0 を返したこと。設定ファイルや外部環境にあるテストを実行させない設定(pytest.ini の addopts、ビルド profile のスキップなど)は見えず、テスト内容そのものが有効である保証でもありません。',
   }))
   return lines.join('\n')
 }

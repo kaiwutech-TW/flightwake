@@ -52,6 +52,28 @@ function matchFile(entries: TrapEntry[], root: string, filePath: string): Hit[] 
   return out
 }
 
+/** At most this many possible cwds are tracked; past it, matching degrades to glob tails (no cwd at all). */
+const MAX_CWDS = 16
+
+/**
+ * Coarse match used once the cwd is no longer tracked: does `glob` match the path word itself or any tail of the
+ * glob match it (`pkg/src/**` → `src/**` → `**`)? Over-hints by design — F4 only hints, once per entry per session.
+ */
+function tailMatch(globs: readonly string[], word: string): boolean {
+  const w = word.replace(/^\.\//, '')
+  for (const g of globs) {
+    const segs = g.replace(/^\.?\//, '').split('/')
+    for (let k = 0; k < segs.length; k++) {
+      const tail = segs.slice(k).join('/')
+      if (tail && tail !== '**' && matchAny([tail], w) !== null) return true
+    }
+  }
+  return false
+}
+
+/** The file a redirection names (`>out`, `2>>log`, `&>f`, `<in`), or the word itself. '' for a bare operator. */
+const redirectTarget = (tok: string): string => tok.replace(/^(?:\d*|&)?[<>]>?/, '')
+
 /**
  * Bash: command prefixes per segment, and path-like words resolved against every directory the shell could be in.
  * F4 only hints and hints once per entry per session, so when the cwd is uncertain it over-hints rather than miss:
@@ -59,17 +81,19 @@ function matchFile(entries: TrapEntry[], root: string, filePath: string): Hit[] 
  * - a `cd` followed by `||`, `&`, `|`, `;` or a newline, or after any such operator, may or may not have moved this
  *   shell: the moved directories are ADDED to the set;
  * - `( … )` subshells are walked: inside, cds apply as above; after the `)`, the set from before the `(` is back;
- * - a `cd` that can't be resolved without guessing (`cd -`, `~`, `$VAR`, bare `cd`) leaves the set as it is.
+ * - a `cd` that can't be resolved without guessing (`cd -`, `~`, `$VAR`, bare `cd`) leaves the set as it is;
+ * - the set is bounded (MAX_CWDS): past it, matching degrades to glob tails (tailMatch) for the rest, so
+ *   the hint never costs more than one pass over the words — a long chain of uncertain cds can't blow it up.
  */
 function matchBash(entries: TrapEntry[], root: string, cwd0: string, command: string): Hit[] {
   const parsed = parseCommand(command)
   const out = new Map<TrapEntry, string>()
-  let cwds = new Set<string>([cwd0])
+  let cwds: Set<string> | null = new Set<string>([cwd0]) // null = degraded: cwd no longer tracked
   let isCertain = true
-  const stack: Array<{ cwds: Set<string>; isCertain: boolean }> = []
+  const stack: Array<{ cwds: Set<string> | null; isCertain: boolean }> = []
   for (const seg of parsed.segments) {
     if (seg.group === 'open') {
-      stack.push({ cwds: new Set(cwds), isCertain })
+      stack.push({ cwds: cwds === null ? null : new Set(cwds), isCertain })
       continue
     }
     if (seg.group === 'close') {
@@ -87,22 +111,31 @@ function matchBash(entries: TrapEntry[], root: string, cwd0: string, command: st
       }
       if (!entry.paths.length) continue
       search: for (const tok of seg.tokens) {
-        if (!looksLikePath(tok)) continue
-        for (const cwd of tok.startsWith('/') ? [''] : cwds) {
-          const rel = relToRoot(root, tok.startsWith('/') ? tok : `${cwd}/${tok}`)
-          if (rel !== null && rel !== '' && matchAny(entry.paths, rel) !== null) {
-            out.set(entry, rel)
-            break search
-          }
+        const word = redirectTarget(tok)
+        if (!word || !looksLikePath(word)) continue
+        if (word.startsWith('/')) {
+          const rel = relToRoot(root, word)
+          if (rel !== null && rel !== '' && matchAny(entry.paths, rel) !== null) { out.set(entry, rel); break search }
+          continue
+        }
+        if (cwds === null) {
+          if (tailMatch(entry.paths, word)) { out.set(entry, word); break search }
+          continue
+        }
+        for (const cwd of cwds) {
+          const rel = relToRoot(root, `${cwd}/${word}`)
+          if (rel !== null && rel !== '' && matchAny(entry.paths, rel) !== null) { out.set(entry, rel); break search }
         }
       }
     }
-    if (seg.tokens[0] === 'cd') {
-      const dir = seg.tokens[1]
-      const isResolvable = seg.tokens.length === 2 && dir !== undefined && dir !== '-' && !dir.startsWith('~') && !dir.includes('$')
+    if (seg.tokens[0] === 'cd' && cwds !== null) {
+      const args = seg.tokens[1] === '--' ? seg.tokens.slice(2) : seg.tokens.slice(1)
+      const dir = args[0]
+      const isResolvable = args.length === 1 && dir !== undefined && dir !== '-' && !dir.startsWith('~') && !dir.includes('$')
       if (isResolvable) {
         const moved = [...cwds].map((c) => (dir.startsWith('/') ? dir : `${c}/${dir}`))
-        cwds = isCertain && seg.op === '&&' ? new Set(moved) : new Set([...cwds, ...moved])
+        const next: Set<string> = isCertain && seg.op === '&&' ? new Set(moved) : new Set([...cwds, ...moved])
+        cwds = next.size > MAX_CWDS ? null : next
       }
     }
     if (seg.op && seg.op !== '&&') isCertain = false

@@ -133,6 +133,14 @@ flightwake 有幾處靠「模型自覺」或外部 node 腳本在撐,Claude Code
 4. **生命週期**:測試引擎只能手動觸發事件——自動測試「模擬」/clear(session.end + 新 id)與模組重載(同 id 再觸發 session.start),測試名稱照實寫;真正的 resume/compact 未重現。真機只觀察過一次熱重載。未驗證項列在 record。
 5. 路徑別名(symlink 等)可繞過 F5:維持「不是安全邊界」,roles 文件限制段已點明,不修。
 
+## 驗收修正第 3 輪(2026-10-05,依 `docs/plans/mods.diff-review-astra-3.md`;優先於上文)
+
+1. **F3 的證明納入環境變數與旗標值**:行內環境變數賦值只允許明確的無害清單(`CI`、`NO_COLOR`、`FORCE_COLOR`、`TERM`、`COLUMNS`、`LANG`、`LC_ALL`、`LC_CTYPE`、`TZ`、`RUST_BACKTRACE`、`PYTHONUNBUFFERED`、`PYTHONDONTWRITEBYTECODE`),其他一律 unknown(`PYTEST_ADDOPTS=--collect-only pytest` 會不跑測試而回 0)。帶值旗標連值一起判定:每個 runner 的表列出旗標與可接受的值(任意/格式/列舉),值不在範圍內 → unknown(`go test -count=0`)。會讓「零個測試也回 0」的過濾旗標(go `-run`/`-skip`、cargo 的名稱過濾、jest `-t`、mocha `--grep`、dotnet `--filter`、node `--test-name-pattern` 等)、設定檔、profile、外掛、`--require` 類旗標不在表內 → unknown;pytest 的 `-k`/`-m` 保留,因為 pytest 沒有選到測試時回 5。package script 內同樣處理。
+2. **pass 的意義**(`/fw-log` 頁尾四語同步寫明):直接呼叫的 runner 以可辨識的方式執行並回傳 0。它看不到設定檔或外部環境裡會讓測試不執行的設定(pytest.ini 的 addopts、建置 profile 的略過等),也不保證測試內容有效——這是已知限制。
+3. **F4 候選 cwd 集合有上限**(16 個):超過就降級為「路徑尾段比對」(glob 的每個尾段與路徑字比對),計算量與指令長度成線性,不再隨不確定的 `cd` 加倍。
+4. 順手補:`jest --watchAll=false`、`vitest --run`、`pytest --disable-warnings` 進安全表;`cd -- dir`;輸出/輸入重導向的目標路徑(`echo x >pkg/src/a.ts`)納入 F4 比對。
+5. 真正的 resume/compact、路徑別名、UI 真機驗證維持為 record 的已知限制。
+
 ## 介面約定(管理者,2026-10-05;實作者照此開發)
 
 外掛:`mods/flightwake/`,名稱 `flightwake-mod`(之後安裝到 `.claude/skills/flightwake-mod/`)。

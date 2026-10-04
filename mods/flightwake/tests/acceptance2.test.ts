@@ -139,7 +139,8 @@ describe('positive proof: everything is recorded; only proven runs are pass/fail
     ['pytest --frobnicate', undefined, 'unknown'], // a flag outside pytest's safe set
     ['npx vitest run --reporter=dot', undefined, 'pass'],
     ['vitest', undefined, 'unknown'], // bare vitest may watch
-    ['go test -v -run TestX ./...', undefined, 'pass'],
+    ['go test -v -run TestX ./...', undefined, 'unknown'], // round 3: a -run filter matching nothing exits 0 → unproven
+    ['go test -v -count=1 ./...', undefined, 'pass'],
     ['go test -c ./...', undefined, 'unknown'], // compiles only
     ['cargo test -- --nocapture', undefined, 'pass'],
     ['cargo test -- --list', undefined, 'unknown'],
