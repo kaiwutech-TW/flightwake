@@ -1553,5 +1553,36 @@ echo "$out" | grep -E '^  !' | grep -q 'latest_record' || fail "42 doctor:record
 for l in en zh-TW zh-CN ja; do grep -q 'latest_record: none' "$SRC/skills/$l/fw-coldstart/SKILL.md" && grep -q 'doctor' "$SRC/skills/$l/fw-coldstart/SKILL.md" || fail "42 $l fw-coldstart 應說明 none 是唯一正規寫法(doctor 認得)"; done
 pass "42 下一步依 STATE 是否已初始化(init --force/update/private/zh-TW);latest_record: none 與空 records/ 不算問題;fw-coldstart 四語提到正規寫法(關鍵字檢查)"
 
+# 43. 真機回饋(驗收者在真實終端機與 Claude Code 實測)
+# 43.1 setup 在真的 pty 下,已回答的題目與答案都留在畫面上(四語):不送任何游標移動/清除的控制序列,答案與題目同一行
+if [ "$HAVE_PY" = 1 ]; then
+  PTYANS="$SRC/test/pty-answers.py"
+  PY3="$(command -v python3)"
+  for ln in 1 2 3 4; do
+    newrepo "$TMP/tty-$ln" >/dev/null
+    rc=0; env -u ORCA_APP_VERSION -u ORCA_TERMINAL_HANDLE -u ORCA_WORKSPACE_ID PATH="$NOCL" "$PY3" "$PTYANS" 60 "$NODE_BIN" "$CLI" setup -- "$ln" 1 "" y "" "" n > "$TMP/tty-$ln.out" 2>&1 || rc=$?
+    [ "$rc" = 1 ] || fail "43.1 lang=$ln:最終確認答 n 應退出 1(rc=$rc)"
+    node -e '
+      const fs = require("fs"); const raw = fs.readFileSync(process.argv[1], "utf8"); const ln = process.argv[2];
+      const bad = [];
+      if (/\x1b\[/.test(raw)) bad.push("output contains cursor/erase control sequences: " + JSON.stringify(raw.match(/\x1b\[[0-9;?]*[A-Za-z]/g).slice(0, 5)));
+      const lines = raw.split(/\r?\n/).map((l) => l.replace(/\r/g, "").trimEnd());
+      const need = [[/\[\d\] ?(\d)$/, "language prompt with its answer", (m) => m[1] === ln],
+                    [/\[y\/N\] ?y$/, "mod question with its answer y"],
+                    [/\[Y\/n\] ?n$/, "final confirmation with its answer n"]];
+      for (const [re, what, ok = () => true] of need) if (!lines.some((l) => { const m = re.exec(l); return m && ok(m); })) bad.push("missing on screen: " + what);
+      if (bad.length) { console.log(bad.join("\n") + "\n---\n" + lines.join("\n")); process.exit(1); }
+    ' "$TMP/tty-$ln.out" "$ln" || fail "43.1 lang=$ln:畫面上應保留每一題與答案($(head -c 300 "$TMP/tty-$ln.out" | tr -d '\033'))"
+    [ ! -e .flightwake ] || fail "43.1 lang=$ln:取消後不得寫入"
+  done
+  # Ctrl-C 在問答中仍是零寫入、非零退出
+  newrepo "$TMP/tty-int" >/dev/null; b=$(snap)
+  rc=0; PATH="$NOCL" "$PY3" "$PTYANS" 30 "$NODE_BIN" "$CLI" setup -- 2 $'\x03' >/dev/null 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ] && [ "$b" = "$(snap)" ] || fail "43.1 問答中 Ctrl-C 應非零退出且零寫入(rc=$rc)"
+  pass "43.1 setup 在真的 pty 下不送游標/清除控制序列,四語的題目與答案都留在畫面上;Ctrl-C 零寫入"
+else
+  echo "  skip: 沒有 python3,略過 43.1(pty)"
+fi
+
 echo ""
 echo "✅ smoke 全過"

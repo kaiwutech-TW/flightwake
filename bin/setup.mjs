@@ -20,16 +20,25 @@ import { runDoctor, stateUnfilled } from './doctor.mjs';
 export const INTERRUPT = Symbol('interrupt');
 class Abort { constructor(code) { this.code = code; } }
 
-/** readline-backed io. Lines are queued, so input that arrives before a question is asked is never lost. */
+/**
+ * readline-backed io. Lines are queued, so input that arrives before a question is asked is never lost.
+ * terminal: false even on a TTY: the tty stays in cooked mode, the terminal driver echoes what is typed, and setup
+ * writes plain prompt text. readline's terminal mode redraws every prompt with cursor-column and erase-below sequences
+ * (ESC[1G ESC[0J … ESC[<n>G); in Orca's terminal the line holding a typed answer then reads back blank, so the person
+ * can't see what they answered (2026-10-05 field report). Setup needs no line editing beyond what the tty driver gives.
+ * Ctrl-C therefore arrives as a real SIGINT, handled here exactly as readline's SIGINT event was.
+ */
 export function readlineIO({ input = process.stdin, output = process.stdout } = {}) {
-  const rl = createInterface({ input, output, terminal: !!input.isTTY });
+  const rl = createInterface({ input, output, terminal: false });
   const queue = [];
   const waiters = [];
   let closed = false;
   let interrupted = false;
   rl.on('line', (l) => { const w = waiters.shift(); if (w) w.resolve(l); else queue.push(l); });
   rl.on('close', () => { closed = true; while (waiters.length) waiters.shift().resolve(null); });
-  rl.on('SIGINT', () => { interrupted = true; while (waiters.length) waiters.shift().reject(INTERRUPT); });
+  const onInterrupt = () => { interrupted = true; while (waiters.length) waiters.shift().reject(INTERRUPT); };
+  rl.on('SIGINT', onInterrupt);
+  process.on('SIGINT', onInterrupt);
   return {
     ask(prompt) {
       return new Promise((resolve, reject) => {
@@ -42,7 +51,7 @@ export function readlineIO({ input = process.stdin, output = process.stdout } = 
       });
     },
     out: (s) => output.write(`${s}\n`),
-    close: () => rl.close(),
+    close: () => { process.off('SIGINT', onInterrupt); rl.close(); },
   };
 }
 
