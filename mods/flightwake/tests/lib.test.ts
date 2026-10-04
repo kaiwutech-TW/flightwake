@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { matchGlob } from '../hooks/lib/glob'
+import { parseCommand, startsWithTokens } from '../hooks/lib/shell'
 import { parseTraps } from '../hooks/lib/traps'
 import { parseCard, parseSeatBlock } from '../hooks/lib/roles'
 import { detectLang, fwContext, isUninitializedState, legacyStatuslineActive, parseInlineList, relToRoot, stateLag } from '../hooks/lib/core'
@@ -156,5 +157,25 @@ describe('world-backed core helpers', () => {
   test('no .flightwake → no context', async () => {
     expect(await fwContext(fakeIo(newWorld()))).toBe(null)
     expect(await fwContext(fakeIo(newWorld({ files: { '.flightwake/STATE.md': STATE_FILLED } })))).toEqual({ root: '/repo', lang: 'en' })
+  })
+})
+
+describe('shell', () => {
+  test('segments, env, operators, quotes', () => {
+    const a = parseCommand('cd pkg && NODE_ENV=test npm test -- --grep "a b" || true')
+    expect(a.isComplex).toBe(false)
+    expect(a.segments.map((s) => s.tokens)).toEqual([['cd', 'pkg'], ['npm', 'test', '--', '--grep', 'a b'], ['true']])
+    expect(a.segments.map((s) => s.op)).toEqual(['&&', '||', ''])
+    expect(a.segments[1]!.env).toEqual(['NODE_ENV=test'])
+    expect(parseCommand('npm test | tail -5').segments.map((s) => s.op)).toEqual(['|', ''])
+    expect(parseCommand('echo $(git rev-parse HEAD)').isComplex).toBe(true)
+    expect(parseCommand("echo 'unterminated").isComplex).toBe(true)
+    expect(parseCommand('git push origin main').segments).toHaveLength(1)
+  })
+  test('token prefixes', () => {
+    expect(startsWithTokens(['git', 'push', 'origin'], 'git push')).toBe(true)
+    expect(startsWithTokens(['git', 'pushx'], 'git push')).toBe(false)
+    expect(startsWithTokens(['git'], 'git push')).toBe(false)
+    expect(startsWithTokens(['git'], '  ')).toBe(false)
   })
 })

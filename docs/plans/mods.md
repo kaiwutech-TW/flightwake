@@ -127,6 +127,7 @@ hooks/lib/core.ts            Io 介面與 IO_OF_TEMPLATE、M()/語言、frontmat
 hooks/lib/glob.ts            matchGlob / matchAny(TRAPS paths、roles deny-write 共用)
 hooks/lib/traps.ts           parseTraps(含預設值、範本跳過、內容版本)
 hooks/lib/roles.ts           parseSeatBlock / parseCard(deny-write)
+hooks/lib/shell.ts           parseCommand / startsWithTokens(F3、F4 共用的保守指令切分)
 hooks/features/<f>.ts        state-inject(F1) band(F2) recorder(F3) tripwire(F4) role-guard(F5)
 types/index.d.ts             $.state 契約(全部功能的鍵由管理者維護;實作者需要新鍵時回報,不自改)
 tests/world.ts               測試夾具:installWorld(on) 回答 session/fs/process/settings;fakeIo 直測 lib
