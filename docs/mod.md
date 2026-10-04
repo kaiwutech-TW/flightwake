@@ -44,7 +44,8 @@ npx flightwake init --mod     # install it directly
   you added inside `.claude/skills/flightwake-mod/` are kept. `update` never adds the mod.
 - `npx flightwake uninstall` removes the files flightwake shipped there and the folders that leaves empty. Anything else
   in `.claude/skills/flightwake-mod/` (files you added, files Claude Code wrote) is kept and listed in the output;
-  `uninstall --purge` is about `.flightwake/` only and does not delete them either.
+  a directory sitting where flightwake shipped a file is kept and named too, never deleted recursively. `uninstall --purge`
+  is about `.flightwake/` only and does not delete them either.
 - `--private`: the mod folder goes into the `.git/info/exclude` block. If the folder is already tracked by git,
   `--private` refuses before writing anything (same as the other private requirements). Adding the mod later with
   `init --mod` on a private install also adds it to the exclude block.
@@ -127,6 +128,12 @@ Claude Code that the mod loaded — run `/fw-mod`.
   of output redirections (`>`, `>>`), `cp`, `mv`, `rm`, `tee` and `sed -i`, inside the repo. Writes made any other way
   (scripts, other programs, git) are not seen. The "files changed by the agent" list still holds only what the Edit /
   Write / NotebookEdit tools reported.
+- **Only paths that can be confirmed are listed — some changes may be missing, none should be wrong.** Each command is read
+  with its own option syntax, so option values (sed's `-e` / `-f` scripts, cp's `-t` / `-S`) never count as paths; a relative
+  path is resolved only while the working directory is certain (at the start, or after a leading `cd dir &&`) — after any
+  other `cd` it is not guessed; paths outside the repo are dropped; and a candidate is listed only if git, afterwards,
+  reports it as changed in the repo. Not a git repo → nothing is listed. (The tripwire makes the opposite trade on
+  purpose: it only hints, so it would rather over-hint; the log is a record, so it would rather miss.)
 - **A test command chained with other commands is recorded as "unknown"** (for example `echo … && npm test 2>&1; echo
   exit=$?` — only the whole chain's exit code is visible). The agent gets one note per session saying such a run cannot
   count as passing evidence; the note blocks nothing. When you need evidence, run the test command on its own once.

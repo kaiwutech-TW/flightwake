@@ -5,6 +5,21 @@
 # 坑 Registry
 
 ---
+name: force-color-colours-piped-node-output
+type: gotcha
+status: active
+tags: [test, smoke, node, environment, color]
+discovered: 2026-10-05
+confidence: confirmed
+paths: ["test/smoke.sh"]
+---
+
+**症狀**:`bash test/smoke.sh` 在第 4 節左右失敗:`❌ FAIL: 重跑後 Codex Stop hook 重複`,但 `.codex/hooks.json` 實際只有一個 hook;同一份程式先前一直全過。
+**根因**:環境裡有 `FORCE_COLOR`(這次是 `3`):node 連輸出到管道都上色,`node -e "console.log(1)"` 輸出 `ESC[33m1ESC[39m`(`od -c` 實看),所有拿 node 輸出做字串比對的斷言都會錯。
+**解法/繞法**:smoke 開頭 `unset FORCE_COLOR`(已加)。其他會比對 node 輸出的腳本同樣要清掉它;CI 若設 FORCE_COLOR 也會中。
+**佐證**:record 261005-integration「收尾複審修正」;commit 304eec9 前後同一環境一敗一過
+
+---
 name: readline-terminal-mode-loses-answer-lines
 type: gotcha
 status: active

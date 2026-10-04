@@ -66,6 +66,12 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   before, the copied skill showed up in `git status`.
 
 ### Fixed
+- `uninstall` (and `roles remove` for fw-roles) removes only the files flightwake shipped in each skill folder and the mod
+  folder; a directory sitting where a shipped file was is never deleted recursively, and anything else in there (your
+  files) is kept and listed. Previously a whole skill folder was deleted, including files you had added.
+- `/fw-log`'s shell-inferred list only names paths it can confirm: option values (e.g. `sed -e` scripts) are never taken
+  for paths, relative paths are not guessed after an uncertain `cd`, paths outside the repo are dropped, and a path is
+  listed only if git reports it as changed afterwards.
 - `setup` in a real terminal: lines holding a typed answer could vanish from the screen (seen in Orca's terminal). setup now
   reads lines from a cooked tty — plain prompts, no cursor movement or erase sequences — so every question and answer stays.
 - `init`/`setup` no longer tell an existing install to "run fw-coldstart — it writes the first STATE" when STATE is already

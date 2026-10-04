@@ -43,7 +43,7 @@ mod 要同時滿足以下條件才會載入:
 - **複製了什麼**:外掛的 manifest(`.claude-plugin/plugin.json`)、`hooks/` 與 `types/`——不含它的測試與開發用腳本。
 - **`npx flightwake update`**(以及 `init --force`)只在已經裝了 mod 的地方刷新它,逐檔處理;你自己加在
   `.claude/skills/flightwake-mod/` 裡的檔案會保留。`update` 不會替你新增 mod。
-- **`npx flightwake uninstall`** 只移除 flightwake 發行到這裡的檔,以及因此變空的資料夾。`.claude/skills/flightwake-mod/` 裡的其他東西(你自己加的檔、Claude Code 寫的檔)會保留,並在輸出列出;`uninstall --purge` 只針對 `.flightwake/`,也不會刪它們。
+- **`npx flightwake uninstall`** 只移除 flightwake 發行到這裡的檔,以及因此變空的資料夾。`.claude/skills/flightwake-mod/` 裡的其他東西(你自己加的檔、Claude Code 寫的檔)會保留,並在輸出列出;flightwake 發行的是檔案、那個位置卻是目錄時,也原樣保留並列出,絕不遞迴刪除。`uninstall --purge` 只針對 `.flightwake/`,也不會刪它們。
 - **`--private`**:mod 資料夾會進 `.git/info/exclude` 的標記區塊。如果該資料夾已經被 git 追蹤,`--private` 會在寫入任何東西之前
   就拒絕(與其他 private 的前置條件相同)。之後才對 private 安裝補跑 `init --mod`,也會把它加進 exclude 區塊。
 
@@ -116,6 +116,7 @@ tripwire 開著但閒置,因為沒有任何啟用中的 TRAPS 條目有 `paths` 
 - **角色守門不是安全邊界。** Bash 與其他工具不會被檢查,子 agent 不會被檢查,被禁止路徑的 symlink 或其他別名也擋不到。
 - **`/fw-log` 裡經由 shell 指令改動的檔案可能不完整。** 那一段是從指令推斷的:repo 內輸出重導向(`>`、`>>`)的目標,以及 `cp`、`mv`、`rm`、`tee`、`sed -i`。
   用其他方式寫入的(腳本、其他程式、git)看不到;「agent 改的檔案」清單仍然只含 Edit / Write / NotebookEdit 工具回報的。
+- **只列出能確認的路徑——可能漏記,但不該錯記。** 每個指令依它自己的參數語法讀取,參數值(sed 的 `-e`/`-f` 腳本、cp 的 `-t`/`-S`)不會被當成路徑;相對路徑只在工作目錄確定時解析(一開始,或開頭的 `cd 目錄 &&` 之後),其他任何 `cd` 之後就不猜;repo 外的路徑不記;候選路徑還要在指令執行後由 git 確認在 repo 內有變更才列出。不是 git repo 就什麼都不列。(踩坑絆線刻意做相反的取捨:它只是提示,寧可多提示;記錄是紀錄,寧可漏記。)
 - **測試指令與其他指令串在一起時,結果記成「unknown」。** 例如 `echo … && npm test 2>&1; echo exit=$?`:只看得到整串的結束碼。每個 session 會對 agent 提示一次
   (附在那次工具結果上):這樣的執行不能算作通過的證據,需要證據時請把測試指令單獨跑一次。這則提示只是說明,不會阻擋任何事。
 - tripwire 無法確定工作目錄時(例如 `||` 之後的 `cd`、子 shell 裡),會在候選目錄下逐一比對——最多 16 個,超過就改成比對路徑的尾段——所以可能提示得比必要的多。

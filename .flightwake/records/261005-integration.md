@@ -168,3 +168,27 @@ mod 以 `@skills-dir` 載入、hook 失敗行 0;橫條沒有儀表時顯示 `✈
 worktree 之外:`~/.claude.json` 的暫存 repo 信任紀錄又加了一次、已再刪(只刪該鍵、0600 保留,備份在 scratchpad);`~/.claude/projects/` 的四個暫存 session 資料夾集合不變(沿用);
 在 Orca 開過兩個測試終端機(已關)。未驗證:有儀表時的真機外觀、F5 開啟時 `/fw-mod` 的真機輸出、Windows 下 `date +%z`(預期退回 UTC)。
 
+## 收尾複審修正(同日,d05b72c..)
+
+驗收者逐項實測真機回饋六項通過;GPT-6 Astra 收尾複審(原文 `docs/plans/integration.diff-review-astra-2.md`,審至 5153c17)確認上輪兩個反例通過、
+setup 的 Ctrl-C/EOF/多行貼上、`date +%z`、提示共用管道、`/fw-mod` 唯讀、改寫過的測試斷言都核對通過,列三項合併前必修(驗收者採納)。逐項先紅後綠:
+
+1. **F3 shell 推斷把非路徑寫進日誌**(`sed -i '' -e 's/foo/bar/' -e 's/password/SECRET_REVIEW/' config.txt` → `s/password/SECRET_REVIEW` 被列為檔名)。
+   修:`shellWriteTargets` 依各指令參數語法取出目標(sed `-e/-f/-l/--expression/--file`、cp/mv `-t/-S/--target-directory/--suffix` 的值不是路徑;展開與萬用字元略過);
+   通用防線:候選要在指令執行後由 git 回報為 repo 內有變更(`git --literal-pathspecs status --porcelain -z --untracked-files=all -- …`,唯讀)才列出,
+   刪除因此只對受追蹤的檔成立;不是 git repo 就不列。`/fw-log` 頁尾與 docs/mod 四語改為「只列出能確認的路徑,可能漏記」。
+   途中:`io.git` 會 trim 輸出,第一筆狀態碼的前導空白被吃掉 → 改以樣式解析;並以真 git(修改/未追蹤/刪除/不存在/sed 腳本字)複驗只認前三者。
+2. **uninstall 遇「應為檔案的位置是目錄」遞迴刪除**(`hooks/register.ts/KEEP` 被刪,exit 0)。修:新 `bin/remove.mjs` 逐檔移除發行清單、型別不符保留並列出、變空目錄由深到淺移除;
+   四個 skill、fw-roles(uninstall 與 roles remove)、mod 共用。行為變更:skill 資料夾裡自加的檔也保留(原本整個刪)。
+3. **cwd 不確定後仍推斷相對路徑**(`cd /tmp; rm private.txt` 被記成 repo 的 private.txt)。修:只有開頭的 `cd X &&` 鏈(子 shell 外)算確定,其他 cd 之後不解析相對路徑;repo 外絕對路徑不記。
+   DECISIONS 寫明 F3(紀錄,寧可漏記)與 F4(提示,寧可多提示)取捨相反是刻意的。
+4. 測試缺口:`/fw-mod` 唯讀測試補「已安裝情境下實際呼叫前後,檔案與 session 狀態不變」。
+
+紅:mod 測試 6 個失敗(d05b72c 前);smoke 44 `❌ FAIL: 44 … register.ts 是目錄(型別不符)時 uninstall 不得刪除其中的使用者檔`。
+**環境插曲**:本輪 shell 帶 `FORCE_COLOR=3`,node 連管道輸出都上色,smoke 第 4 節的字串比對失敗(與本次改動無關)→ smoke 開頭 `unset FORCE_COLOR`,TRAPS `force-color-colours-piped-node-output`。
+另:scratchpad 目錄在本輪中途失效,驗證工具改放 `$TMPDIR/fw-integration-verify`;一次診斷時把 smoke 前段複製到該處執行,`FW` 由腳本位置推得而把整個系統暫存目錄
+複製進 smoke 自己的暫存目錄(只讀取、smoke 結束時由 trap 刪除,已確認不殘留),之後改為把診斷腳本暫放 `test/` 執行並刪除。
+
+驗證:smoke 44 節 `✅ smoke 全過`;`claude plugin test` 297 pass / 0 fail;validate `✔ Validation passed`;tsc clean;git-readonly-check 三項 ok。本輪未重做真機 Claude session(改動為判定與解析,已以真 git 複驗解析)。
+worktree 之外:`$TMPDIR/fw-integration-verify`(驗證工具與隔離的 FLIGHTWAKE_HOME)。
+

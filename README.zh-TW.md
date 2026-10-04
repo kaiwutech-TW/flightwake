@@ -154,7 +154,7 @@ skill 與 hook 是各平台的便利糖衣——同一套四個 skill、同一�
 
 **`--git-init`** 讓 `init` 在目錄不是 git repo 時先建立它——只有明確給旗標才會做;沒給就停下並告知。`init` 與 `setup` 都會先檢查 git 是否已安裝,沒有則依平台給出安裝提示。
 
-**`uninstall`** 反向清除 init 的固定寫入範圍:刪 skill 與框架檔、從 settings 摘除 flightwake 的 Stop hook(使用者其他 hook 原樣保留)、移除指令檔與 `.git/info/exclude` 的標記區塊(由 flightwake 建的檔案清空後刪除)。**`.flightwake/` 是使用者資料,預設保留**,`uninstall --purge` 才連同刪除。
+**`uninstall`** 反向清除 init 的固定寫入範圍:刪 skill 與框架檔(只刪發行的檔——你在 skill 資料夾裡自己加的檔,或發行檔位置變成目錄的,都保留並列出)、從 settings 摘除 flightwake 的 Stop hook(使用者其他 hook 原樣保留)、移除指令檔與 `.git/info/exclude` 的標記區塊(由 flightwake 建的檔案清空後刪除)。**`.flightwake/` 是使用者資料,預設保留**,`uninstall --purge` 才連同刪除。
 
 **monorepo 政策:單 repo 一份,裝在 git root。** 工作是 session 形狀的——一個 session 常橫跨多個 package,記錄跟著 session 走;拆到子目錄各裝會把同一段工作切碎成多份 record,也讓「該讀哪份 STATE」變成新的冷啟動歧義。子目錄執行 init 會擋下並指路 root。submodule 有自己的 `.git`,視為獨立 repo 各裝各的。多團隊高流量 monorepo 若覺得 CI 落後檢查誤報,先調 `--threshold`。
 

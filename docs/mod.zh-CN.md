@@ -39,7 +39,7 @@ npx flightwake doctor         # 检查安装状态
 - **`init --mod`**:安装它。如果这次设置的 agent 里没有 Claude Code,会打印一条说明并跳过 mod(不算错误)。如果该文件夹已经存在,`init --mod` 会跳过,除非加 `--force`。
 - **复制了什么**:插件的 manifest(`.claude-plugin/plugin.json`)、`hooks/` 与 `types/`——不含它的测试与开发脚本。
 - **`update`**(以及 `init --force`)只在已经安装 mod 的地方刷新,逐个文件进行;你自己加在 `.claude/skills/flightwake-mod/` 里的文件会保留。`update` 不会替你新增 mod。
-- **`uninstall`**:只移除 flightwake 发行到这里的文件,以及因此变空的文件夹。`.claude/skills/flightwake-mod/` 里的其他东西(你自己加的文件、Claude Code 写的文件)会保留,并在输出列出;`uninstall --purge` 只针对 `.flightwake/`,也不会删它们。
+- **`uninstall`**:只移除 flightwake 发行到这里的文件,以及因此变空的文件夹。`.claude/skills/flightwake-mod/` 里的其他东西(你自己加的文件、Claude Code 写的文件)会保留,并在输出列出;flightwake 发行的是文件、那个位置却是目录时,也原样保留并列出,绝不递归删除。`uninstall --purge` 只针对 `.flightwake/`,也不会删它们。
 - **`--private`**:mod 文件夹会进入 `.git/info/exclude` 的区块;如果该文件夹已被 git 跟踪,`--private` 会在写入任何东西之前拒绝(与其他 private 要求相同)。之后在 private 安装上用 `init --mod` 补装,同样会把它加进 exclude 区块。
 
 ### doctor 检查什么
@@ -99,6 +99,7 @@ commands: ["npm run migrate", "psql"]    # 命令前缀,逐个 token 比对
 
 - **`/fw-log` 里的「pass」**的意思是:直接调用的、可识别的测试运行器以可识别的方式运行并返回 0。它看不到配置文件或环境里让测试根本不执行的设置(例如 pytest.ini 里的 `addopts`、跳过测试的构建 profile),也不保证测试检查的内容。凡是它无法证明的,都记为「unknown」并附上 exit code,不记为 pass。
 - **`/fw-log` 里 shell 推断的改动可能不完整**:它们是从命令推断的(repo 内 `>`、`>>` 的输出目标,以及 `cp`、`mv`、`rm`、`tee`、`sed -i`),单独列出并标明这一点;脚本、其他程序或 git 造成的写入看不到。「agent 改动的文件」仍只含 Edit/Write/NotebookEdit 工具回报的。
+- **只列出能确认的路径——可能漏记,但不该错记。** 每个命令按它自己的参数语法读取,参数值(sed 的 `-e`/`-f` 脚本、cp 的 `-t`/`-S`)不会被当成路径;相对路径只在工作目录确定时解析(一开始,或开头的 `cd 目录 &&` 之后),其他任何 `cd` 之后就不猜;repo 外的路径不记;候选路径还要在命令执行后由 git 确认在 repo 内有变更才列出。不是 git repo 就什么都不列。(踩坑绊线刻意做相反的取舍:它只是提示,宁可多提示;记录是记录,宁可漏记。)
 - **与其他命令串在一起运行的测试记为 unknown**:例如 `echo … && npm test 2>&1; echo exit=$?`,只看得到整串命令的 exit code,所以不能当作通过的证据。每个 session 会给 agent 一次提示(附在该工具结果上),只是说明这一点、不阻止任何事;需要证据时,请单独再跑一次该测试命令。
 - **角色守门不是安全边界**:Bash 与其他工具不检查,子 agent 不检查,被禁止路径的 symlink 或其他别名也拦不到。
 - **tripwire** 在无法确定工作目录时(例如 `||` 之后的 `cd`、子 shell 里),会在候选目录下逐一比对——最多 16 个,超过就改为比对路径的尾段——所以可能多提示一些。
