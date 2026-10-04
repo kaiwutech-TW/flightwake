@@ -1,0 +1,38 @@
+{
+  "name": "flightwake-mod",
+  "version": "0.1.0",
+  "description": "flightwake's Claude Code layer: STATE in the system prompt, a quiet status band, a session flight log, trap tripwires and an opt-in role guard. Reads .flightwake/ and git only; never writes your records.",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "stateInject": {
+      "type": "boolean",
+      "title": "Load STATE at session start",
+      "description": "Add .flightwake/STATE.md (as it stood when the session started) to the system prompt. /fw-coldstart still checks the lag and reads the latest record.",
+      "default": true
+    },
+    "band": {
+      "type": "boolean",
+      "title": "Status band",
+      "description": "A row above the prompt with health, STATE lag, context use and the next command; silent while all is well. One toast when context runs hot.",
+      "default": true
+    },
+    "recorder": {
+      "type": "boolean",
+      "title": "Session flight log",
+      "description": "Note files changed, recognised test commands with their results, and commits in this session; /fw-log prints them for fw-record. Never writes a record.",
+      "default": true
+    },
+    "tripwire": {
+      "type": "boolean",
+      "title": "Trap tripwires",
+      "description": "When a file or command matches an active TRAPS entry's paths/commands fields, show that entry to the agent once per session. Never blocks.",
+      "default": true
+    },
+    "roleGuard": {
+      "type": "boolean",
+      "title": "Role guard",
+      "description": "Turn the mechanically checkable Never rules of this folder's Claude seat role into blocks on writes and commands. /fw-role-release lifts it for the session. Off by default.",
+      "default": false
+    }
+  }
+}

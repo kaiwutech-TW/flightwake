@@ -156,6 +156,19 @@ apply 只會改寫或移除仍與它當初產生的內容一致、或已經等�
 - **Codex 只在受信任的專案裡載入 `.codex/agents/`——而且必須是那個確切的 repo 路徑受信任**(受信任的上層資料夾不涵蓋裡面的 git repo,每個 worktree 路徑也各自分開算)。確認方式是實際召喚一次,而不是看檔案在不在;帶有 Codex 不認得欄位的定義會被悄悄丟掉,這就是為什麼 flightwake 只寫 `name`、`description` 與 `developer_instructions`。
 - 角色的「何時叫」是告訴 agent 的資訊,不會自己觸發。座位區塊帶有明確規則(「任務符合時,就由那個角色做——召喚它或派工給它」),測試中正是這條讓 agent 真的去轉派。
 
+### 選配:Claude Code mod 的角色守門
+
+如果你使用 `flightwake-mod` 這個 Claude Code mod,它的**角色守門**開關(`roleGuard`,預設關閉)可以把一條機器可讀的規則變成攔截。上面「角色是指引,不是權限」那條對其他一切仍然成立。
+
+- **怎麼打開。** 在 Claude Code 的 `/config`(mod 的選項會列在那裡),或寫進*使用者*設定(`~/.claude/settings.json`):`"pluginConfigs": { "flightwake-mod@skills-dir": { "options": { "roleGuard": true } } }`。外掛選項不讀專案設定,所以這是每個人自己的選擇。
+- **寫在哪裡。** 寫在 `ROLES.md` 裡該角色本文中自成一行:`deny-write: ["src/**", "lib/**"]`(repo 相對的 glob;不含 `/` 的樣式會比對任何深度的該檔名)。`roles apply` 與 `roles card` 會原文帶過去,所以這一行會跟著進座位區塊與派工卡。
+- **mod 強制什麼。** 開關打開時,*主* Claude Code session 對這些路徑的 `Edit`、`Write`、`NotebookEdit` 會被擋下,訊息會說明是哪個角色的哪條規則、改怎麼做(派給負責的角色,或請使用者放行)。
+- **仍然只是指引的部分。** 其他一切:Bash 與所有其他工具、MCP、子 agent,以及自然語言的「禁止」項目——它們不會被轉成規則。
+- **覆寫。** 以派工卡開頭的 session 改依卡片上的角色,不依座位(沒有 `deny-write` 的卡片就不守任何路徑)。子 agent(包含為某件事召喚的待命角色)是明確的指派,不會被檢查。
+- **放行。** 只有使用者本人能執行 `/fw-role-release`(在輸入框打,不能由外掛或模型代打):不帶參數會列出規則;帶 glob 或其編號就放行該條;`all` 放行全部;`revoke` 收回放行。放行只在本 session 有效,生效期間狀態列持續顯示,並在對話紀錄留下一筆說明。同一路徑落在多條規則下時,要每一條都放行才算放行:放行 `src/**` 不會連帶放行 `src/private/**`。守門只在有安裝 flightwake(存在 `.flightwake/STATE.md`)的資料夾作用;session 換到另一個資料夾時會重讀那裡的座位。
+- **何時生效。** 角色在 session 開始時讀取一次;改了座位或 `deny-write` 後,要開新 session(或 `/clear`)才會生效。
+- **不是安全邊界。** 這只是個方便,用來擋下「經理順手去寫產品程式碼」這類常見失誤。蓄意的 agent 仍可經由 Bash 寫入。路徑只照字面比對(會正規化,但不解析 symlink 等同一檔案的別名),所以用別名指向被禁止的路徑也擋不到。你真正的防護請繼續保留。
+
 ## 參考過的前例
 
 我們參考過的角色庫(只參考、沒有複製任何文字):[BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) · [ruflo](https://github.com/ruvnet/ruflo) · [wshobson/agents](https://github.com/wshobson/agents) · [multi-agent-shogun](https://github.com/yohey-w/multi-agent-shogun)。multi-agent-shogun 每個角色的禁止行為清單,跟我們的「禁止」最接近;Gas Town 的長期 crew 與短期 worker 之分,跟我們的座位與待命最接近。

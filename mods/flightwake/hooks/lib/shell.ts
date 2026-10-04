@@ -1,0 +1,126 @@
+/**
+ * A deliberately small shell-command reader for F3 (test recognition) and F4 (command tripwires).
+ * It is NOT a shell parser: it splits on top-level control operators outside quotes and tokenizes each simple
+ * command. Anything it can't read plainly is flagged (`isComplex`) so callers can stay conservative.
+ */
+
+export type Segment = {
+  /** Words of one simple command, quotes removed; leading `VAR=value` assignments moved to `env`. */
+  tokens: string[]
+  env: string[]
+  /** The operator that ended this segment: '&&', '||', ';', '|', '&', '\n', or '' for the last one. */
+  op: string
+  /** A subshell boundary marker (`(` / `)`), carrying no words; F4 walks into subshells, F3 counts it as compound. */
+  group?: 'open' | 'close'
+}
+
+export type ParsedCommand = {
+  segments: Segment[]
+  /** Command substitution, backticks, subshell parens, heredocs or an unterminated quote — not plainly readable. */
+  isComplex: boolean
+}
+
+const OPS = ['&&', '||', ';;', '|&', ';', '|', '&', '\n'] as const
+
+export function parseCommand(command: string): ParsedCommand {
+  const segments: Segment[] = []
+  let isComplex = false
+  let tokens: string[] = []
+  let cur = ''
+  let hasCur = false
+  let quote: '' | "'" | '"' = ''
+  const pushWord = () => {
+    if (hasCur) tokens.push(cur)
+    cur = ''
+    hasCur = false
+  }
+  const endSegment = (op: string) => {
+    pushWord()
+    const env: string[] = []
+    while (tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0] as string)) env.push(tokens.shift() as string)
+    if (tokens.length || env.length) segments.push({ tokens, env, op })
+    else if (segments.length && op) (segments[segments.length - 1] as Segment).op = op
+    tokens = []
+  }
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i] as string
+    if (quote) {
+      if (c === quote) quote = ''
+      else if (c === '\\' && quote === '"' && i + 1 < command.length) cur += command[++i]
+      else {
+        if (quote === '"' && (c === '`' || (c === '$' && command[i + 1] === '('))) isComplex = true
+        cur += c
+      }
+      continue
+    }
+    if (c === "'" || c === '"') {
+      quote = c
+      hasCur = true
+      continue
+    }
+    if (c === '\\' && i + 1 < command.length) {
+      if (command[i + 1] === '\n') { i++; continue } // line continuation
+      cur += command[++i]
+      hasCur = true
+      continue
+    }
+    // `$( … )` and backticks: command substitution stays inside the word (nested parens counted)
+    if (c === '$' && command[i + 1] === '(') {
+      isComplex = true
+      let depth = 0
+      for (; i < command.length; i++) {
+        const d = command[i] as string
+        cur += d
+        if (d === '(') depth++
+        else if (d === ')' && --depth === 0) break
+      }
+      hasCur = true
+      continue
+    }
+    if (c === '`') {
+      isComplex = true
+      const close = command.indexOf('`', i + 1)
+      const end = close < 0 ? command.length - 1 : close
+      cur += command.slice(i, end + 1)
+      i = end
+      hasCur = true
+      continue
+    }
+    // A bare `(` / `)` opens / closes a subshell: an explicit marker segment, so the commands inside stay visible
+    if (c === '(' || c === ')') {
+      isComplex = true
+      endSegment('')
+      segments.push({ tokens: [], env: [], op: '', group: c === '(' ? 'open' : 'close' })
+      continue
+    }
+    if (c === '<' && command[i + 1] === '<') isComplex = true
+    // `&` inside a redirection (`2>&1`, `>&2`, `<&3`, `&>file`, `&>>file`) is part of the word, not an operator
+    const isRedirAmp = c === '&' && (command[i - 1] === '>' || command[i - 1] === '<' || command[i + 1] === '>')
+    const op = isRedirAmp ? undefined : OPS.find((o) => command.startsWith(o, i))
+    if (op) {
+      endSegment(op === '|&' ? '|' : op === ';;' ? ';' : op)
+      i += op.length - 1
+      continue
+    }
+    if (c === ' ' || c === '\t') {
+      pushWord()
+      continue
+    }
+    if (c === '#' && !hasCur) {
+      // a comment runs to the end of its line only; the newline itself still ends the segment
+      while (i + 1 < command.length && command[i + 1] !== '\n') i++
+      continue
+    }
+    cur += c
+    hasCur = true
+  }
+  if (quote) isComplex = true
+  endSegment('')
+  return { segments, isComplex }
+}
+
+/** True when the tokens start with every token of `prefix` (whitespace-separated), compared exactly. */
+export function startsWithTokens(tokens: readonly string[], prefix: string): boolean {
+  const p = prefix.trim().split(/\s+/).filter(Boolean)
+  return p.length > 0 && p.length <= tokens.length && p.every((t, i) => tokens[i] === t)
+}
