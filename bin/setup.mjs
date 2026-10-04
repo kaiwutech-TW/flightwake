@@ -15,7 +15,7 @@ import {
   printNext, addPrivateExcludes, gitMissingMessage, monorepoMessage, createWriter, refusalReport, incompleteReport,
 } from './install.mjs';
 import { installRolesSkill } from './roles.mjs';
-import { runDoctor } from './doctor.mjs';
+import { runDoctor, stateUnfilled } from './doctor.mjs';
 
 export const INTERRUPT = Symbol('interrupt');
 class Abort { constructor(code) { this.code = code; } }
@@ -103,7 +103,7 @@ export function realContext({ target, fwSrc, version, log = (s) => console.log(s
       if (plan.mode === 'update') {
         log(M({ en: `\n✅ updated to v${version}.`, 'zh-TW': `\n✅ 已更新到 v${version}。`, 'zh-CN': `\n✅ 已更新到 v${version}。`, ja: `\n✅ v${version} に更新しました。` }));
       } else {
-        printNext({ ...plan.opts, langExplicit: true, marker: detectInstall(target).marker, log }, r);
+        printNext({ ...plan.opts, langExplicit: true, marker: detectInstall(target).marker, fresh: stateUnfilled(target, fwSrc), log }, r);
       }
       if (plan.roles) log(M({
         en: '   ℹ️  Roles: ask your agent to "run fw-roles" — it scans the project, recommends a team and previews it before anything is applied',

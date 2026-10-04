@@ -17,7 +17,7 @@ description: flightwake 冷啟動 — 接手一個 repo 前先恢復狀態。Use
      `updated` = 今天,`updated_by` = 你(模型/session),`latest_record` = `.flightwake/records/` 裡最新的檔,沒有就寫 `none`
    - `health`:範本預填的 `health: green` 視為未填。只有本 session 有驗證證據(例如實際跑過測試且通過)才標 green;
      否則標 yellow 並在註解寫明原因(例如 `health: yellow  # 第一版 STATE,尚未驗證任何東西`)
-   - 缺料時:沒有 commit → 寫「尚無歷史」;沒有 README → 依檔案結構描述並註明;沒有 record → `latest_record: none`。寧可寫「不明」也不要猜
+   - 缺料時:沒有 commit → 寫「尚無歷史」;沒有 README → 依檔案結構描述並註明;沒有 record → `latest_record: none`——就寫這個,小寫、不加引號或括號:這是 `doctor` 認得的唯一「尚無 record」寫法(正常狀態,不是問題)。寧可寫「不明」也不要猜
    - 接著決定怎麼走。repo 若已有歷史——`.flightwake/records/` 有任何 record、DECISIONS/TRAPS 有範本以外的條目、或有 commit——
      這是 STATE 只填一半的接手:照常續走第 2–4 步(最新 record、相關 DECISIONS/TRAPS、落後量檢查)。只有真正全新的安裝
      (以上皆無)才直接到第 5 步。無論哪種,第 5 步的回報都要包含你補上的 STATE 與判斷不出來的部分

@@ -27,6 +27,14 @@ export function templatePlaceholderLines(fwSrc) {
   return set;
 }
 
+/** STATE is missing or still carries the shipped template's placeholder lines — i.e. fw-coldstart has to write it. */
+export function stateUnfilled(target, fwSrc) {
+  const p = join(target, '.flightwake', 'STATE.md');
+  if (!existsSync(p)) return true;
+  const placeholders = templatePlaceholderLines(fwSrc);
+  try { return readFileSync(p, 'utf8').split('\n').some((l) => placeholders.has(l.trim())); } catch { return true; }
+}
+
 export function runDoctor({ target, fwSrc, version, lang, log }) {
   const M = makeM(lang);
   const rows = [];
@@ -77,8 +85,13 @@ export function runDoctor({ target, fwSrc, version, lang, log }) {
     } else {
       ok('STATE.md');
       const rec = /^latest_record:\s*(\S+)/m.exec(state)?.[1];
-      if (!rec || /^(none|-|~|null)$/i.test(rec)) info(M({ en: 'no record yet (latest_record is empty)', 'zh-TW': '尚無 record(latest_record 為空)', 'zh-CN': '尚无 record(latest_record 为空)', ja: 'record はまだない(latest_record が空)' }));
+      // `latest_record: none` is the canonical "no record yet" (what fw-coldstart writes). A repo with no record at all
+      // is a normal state — notes repos especially — so any value that points at nothing while records/ is empty is the
+      // same thing, reported as information; only a pointer to a missing file while records exist is worth a warning.
+      const hasRecords = (() => { try { return readdirSync(at('.flightwake/records')).some((f) => f.endsWith('.md')); } catch { return false; } })();
+      if (!rec || /^(none|-|~|null)$/i.test(rec)) info(M({ en: 'no record yet (latest_record: none)', 'zh-TW': '尚無 record(latest_record: none)', 'zh-CN': '尚无 record(latest_record: none)', ja: 'record はまだない(latest_record: none)' }));
       else if (existsSync(at(`.flightwake/${rec}`))) ok(`latest_record → ${rec}`);
+      else if (!hasRecords) info(M({ en: `no record yet (records/ is empty; latest_record is "${rec}" — the canonical spelling is latest_record: none)`, 'zh-TW': `尚無 record(records/ 是空的;latest_record 寫的是「${rec}」— 正規寫法是 latest_record: none)`, 'zh-CN': `尚无 record(records/ 是空的;latest_record 写的是「${rec}」— 规范写法是 latest_record: none)`, ja: `record はまだない(records/ は空。latest_record は「${rec}」— 正規の書き方は latest_record: none)` }));
       else warn(M({ en: `latest_record points to ${rec}, which does not exist`, 'zh-TW': `latest_record 指向的 ${rec} 不存在`, 'zh-CN': `latest_record 指向的 ${rec} 不存在`, ja: `latest_record の指す ${rec} が存在しない` }));
     }
   }

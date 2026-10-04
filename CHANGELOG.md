@@ -62,6 +62,9 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   before, the copied skill showed up in `git status`.
 
 ### Fixed
+- `init`/`setup` no longer tell an existing install to "run fw-coldstart — it writes the first STATE" when STATE is already
+  filled in; the next step is then just the commit. `latest_record: none` is the one canonical "no record yet" (fw-coldstart
+  writes it); `doctor` treats it — and any value while `records/` is empty — as information, not a warning.
 - A `--private` install for Claude Code (its table in `CLAUDE.local.md`) followed by `update` fell back to Codex: it created
   `AGENTS.md`, `.agents/skills`, `.codex/hooks.json`, and dropped `CLAUDE.local.md` from the exclude block, so it showed up in
   `git status`. A `CLAUDE.local.md` carrying the flightwake marker now counts as Claude Code (the bug is also in 0.14.0).

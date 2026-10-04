@@ -21,7 +21,8 @@ Purpose: before touching any file, recover to a "safe takeover" state with the m
      this session (e.g. you ran the tests and they passed); otherwise mark yellow and say why in the comment
      (e.g. `health: yellow  # first STATE — nothing verified yet`)
    - Missing material: no commits → "no history yet"; no README → describe from the file tree and say so; no records →
-     `latest_record: none`. Write "unknown" rather than guess
+     `latest_record: none` — exactly that, lowercase, no quotes or brackets: it is the one spelling `doctor` reads as
+     "no record yet" (a normal state, not a problem). Write "unknown" rather than guess
    - Then decide how to continue. If the repo already has history — any record in `.flightwake/records/`, entries in
      DECISIONS/TRAPS beyond the template, or commits — this is a takeover with a half-filled STATE: continue with steps 2–4
      as usual (latest record, relevant DECISIONS/TRAPS, the lag check). Only a truly fresh install (none of those) goes

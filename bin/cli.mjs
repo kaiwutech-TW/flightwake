@@ -22,7 +22,7 @@ import {
   addPrivateExcludes, gitMissingMessage, monorepoMessage, notRepoMessage, detectInstall, resolveOptions, install,
   printNext, unregisterRepo, createWriter, refusalReport, incompleteReport,
 } from './install.mjs';
-import { runDoctor } from './doctor.mjs';
+import { runDoctor, stateUnfilled } from './doctor.mjs';
 import { runSetup, readlineIO, realContext } from './setup.mjs';
 
 const FW_SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -315,5 +315,5 @@ if (IS_UPDATE) {
     ja: `\n✅ v${VERSION} に更新しました。`,
   }));
 } else {
-  printNext({ ...opts, langExplicit: !!langArg, marker: det.marker, log }, result);
+  printNext({ ...opts, langExplicit: !!langArg, marker: det.marker, fresh: stateUnfilled(TARGET, FW_SRC), log }, result);
 }

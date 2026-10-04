@@ -17,7 +17,7 @@ description: flightwake コールドスタート — repo に触る前に状態�
      `updated` = 今日、`updated_by` = あなた(モデル/session)、`latest_record` = `.flightwake/records/` の最新ファイル、無ければ `none`
    - `health`:テンプレートが事前に入れている `health: green` は未記入として扱う。green にしてよいのは、この session に検証の証拠がある場合(例:実際にテストを走らせて通った)だけ;
      そうでなければ yellow にして、コメントに理由を書く(例:`health: yellow  # 最初の STATE、まだ何も検証していない`)
-   - 材料が足りない場合:commit が無い → 「履歴なし」と書く;README が無い → ファイル構成から説明し、その旨を明記;record が無い → `latest_record: none`。推測するより「不明」と書く
+   - 材料が足りない場合:commit が無い → 「履歴なし」と書く;README が無い → ファイル構成から説明し、その旨を明記;record が無い → `latest_record: none`——この通り、小文字で引用符や括弧を付けない:`doctor` が「record はまだない」(正常な状態で問題ではない)と読む唯一の書き方。推測するより「不明」と書く
    - 次に進み方を決める。repo に履歴がある場合——`.flightwake/records/` に record がある、DECISIONS/TRAPS にテンプレート以外の項目がある、
      または commit がある——これは STATE が半分しか埋まっていない引き継ぎ:通常どおりステップ 2–4 を続ける(最新の record、関連する
      DECISIONS/TRAPS、遅れの確認)。まったくの新規インストール(いずれも無い)の場合だけ、ステップ 5 に直行する。どちらの場合も、

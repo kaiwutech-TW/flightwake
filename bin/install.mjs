@@ -879,7 +879,9 @@ export function install(o) {
 }
 
 /** The closing message of a fresh (non-update) install: what to do next, and the opt-ins not taken. */
-export function printNext({ lang, private: PRIVATE, statusline: STATUSLINE, langExplicit, marker, log }, { active, agentsSkills, mod, gauge }) {
+/** fresh: STATE is still the unfilled template (computed by the caller with doctor's stateUnfilled) — only then is
+ *  "run fw-coldstart, it writes the first STATE" the next step; on an initialized STATE the next step is the commit. */
+export function printNext({ lang, private: PRIVATE, statusline: STATUSLINE, langExplicit, marker, fresh = true, log }, { active, agentsSkills, mod, gauge }) {
   const M = makeM(lang);
   const addPaths = ['.flightwake', '.claude',
     ...(agentsSkills ? ['.agents'] : []),
@@ -892,43 +894,43 @@ export function printNext({ lang, private: PRIVATE, statusline: STATUSLINE, lang
 ✅ done (--private). Records stay local; git does not track them. Costs and caveats:
    - Records aren't shared with the repo: teammates and other machines can't see STATE/records (you give up flightwake's sharing value)
    - .git/info/exclude is purely local: after a fresh clone, rerun init --private
-   - To go shared again: delete the flightwake block from .git/info/exclude, then git add .flightwake .claude
-   Next: open an agent session in this repo and run fw-coldstart — it writes the first STATE from the repo as it is`,
+   - To go shared again: delete the flightwake block from .git/info/exclude, then git add .flightwake .claude${fresh ? `
+   Next: open an agent session in this repo and run fw-coldstart — it writes the first STATE from the repo as it is` : ''}`,
     'zh-TW': `
 ✅ done(--private)。紀錄只留本機,git 不追蹤。代價與注意:
    - 紀錄不隨 repo 共享:隊友與其他機器看不到 STATE/records(放棄 flightwake 的共享價值)
    - .git/info/exclude 純本地:重新 clone 後需重跑 init --private
-   - 想改回共享:刪除 .git/info/exclude 的 flightwake 區塊,再 git add .flightwake .claude
-   下一步:在這個 repo 開一個 agent session 跑 fw-coldstart — 它會依 repo 現況寫出第一版 STATE`,
+   - 想改回共享:刪除 .git/info/exclude 的 flightwake 區塊,再 git add .flightwake .claude${fresh ? `
+   下一步:在這個 repo 開一個 agent session 跑 fw-coldstart — 它會依 repo 現況寫出第一版 STATE` : ''}`,
     'zh-CN': `
 ✅ done(--private)。记录只留本机,git 不追踪。代价与注意:
    - 记录不随 repo 共享:队友与其他机器看不到 STATE/records(放弃 flightwake 的共享价值)
    - .git/info/exclude 纯本地:重新 clone 后需重跑 init --private
-   - 想改回共享:删除 .git/info/exclude 的 flightwake 区块,再 git add .flightwake .claude
-   下一步:在这个 repo 开一个 agent session 跑 fw-coldstart — 它会依 repo 现况写出第一版 STATE`,
+   - 想改回共享:删除 .git/info/exclude 的 flightwake 区块,再 git add .flightwake .claude${fresh ? `
+   下一步:在这个 repo 开一个 agent session 跑 fw-coldstart — 它会依 repo 现况写出第一版 STATE` : ''}`,
     ja: `
 ✅ 完了(--private)。記録はローカルのみ、git は追跡しません。代償と注意:
    - 記録は repo と共有されない:チームメイトや別のマシンから STATE/records が見えない(flightwake の共有価値を手放す)
    - .git/info/exclude は純粋にローカル:clone し直したら init --private を再実行
-   - 共有に戻すには:.git/info/exclude の flightwake ブロックを削除し、git add .flightwake .claude
-   次:この repo で agent セッションを開いて fw-coldstart を実行 — repo の現状から最初の STATE を書きます`,
+   - 共有に戻すには:.git/info/exclude の flightwake ブロックを削除し、git add .flightwake .claude${fresh ? `
+   次:この repo で agent セッションを開いて fw-coldstart を実行 — repo の現状から最初の STATE を書きます` : ''}`,
   }) : M({
     en: `
-✅ done. Next:
+✅ done. Next:${fresh ? `
    1. Open an agent session in this repo and run fw-coldstart — it writes the first STATE from the repo as it is
-   2. git add ${addPaths} && git commit`,
+   2. git add ${addPaths} && git commit` : ` git add ${addPaths} && git commit`}`,
     'zh-TW': `
-✅ done。下一步:
+✅ done。下一步:${fresh ? `
    1. 在這個 repo 開一個 agent session 跑 fw-coldstart — 它會依 repo 現況寫出第一版 STATE
-   2. git add ${addPaths} && git commit`,
+   2. git add ${addPaths} && git commit` : ` git add ${addPaths} && git commit`}`,
     'zh-CN': `
-✅ done。下一步:
+✅ done。下一步:${fresh ? `
    1. 在这个 repo 开一个 agent session 跑 fw-coldstart — 它会依 repo 现况写出第一版 STATE
-   2. git add ${addPaths} && git commit`,
+   2. git add ${addPaths} && git commit` : ` git add ${addPaths} && git commit`}`,
     ja: `
-✅ 完了。次:
+✅ 完了。次:${fresh ? `
    1. この repo で agent セッションを開いて fw-coldstart を実行 — repo の現状から最初の STATE を書きます
-   2. git add ${addPaths} && git commit`,
+   2. git add ${addPaths} && git commit` : ` git add ${addPaths} && git commit`}`,
   }));
   // Language was never chosen — English is the documented default, but the alternatives have to be discoverable.
   // No auto-detection on purpose: terminal LANG and the OS locale routinely disagree, and a confident wrong

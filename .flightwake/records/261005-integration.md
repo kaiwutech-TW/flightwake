@@ -120,3 +120,20 @@ STATE 以 setup-wizard 版為底、加入 mods 段落並改寫 frontmatter 與�
 驗證:smoke 41 節 `✅ smoke 全過`;`claude plugin test` 276 pass / 0 fail;validate `✔ Validation passed`(零警告);tsc clean;git-readonly-check 三項 ok。
 本輪未重做真機載入(改動在安裝器的移除與預檢,mod 本身未變)。DECISIONS 2026-10-05 首兩條。
 Astra 列為可延後、未修:未寫入的自加 symlink 仍會讓 update 被拒(沿用既定的 symlink 相容性取捨)。
+
+## 試裝回饋修正(同日,6d35a0f..)
+
+驗收者確認 Astra 兩項必修通過後,在一個真實的既有安裝上試裝本分支(筆記型、只有 AGENTS.md、原本 0.14.0;
+`init --force --lang=zh-TW --agents=claude,codex --statusline --profile=notes --orca --mod`):安裝成功、使用者資料雜湊不變、doctor 0 失敗。實際使用發現兩個小問題:
+
+1. **STATE 已初始化時,結尾「下一步」仍說 fw-coldstart 會寫出第一版 STATE** → 依 STATE 是否仍為未填範本(與 doctor 同一判定)決定;已初始化只提示 commit。
+   紅:`❌ FAIL: 42 STATE 已初始化時,init --agents=claude --force 的結尾不得再說會寫出第一版 STATE`;涵蓋 init --force(含 --mod)、update、private、zh-TW。
+2. **沒有 record 的 repo,doctor 回報「latest_record 指向的 (尚無) 不存在」** → 正規寫法 `latest_record: none`(fw-coldstart 四語明寫唯一拼法);
+   doctor 對 `none` 與「records/ 為空時的任何值」列資訊,records/ 有檔卻指向不存在才提醒。smoke 42 驗 `none`、`(尚無)`、範本殘值三種,以及 records/ 有檔時仍提醒。
+   fw-coldstart 文字的檢查是關鍵字檢查。
+
+驗證:smoke 42 節 `✅ smoke 全過`;plugin test 276/276;validate 零警告;tsc clean;git-readonly-check 三項 ok。DECISIONS 2026-10-05 首兩條。
+
+**已知現象(不修)**:這次試裝印出「7 個框架檔有本地修改、已被覆蓋」。原因是本分支改了這些框架檔(skill、範本)但版本號仍是 0.14.0,
+「同版同語言才判定本地修改」的覆蓋防護因此把分支的新內容當成使用者修改。正式發版會 bump 版本,使用者不會遇到;開發中的分支(版本未 bump)裝到既有同版安裝時會出現,訊息無害、檔案內容是分支的版本。
+
