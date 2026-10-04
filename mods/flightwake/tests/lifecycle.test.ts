@@ -195,7 +195,7 @@ describe('lifecycle: all features side by side', () => {
     const r = await write($, '/repo/src/a.ts')
     expect(r.deny).toBeUndefined()
     expect(hintOf(await bash($, 'bash test/smoke.sh'))).toBe('')
-    expect(p.registered).toEqual([])
+    expect(p.registered).toEqual(['fw-mod']) // only the read-only status command: it is how the switches are seen
     expect(p.toasts).toEqual([])
   })
 

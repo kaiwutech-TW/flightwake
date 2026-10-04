@@ -50,10 +50,17 @@ export type FwTestRun = {
 export type FwFileTouch = { path: string; tool: string; at: number; agentId?: string }
 export type FwCommit = { sha: string; kind: string; at: number; agentId?: string }
 
+/** F3 — a file a Bash command wrote or removed, inferred from the command's words (redirections, cp/mv/rm/tee/sed -i). */
+export type FwShellWrite = { path: string; via: string; at: number; agentId?: string }
+
 export type FwFlightLog = {
   sessionId: string
   startedAt: number
   files: FwFileTouch[]
+  /** Inferred from Bash commands, kept apart from `files` (which tools reported for certain); may be incomplete. */
+  shellFiles?: FwShellWrite[]
+  /** The one-per-session hint about a test run chained with other commands has been given. */
+  isChainHintShown?: boolean
   tests: FwTestRun[]
   commits: FwCommit[]
   /** Entries dropped by the size caps, so the summary can say so. */

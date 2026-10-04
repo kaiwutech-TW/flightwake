@@ -58,15 +58,16 @@ const view = async (k: Knobs) => k.state.get('flightwake-mod/bandView')?.value a
   | undefined
 
 describe('band: view and render', () => {
-  test('healthy and in sync → quiet, render falls through', async ($, on) => {
+  test('healthy and in sync, no bottom gauge → the band is still shown (it stands in for the gauge), with the context percent', async ($, on) => {
     const w = installWorld(on, { files: repoFiles(), git: gitBehind(0) })
-    const k = engine(on)
+    const k = engine(on, { percent: 7 })
     await $.session.start(START)
-    expect((await view(k))?.isQuiet).toBe(true)
+    expect((await view(k))?.isQuiet).toBe(false)
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await $.ui.mount({ ...BAND, surface, props: PROPS })
-      expect(await ui.find({ type: 'Text', text: /flightwake/ })).toBeUndefined()
-      expect(await ui.find({ type: 'Text', text: /engine-band/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /flightwake/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /●green/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: / 7%/ })).toBeDefined()
       await ui.unmount()
     }
     expect(w.writes).toEqual([])
@@ -89,11 +90,12 @@ describe('band: view and render', () => {
     }
   })
 
-  test('behind 2 (human) stays quiet', async ($, on) => {
+  test('behind 2 (human), no gauge → shown without the /fw-record hint (that starts at 3)', async ($, on) => {
     installWorld(on, { files: repoFiles(), git: gitBehind(2) })
     const k = engine(on)
     await $.session.start(START)
-    expect((await view(k))?.isQuiet).toBe(true)
+    expect((await view(k))?.isQuiet).toBe(false)
+    expect((await view(k))?.hint).toBeNull()
   })
 
   test('yellow health shows with the unverified-items hint', async ($, on) => {
@@ -140,7 +142,7 @@ describe('band: view and render', () => {
     })
   }
 
-  test('lag error alone does not wake the band', async ($, on) => {
+  test('lag error, no gauge → shown, the lag reads "?" (never "in sync")', async ($, on) => {
     installWorld(on, {
       files: repoFiles(),
       git: { 'status --porcelain -- .flightwake/STATE.md': '', 'log -1 --format=%H -- .flightwake/STATE.md': null },
@@ -149,7 +151,8 @@ describe('band: view and render', () => {
     await $.session.start(START)
     const v = await view(k)
     expect(v?.lagKind).toBe('error')
-    expect(v?.isQuiet).toBe(true)
+    expect(v?.isQuiet).toBe(false) // no gauge: shown, the lag reads "?" rather than "in sync"
+    expect(v?.hint).toBeNull()
   })
 
   test('context 60%+ shows the percentage; 85% adds the record → clear → coldstart hint', async ($, on) => {
@@ -176,7 +179,7 @@ describe('band: view and render', () => {
     expect((await view(k))?.isQuiet).toBe(false)
     k.turns = 1
     await $.turn.complete(DONE)
-    expect((await view(k))?.isQuiet).toBe(true)
+    expect((await view(k))?.hint).toBeNull()
   })
 
   test('a survey holding the band → falls through', async ($, on) => {
@@ -202,14 +205,14 @@ describe('band: view and render', () => {
     const w: World = installWorld(on, { files: repoFiles(), git: gitBehind(0) })
     const k = engine(on)
     await $.session.start(START)
-    expect((await view(k))?.isQuiet).toBe(true)
+    expect((await view(k))?.behind).toBe(0)
     w.git = gitBehind(5)
     k.commit = true
     const r = await $.tool.call({ tool: 'Bash', command: 'git commit -m x' } as never)
     expect((r as { result?: { gitOperation?: unknown } }).result?.gitOperation).toBeDefined()
     const v = await view(k)
     expect(v?.behind).toBe(5)
-    expect(v?.isQuiet).toBe(false)
+    expect(v?.hint).toContain('/fw-record')
   })
 
   test('a Bash call without a git operation does not recompute', async ($, on) => {
@@ -320,11 +323,17 @@ describe('band: degrade and switches', () => {
     await ui.unmount()
   })
 
-  test('STATE still the template → nothing', async ($, on) => {
+  test('STATE still the template, no gauge → shown with health "?" and the /fw-coldstart hint; context still shown', async ($, on) => {
     installWorld(on, { files: repoFiles(STATE_TEMPLATE), git: gitBehind(9) })
     const k = engine(on, { percent: 95 })
     await $.session.start(START)
-    expect(await view(k)).toBeNull()
+    const v = await view(k)
+    expect(v?.isQuiet).toBe(false)
+    expect(v?.health).toBe('unknown')
+    expect(v?.hint).toMatch(/fw-coldstart/)
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal', props: PROPS })
+    expect(await ui.find({ type: 'Text', text: /95%/ })).toBeDefined()
+    await ui.unmount()
   })
 
   test('external edit then a new turn picks up the change (lifecycle: file changed by another program)', async ($, on) => {

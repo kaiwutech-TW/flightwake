@@ -124,3 +124,69 @@ export function startsWithTokens(tokens: readonly string[], prefix: string): boo
   const p = prefix.trim().split(/\s+/).filter(Boolean)
   return p.length > 0 && p.length <= tokens.length && p.every((t, i) => tokens[i] === t)
 }
+
+/** A file a command writes or removes, as far as its words say: the word as written and how it is written. */
+export type ShellWrite = { path: string; via: '>' | '>>' | 'cp' | 'mv' | 'rm' | 'tee' | 'sed -i' }
+
+const isFileWord = (w: string | undefined): w is string =>
+  typeof w === 'string' && w !== '' && !w.includes('$') && !w.includes('`') && !w.startsWith('/dev/') && !w.startsWith('&')
+const nonFlags = (words: readonly string[]): string[] => {
+  const out: string[] = []
+  let isAfterDashDash = false
+  for (const w of words) {
+    if (!isAfterDashDash && w === '--') { isAfterDashDash = true; continue }
+    if (!isAfterDashDash && w.startsWith('-')) continue
+    out.push(w)
+  }
+  return out
+}
+
+/**
+ * The write targets plainly readable from a command (F3's "changed through shell commands" list): output
+ * redirections (`>f`, `>> f`, `2>f`, `&>f`; not fd duplications like `2>&1`, not /dev/*), and the targets of cp/mv
+ * (destination; mv also its sources), rm, tee and `sed -i`. Words holding `$` or backticks are skipped (not readable
+ * without running the shell). An inference from words, never a record of what happened: cp -t, find -delete, scripts,
+ * editors, git checkout etc. are not seen.
+ */
+export function shellWriteTargets(command: string): ShellWrite[] {
+  const out: ShellWrite[] = []
+  const add = (path: string, via: ShellWrite['via']) => { if (isFileWord(path)) out.push({ path, via }) }
+  for (const seg of parseCommand(command).segments) {
+    if (seg.group) continue
+    const words: string[] = []
+    const t = seg.tokens
+    for (let i = 0; i < t.length; i++) {
+      const tok = t[i] as string
+      const m = /^(?:\d*|&)(>>?)(.*)$/.exec(tok)
+      if (m && !tok.startsWith('<')) {
+        const via = m[1] as '>' | '>>'
+        const rest = m[2] as string
+        if (rest === '') add(t[++i] as string, via) // `> file`
+        else if (!rest.startsWith('&')) add(rest, via) // `>file`; `>&2` duplicates a descriptor
+        continue
+      }
+      if (/^\d*<.*/.test(tok)) { if (tok.replace(/^\d*</, '') === '') i++; continue } // input redirection: skip its word
+      words.push(tok)
+    }
+    const [cmd, ...args] = words
+    if (cmd === 'cp' || cmd === 'mv') {
+      const a = nonFlags(args)
+      if (a.length >= 2) {
+        if (cmd === 'mv') for (const src of a.slice(0, -1)) add(src, 'mv')
+        add(a[a.length - 1] as string, cmd)
+      }
+    } else if (cmd === 'rm' || cmd === 'tee') {
+      for (const a of nonFlags(args)) add(a, cmd)
+    } else if (cmd === 'sed') {
+      const i = args.findIndex((a) => a === '-i' || /^-i\S/.test(a) || a === '--in-place' || a.startsWith('--in-place='))
+      if (i >= 0) {
+        // BSD sed takes the suffix as the next word (`-i ''`): an empty word right after a bare -i is that suffix
+        const rest = args.slice(i + 1)
+        const afterSuffix = args[i] === '-i' && rest[0] === '' ? rest.slice(1) : rest
+        const files = nonFlags(afterSuffix).filter((a) => a !== '')
+        for (const f of files.slice(1)) add(f, 'sed -i') // the first is the script
+      }
+    }
+  }
+  return out
+}

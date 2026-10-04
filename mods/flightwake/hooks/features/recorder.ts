@@ -13,10 +13,10 @@
 import { atom, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
-import type { FwFlightLog, FwTestRun } from '../../types'
+import type { FwFlightLog, FwShellWrite, FwTestRun } from '../../types'
 import { M, STATE_REL, fwContext, packageScripts, readRel, relToRoot } from '../lib/core'
 import type { Io, Lang } from '../lib/core'
-import { parseCommand } from '../lib/shell'
+import { parseCommand, shellWriteTargets } from '../lib/shell'
 import type { Segment } from '../lib/shell'
 import { declaredCommands, judge, type Judgment } from '../lib/testcmd'
 
@@ -148,7 +148,7 @@ export function outcomeOf(j: Judgment, seen: { exitCode: number | null; reason?:
 // The log
 // ---------------------------------------------------------------------------------------------------------------
 
-const freshLog = (sessionId: string, now: number): FwFlightLog => ({ sessionId, startedAt: now, files: [], tests: [], commits: [], dropped: 0 })
+const freshLog = (sessionId: string, now: number): FwFlightLog => ({ sessionId, startedAt: now, files: [], shellFiles: [], tests: [], commits: [], dropped: 0 })
 
 /** Applies `change` to this session's log (a log of another session id is replaced: that is the /clear behaviour). */
 async function record($: EngineInterface, io: Io, change: (log: FwFlightLog) => void): Promise<void> {
@@ -158,7 +158,7 @@ async function record($: EngineInterface, io: Io, change: (log: FwFlightLog) => 
   const now = await $.clock.now()
   await update($, flightLog, (cur) => {
     const base = cur !== null && cur.sessionId === sid ? cur : freshLog(sid, now)
-    const log: FwFlightLog = { ...base, files: [...base.files], tests: [...base.tests], commits: [...base.commits] }
+    const log: FwFlightLog = { ...base, files: [...base.files], shellFiles: [...(base.shellFiles ?? [])], tests: [...base.tests], commits: [...base.commits] }
     change(log)
     return log
   })
@@ -174,18 +174,76 @@ function touchFile(log: FwFlightLog, path: string, tool: string, at: number, age
   log.files.push(agentId === undefined ? { path, tool, at } : { path, tool, at, agentId })
 }
 
+function touchShellFile(log: FwFlightLog, w: FwShellWrite): void {
+  const list = log.shellFiles ?? (log.shellFiles = [])
+  const i = list.findIndex((f) => f.path === w.path)
+  if (i >= 0) list.splice(i, 1)
+  else if (list.length >= CAP_FILES) {
+    log.dropped += 1
+    return
+  }
+  list.push(w)
+}
+
+/**
+ * Files a Bash command wrote, inferred from its words (lib/shell shellWriteTargets), as repo-relative paths. Relative
+ * words resolve against the cwd after a leading `cd X &&` chain (the only certain move); words outside the repo
+ * (/tmp, …) are not repo changes and are left out.
+ */
+function inferShellWrites(root: string, cwd0: string, command: string): Array<{ path: string; via: string }> {
+  let cwdAbs = cwd0 || root
+  const segs = parseCommand(command.trim()).segments
+  for (const seg of segs) {
+    if (!isCdPrefix(seg)) break
+    const dir = seg.tokens.at(-1) as string
+    if (dir === '-' || dir.startsWith('~') || dir.includes('$')) break
+    cwdAbs = dir.startsWith('/') ? dir : `${cwdAbs}/${dir}`
+  }
+  const out: Array<{ path: string; via: string }> = []
+  for (const w of shellWriteTargets(command)) {
+    const rel = relToRoot(root, w.path.startsWith('/') ? w.path : `${cwdAbs}/${w.path}`)
+    if (rel !== null && rel !== '' && !out.some((o) => o.path === rel)) out.push({ path: rel, via: w.via })
+  }
+  return out
+}
+
+/** The one-per-session note for a test run that was chained with other commands (its own exit code is not visible). */
+const chainHint = (lang: Lang): string => M(lang, {
+  en: 'flightwake: this test command ran chained with other commands, so only the whole chain\'s exit code was visible and the run cannot count as passing evidence. When you need evidence (for fw-record\'s tests:), run the test command on its own once.',
+  'zh-TW': 'flightwake:這次的測試是和其他指令串在一起跑的,只看得到整串的退出碼,無法當成通過的證據。需要留證據(fw-record 的 tests:)時,請把測試指令單獨執行一次。',
+  'zh-CN': 'flightwake:这次的测试是和其他命令串在一起跑的,只看得到整串的退出码,无法当成通过的证据。需要留证据(fw-record 的 tests:)时,请把测试命令单独执行一次。',
+  ja: 'flightwake:このテストは他のコマンドとつなげて実行されたため、見えるのはつなげた全体の終了コードだけで、成功の証拠になりません。証拠が必要なとき(fw-record の tests:)は、テストコマンドを単独で一度実行してください。',
+})
+
 // ---------------------------------------------------------------------------------------------------------------
 // /fw-log
 // ---------------------------------------------------------------------------------------------------------------
 
-const when = (ms: number): string => new Date(ms).toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
+/** Local UTC offset in minutes (east positive), or null when unknown. */
+export type TzOffset = number | null
+
+/** `+0800` → 480; anything else → null. */
+export function parseOffset(s: string): TzOffset {
+  const m = /^([+-])(\d{2})(\d{2})$/.exec(s.trim())
+  return m ? (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : null
+}
+
+const stamp = (ms: number): string => new Date(ms).toISOString().replace('T', ' ').slice(0, 19)
+/** Local time with its offset, then UTC (`2026-10-05 03:32:10 +0800 (19:32:10 UTC)`); UTC only when the offset is unknown. */
+export function when(ms: number, tz: TzOffset = null): string {
+  if (tz === null) return `${stamp(ms)} UTC`
+  const sign = tz < 0 ? '-' : '+'
+  const a = Math.abs(tz)
+  const off = `${sign}${String(Math.floor(a / 60)).padStart(2, '0')}${String(a % 60).padStart(2, '0')}`
+  return `${stamp(ms + tz * 60_000)} ${off} (${stamp(ms).slice(11)} UTC)`
+}
 const cell = (s: string): string => s.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|')
 const code = (s: string): string => (s.includes('`') ? cell(s) : `\`${cell(s)}\``)
 
-export function renderLog(lang: Lang, log: FwFlightLog | null): string {
+export function renderLog(lang: Lang, log: FwFlightLog | null, tz: TzOffset = null): string {
   const lines: string[] = []
   lines.push(`## ${M(lang, { en: 'flightwake session log', 'zh-TW': 'flightwake 本 session 記錄', 'zh-CN': 'flightwake 本 session 记录', ja: 'flightwake セッション記録' })}`, '')
-  const isEmpty = log === null || (log.files.length === 0 && log.tests.length === 0 && log.commits.length === 0)
+  const isEmpty = log === null || (log.files.length === 0 && (log.shellFiles ?? []).length === 0 && log.tests.length === 0 && log.commits.length === 0)
   if (isEmpty || log === null) {
     lines.push(M(lang, {
       en: 'Nothing observed yet in this session.',
@@ -200,6 +258,24 @@ export function renderLog(lang: Lang, log: FwFlightLog | null): string {
     if (log.files.length > LIST_LIMIT) lines.push(M(lang, { en: `- … and ${log.files.length - LIST_LIMIT} more`, 'zh-TW': `- …另有 ${log.files.length - LIST_LIMIT} 個`, 'zh-CN': `- …另有 ${log.files.length - LIST_LIMIT} 个`, ja: `- …ほか ${log.files.length - LIST_LIMIT} 件` }))
     lines.push('')
 
+    const shell = log.shellFiles ?? []
+    if (shell.length > 0) {
+      lines.push(`### ${M(lang, {
+        en: 'Files possibly changed through shell commands — inferred from the commands, may be incomplete',
+        'zh-TW': '可能經由 shell 指令改動的檔案——由指令推斷,可能不完整',
+        'zh-CN': '可能经由 shell 命令改动的文件——由命令推断,可能不完整',
+        ja: 'シェルコマンドで変更された可能性のあるファイル——コマンドから推定、不完全な場合あり',
+      })} (${shell.length})`, '')
+      for (const f of shell.slice(0, LIST_LIMIT)) lines.push(`- ${code(f.path)} (${f.via}${f.agentId ? `, subagent ${f.agentId}` : ''})`)
+      if (shell.length > LIST_LIMIT) lines.push(M(lang, { en: `- … and ${shell.length - LIST_LIMIT} more`, 'zh-TW': `- …另有 ${shell.length - LIST_LIMIT} 個`, 'zh-CN': `- …另有 ${shell.length - LIST_LIMIT} 个`, ja: `- …ほか ${shell.length - LIST_LIMIT} 件` }))
+      lines.push('', M(lang, {
+        en: 'Read from redirections and cp / mv / rm / tee / sed -i in the commands the agent ran; writes made any other way (scripts, other programs, git) are not listed.',
+        'zh-TW': '依 agent 執行的指令中的重導向與 cp / mv / rm / tee / sed -i 推斷;以其他方式寫入的(腳本、其他程式、git)不會列出。',
+        'zh-CN': '依 agent 执行的命令中的重定向与 cp / mv / rm / tee / sed -i 推断;以其他方式写入的(脚本、其他程序、git)不会列出。',
+        ja: 'エージェントが実行したコマンドのリダイレクトと cp / mv / rm / tee / sed -i から推定。それ以外の方法(スクリプト、他のプログラム、git)による書き込みは載りません。',
+      }), '')
+    }
+
     lines.push(`### ${M(lang, { en: 'Test / typecheck runs', 'zh-TW': '測試 / typecheck 執行', 'zh-CN': '测试 / typecheck 执行', ja: 'テスト / typecheck 実行' })} (${log.tests.length})`, '')
     if (log.tests.length === 0) lines.push(M(lang, { en: '_none observed_', 'zh-TW': '_未觀測到_', 'zh-CN': '_未观测到_', ja: '_観測なし_' }))
     else {
@@ -213,7 +289,7 @@ export function renderLog(lang: Lang, log: FwFlightLog | null): string {
             : M(lang, { en: 'unknown', 'zh-TW': '未知', 'zh-CN': '未知', ja: '不明' })
         const rev = r.revision === null ? '?' : `${r.revision.slice(0, 7)}${r.isDirty === true ? '*' : r.isDirty === null ? '?' : ''}`
         const kind = r.kind === 'package-script' && r.script ? `package-script (${cell(r.script)})` : r.kind
-        lines.push(`| ${code(r.command)} | ${kind} | ${result} | ${r.exitCode === null ? '-' : r.exitCode} | ${when(r.finishedAt)} | ${rev} | ${code(r.cwd)} | ${r.reason ?? ''}${r.agentId ? `${r.reason ? ' ' : ''}subagent ${r.agentId}` : ''} |`)
+        lines.push(`| ${code(r.command)} | ${kind} | ${result} | ${r.exitCode === null ? '-' : r.exitCode} | ${when(r.finishedAt, tz)} | ${rev} | ${code(r.cwd)} | ${r.reason ?? ''}${r.agentId ? `${r.reason ? ' ' : ''}subagent ${r.agentId}` : ''} |`)
       }
       lines.push('', M(lang, {
         en: '`*` = the working tree had uncommitted changes when the command started; `?` = could not be read.',
@@ -226,7 +302,7 @@ export function renderLog(lang: Lang, log: FwFlightLog | null): string {
 
     lines.push(`### Commits (${log.commits.length})`, '')
     if (log.commits.length === 0) lines.push(M(lang, { en: '_none_', 'zh-TW': '_無_', 'zh-CN': '_无_', ja: '_なし_' }))
-    for (const c of log.commits) lines.push(`- ${code(c.sha.slice(0, 7))} ${c.kind} ${when(c.at)}${c.agentId ? ` (subagent ${c.agentId})` : ''}`)
+    for (const c of log.commits) lines.push(`- ${code(c.sha.slice(0, 7))} ${c.kind} ${when(c.at, tz)}${c.agentId ? ` (subagent ${c.agentId})` : ''}`)
     lines.push('')
 
     if (log.dropped > 0) {
@@ -299,7 +375,13 @@ export function registerRecorder(on: On): void {
       const sid = await io.sessionId()
       const cur = (await $.state.get({ plugin: 'flightwake-mod', key: 'flightLog' } as const)).value ?? null
       const log = cur !== null && cur.sessionId === sid ? cur : null
-      return { text: renderLog(ctx.lang, log) }
+      // Local offset from the OS (read-only, the person's own clock settings); unknown → UTC only
+      let tz: TzOffset = null
+      try {
+        const r = await $.process.run(['date', '+%z'], { timeoutMs: 2000 })
+        if (r.exitCode === 0) tz = parseOffset(r.stdout)
+      } catch {}
+      return { text: renderLog(ctx.lang, log, tz) }
     } catch {
       return next(e)
     }
@@ -353,11 +435,24 @@ export function registerRecorder(on: On): void {
     }
 
     const res = await next(e)
+    let hint: string | null = null
 
     try {
       if (res.deny === undefined) {
         const io = ioOf($)
         const finishedAt = await $.clock.now()
+        // Files the command wrote, as far as its words say (listed apart from tool edits; F4 reads the same words)
+        let shellWrites: Array<{ path: string; via: string }> = []
+        let lang: Lang = 'en'
+        if (typeof command === 'string' && command.trim()) {
+          const ctx = await fwContext(io)
+          if (ctx !== null) {
+            lang = ctx.lang
+            let cwd0 = ctx.root
+            try { cwd0 = (await $.session.cwd()).replace(/\/+$/, '') || ctx.root } catch {}
+            shellWrites = inferShellWrites(ctx.root, cwd0, command)
+          }
+        }
         const agentId = e.agentId
         const commit = res.isError === true ? undefined : (res.result as BashResultFields | undefined)?.gitOperation?.commit
         const runs: FwTestRun[] = []
@@ -380,9 +475,15 @@ export function registerRecorder(on: On): void {
           if (agentId !== undefined) run.agentId = agentId
           runs.push(run)
         }
-        if (runs.length > 0 || (commit !== undefined && commit.sha)) {
+        const isChained = runs.some((r) => r.reason === 'compound')
+        if (runs.length > 0 || shellWrites.length > 0 || (commit !== undefined && commit.sha)) {
           await ensureCommand($)
           await record($, io, (log) => {
+            for (const w of shellWrites) touchShellFile(log, agentId === undefined ? { ...w, at: finishedAt } : { ...w, at: finishedAt, agentId })
+            if (isChained && log.isChainHintShown !== true) {
+              log.isChainHintShown = true
+              hint = chainHint(lang)
+            }
             for (const r of runs) {
               if (log.tests.length >= CAP_TESTS) log.dropped += 1
               else log.tests.push(r)
@@ -395,6 +496,8 @@ export function registerRecorder(on: On): void {
         }
       }
     } catch {}
-    return res
+    // The chained-run note rides on this tool result (as F4's hints do): it states a fact and what to do, blocks nothing
+    if (hint === null || res.deny !== undefined) return res
+    return { ...res, context: [...(res.context ?? []), hint] }
   })
 }

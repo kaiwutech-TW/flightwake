@@ -326,7 +326,7 @@ describe('recorder: /fw-log', () => {
   test('registered at session start with a localized description', async ($, on) => {
     const { registered } = boot(on, { files: { '.flightwake/STATE.md': STATE_FILLED, 'CLAUDE.md': MARKER('zh-TW') } })
     await $.session.start(startArgs)
-    expect(registered).toEqual(['fw-log'])
+    expect(registered.filter((n) => n !== 'fw-mod')).toEqual(['fw-log'])
   })
 
   test('summary: files, a runs table, commits, and the footer', async ($, on) => {
@@ -378,7 +378,7 @@ describe('recorder: off (options)', () => {
     await $.session.start(startArgs)
     await $.tool.call({ tool: 'Edit', file_path: '/repo/a.ts', old_string: 'a', new_string: 'b' })
     await $.tool.call({ tool: 'Bash', command: 'jest' })
-    expect(registered).toEqual([])
+    expect(registered).not.toContain('fw-log')
     expect(getLog()).toBe(null)
   })
 })

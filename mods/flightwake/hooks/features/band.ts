@@ -5,7 +5,9 @@
  * tool call that reports a commit or branch operation); the ui.render hook only reads it and draws, never runs git.
  * Hints point only at flightwake commands (same wording family as hooks/statusline.mjs); no update check, no network.
  * When the legacy statusline.mjs is the effective statusLine every field would duplicate it, so the band stays
- * quiet and only the one-time context toast remains. The mod never edits settings.
+ * quiet and only the one-time context toast remains. Without it the band IS the gauge: always drawn, always with the
+ * context percent when Claude Code reports one (2026-10-05, replacing "silent while all is well" — someone with the
+ * mod and no gauge otherwise never saw their context use). The mod never edits settings.
  */
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On, RenderElement } from 'claude-code'
@@ -36,7 +38,13 @@ const HOT = 80
 const WARM = 60
 const LAG_HINT = 3
 
-function hintFor(lang: Lang, v: { health: string; contextPercent: number | null; behind: number | null; justOpened: boolean }): string | null {
+function hintFor(lang: Lang, v: { health: string; contextPercent: number | null; behind: number | null; justOpened: boolean; isUninitialized?: boolean }): string | null {
+  if (v.isUninitialized) return M(lang, {
+    en: 'STATE not initialized yet — run /fw-coldstart',
+    'zh-TW': 'STATE 尚未初始化——先跑 /fw-coldstart',
+    'zh-CN': 'STATE 尚未初始化——先跑 /fw-coldstart',
+    ja: 'STATE が未初期化——まず /fw-coldstart',
+  })
   if (v.health === 'yellow' || v.health === 'red') return M(lang, {
     en: 'handle unverified items before stacking new work (read STATE)',
     'zh-TW': '先處理未驗證項再疊新工作(讀 STATE)',
@@ -72,13 +80,9 @@ function viewOf(lang: Lang, f: {
   contextPercent: number | null
   isLegacyGaugeActive: boolean
   justOpened: boolean
+  isUninitialized?: boolean
 }): FwBandView {
-  const hint = hintFor(lang, { health: f.health, contextPercent: f.contextPercent, behind: f.behind, justOpened: f.justOpened })
-  const isWorthShowing =
-    f.health === 'yellow' || f.health === 'red' ||
-    (f.lag === 'behind' && (f.behind ?? 0) >= LAG_HINT) ||
-    (f.contextPercent !== null && f.contextPercent >= WARM) ||
-    hint !== null
+  const hint = hintFor(lang, { health: f.health, contextPercent: f.contextPercent, behind: f.behind, justOpened: f.justOpened, isUninitialized: f.isUninitialized })
   return {
     isLegacyGaugeActive: f.isLegacyGaugeActive,
     health: f.health,
@@ -86,21 +90,23 @@ function viewOf(lang: Lang, f: {
     behind: f.behind,
     contextPercent: f.contextPercent,
     hint,
-    isQuiet: f.isLegacyGaugeActive || !isWorthShowing,
+    // Quiet only when the bottom gauge already shows all of this; otherwise the band stands in for the gauge
+    isQuiet: f.isLegacyGaugeActive,
     lang,
   }
 }
 
 type Computed = { view: FwBandView; lang: Lang; sessionId: string }
 
-/** Reads the world and builds the view; null when flightwake is not set up here (or STATE is still the template). */
+/** Reads the world and builds the view; null when flightwake is not set up here. A template STATE → health unknown + coldstart hint. */
 async function compute($: EngineInterface): Promise<Computed | null> {
   const io = ioOf($)
   const ctx = await fwContext(io)
   if (ctx === null) return null
   const text = await io.read(joinPath(ctx.root, STATE_REL))
-  if (text === null || isUninitializedState(text)) return null
-  const lag = await stateLag(io, ctx.root)
+  if (text === null) return null
+  const isUninitialized = isUninitializedState(text)
+  const lag = isUninitialized ? null : await stateLag(io, ctx.root)
   let contextPercent: number | null = null
   try {
     const p = (await $.session.usage()).context.percent
@@ -109,12 +115,13 @@ async function compute($: EngineInterface): Promise<Computed | null> {
   let turns = 1
   try { turns = await $.session.turns() } catch { turns = 1 }
   const view = viewOf(ctx.lang, {
-    health: healthOf(text),
+    health: isUninitialized ? 'unknown' : healthOf(text),
     lag: lag === null ? 'none' : lag.kind,
     behind: lag !== null && lag.kind === 'behind' ? lag.behind : null,
     contextPercent,
     isLegacyGaugeActive: await legacyStatuslineActive(io),
     justOpened: turns === 0,
+    isUninitialized,
   })
   return { view, lang: ctx.lang, sessionId: await io.sessionId() }
 }
@@ -194,10 +201,11 @@ export function registerBand(on: On): void {
       const pct = v.contextPercent
       const row: unknown[] = [
         h(Text, { bold: true, wrap: 'truncate' }, '✈ flightwake'),
-        h(Text, { color, wrap: 'truncate' }, ` · ●${v.health}`),
+        h(Text, { color, wrap: 'truncate' }, ` · ●${v.health === 'unknown' ? '?' : v.health}`),
       ]
       if (lag) row.push(h(Text, { wrap: 'truncate' }, ` · ${lag}`))
-      if (pct !== null && pct >= WARM) row.push(h(Text, { color: pct >= HOT ? 'red' : 'yellow', wrap: 'truncate' }, ` · ${Math.round(pct)}%`))
+      // Always the percent when known (the band stands in for the gauge); the colour thresholds are unchanged
+      if (pct !== null) row.push(h(Text, { color: pct >= HOT ? 'red' : pct >= WARM ? 'yellow' : undefined, wrap: 'truncate' }, ` · ${Math.round(pct)}%`))
       if (v.hint) row.push(h(Text, { dimColor: true, wrap: 'truncate-end' }, ` → ${v.hint}`))
       const tree = h(Box, { width: e.props.bodyColumns, flexDirection: 'row', overflow: 'hidden' }, ...row)
       return tree && typeof tree !== 'string' ? (tree as RenderElement) : next(e)

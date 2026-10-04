@@ -37,6 +37,8 @@ export type World = {
   isSettingsFailing: boolean
   /** git argv the plugin ran WITHOUT the leading --no-optional-locks (must stay empty: zero writes, .git/index included). */
   gitWithoutNoLocks: string[]
+  /** `date +%z` answer (the local UTC offset, e.g. '+0800'); unset → the command is not available (exit 127). */
+  tzOffset?: string
 }
 
 const rel = (w: World, p: string): string | null =>
@@ -75,6 +77,7 @@ export function installWorld(on: On, init: Partial<World> = {}): World {
   })
   on('process.run', ($, e) => {
     const [cmd, ...rest] = e.argv
+    if (cmd === 'date' && rest.join(' ') === '+%z' && w.tzOffset !== undefined) return { value: { exitCode: 0, stdout: `${w.tzOffset}\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     if (cmd !== 'git') return { value: { exitCode: 127, stdout: '', stderr: 'not found', isStdoutTruncated: false, isStderrTruncated: false } }
     // The mod promises zero writes: every git call carries --no-optional-locks (plain `git status` may rewrite .git/index).
     const args = rest[0] === '--no-optional-locks' ? rest.slice(1) : rest

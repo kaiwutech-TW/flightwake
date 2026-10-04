@@ -11,6 +11,8 @@
  */
 
 export const PLUGIN = 'flightwake-mod' as const
+/** Mirrors .claude-plugin/plugin.json `version` (the mod cannot read its own manifest); test/smoke.sh checks they match. */
+export const MOD_VERSION = '0.1.0'
 export const FW_DIR = '.flightwake'
 export const STATE_REL = '.flightwake/STATE.md'
 export const TRAPS_REL = '.flightwake/TRAPS.md'
@@ -149,6 +151,24 @@ export function markerLang(text: string): Lang | null {
   // attributes but no lang is a newer writer that left the language out: fall back to the default, English.
   if (lang === undefined) return attrs.trim() === '' ? 'zh-TW' : 'en'
   return (LANGS as readonly string[]).includes(lang) ? (lang as Lang) : 'en'
+}
+
+/** The profile attribute of a marker (`profile=notes`); absent = code; null when the text holds no marker. */
+export function markerProfile(text: string): 'code' | 'notes' | null {
+  const m = MARKER_RE.exec(text)
+  if (!m) return null
+  return /(?:^|\s)profile=notes(?:\s|$)/.test(m[2] ?? '') ? 'notes' : 'code'
+}
+
+/** The profile recorded at install time, from the same first marker detectLang reads; none → code. */
+export async function detectProfile(io: Io, root: string): Promise<'code' | 'notes'> {
+  for (const rel of MARKER_FILES) {
+    const t = await readRel(io, root, rel)
+    if (t === null) continue
+    const p = markerProfile(t)
+    if (p !== null) return p
+  }
+  return 'code'
 }
 
 /** The language recorded at install time: the first marker found in MARKER_FILES; none → en. */
