@@ -34,8 +34,22 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   instruction file telling agents to use visible Orca tabs, not hidden background runs, for cross-agent discussion and review,
   plus the one-writer review protocol. `uninstall` removes it; `update` refreshes it only where installed.
 - **`init --git-init`** creates the git repo when the directory isn't one (explicit flag only).
+- **`flightwake-mod` — opt-in Claude Code mod** (`init --mod`, or a `setup` question asked only when Claude Code is
+  picked, default No). A plugin of function hooks, installed into `.claude/skills/flightwake-mod/` (only its manifest,
+  `hooks/` and `types/`), which Claude Code ≥2.1.287 loads by itself as `flightwake-mod@skills-dir` once the folder's
+  trust prompt is accepted and the session starts at the repo root. Five features, each with its own switch: STATE in the
+  system prompt at session start, a quiet status band above the prompt, a session flight log (`/fw-log`), TRAPS tripwire
+  hints from the new optional `paths` / `commands` fields, and an off-by-default role guard for `deny-write` paths (not a
+  security boundary; turned on per person in `/config` or user settings — the installer can't). Reads `.flightwake/` and
+  git only, never writes your records. Skipped with a note when Claude Code is not among the agents; `update` refreshes it
+  only where installed and keeps files you added there; `uninstall` removes it; `--private` excludes it. `doctor` reports
+  it (manifest, hooks modules, shipped files, version vs the package, `claude --version` when readable) and prints what it
+  can't see (folder trust, starting at the repo root). Guide: `docs/mod.md` (four languages).
 
 ### Changed
+- `fw-record`: when `/fw-log` exists (the Claude Code mod), its output is the basis for `tests:` evidence and the change list;
+  entries it marks unknown are judged by hand, never counted as passed. `fw-trap` and the TRAPS template document the optional
+  `paths` / `commands` fields (leave them empty when unsure). Four languages.
 - `init` and `setup` now check that git is installed first, with per-platform install hints — also when a `.git` directory exists.
 - `fw-coldstart` handles a never-filled STATE: it writes the first STATE from the repo, and health is never guessed green
   (yellow unless something was verified this session). The READMEs and workflow docs now say to run `fw-coldstart` after
@@ -47,6 +61,9 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   before, the copied skill showed up in `git status`.
 
 ### Fixed
+- A `--private` install for Claude Code (its table in `CLAUDE.local.md`) followed by `update` fell back to Codex: it created
+  `AGENTS.md`, `.agents/skills`, `.codex/hooks.json`, and dropped `CLAUDE.local.md` from the exclude block, so it showed up in
+  `git status`. A `CLAUDE.local.md` carrying the flightwake marker now counts as Claude Code (the bug is also in 0.14.0).
 - **Writes never go through a symlink or land outside the repo** (pre-existing): a framework file symlinked to
   `../STATE.md` let `update` overwrite STATE. init / update / setup / `roles install` now preflight the whole install
   (core and roles through one guarded writer): if any required path is a symlink, resolves outside the repo or goes through
@@ -76,6 +93,8 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   new `doctor`, `--profile=notes`, Orca and `--git-init` sections; the Security "Fixed write scope" list now includes
   `~/.flightwake/registry.json`, the opt-in Orca block and `fw-roles` skill, and names `git init` as the one exception to
   "only copies files".
+- Claude Code mod guide `docs/mod.md` (en / zh-TW / zh-CN / ja); READMEs: the mod in `setup`'s add-on list, a `--mod`
+  section, and `.claude/skills/flightwake-mod/` in the fixed write scope (plus `doctor`'s read-only `claude --version`).
 
 ## [0.14.0] — 2026-09-28
 
