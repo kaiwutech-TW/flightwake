@@ -54,7 +54,8 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   prints ✅; setup doesn't claim success when doctor fails. A symlinked or broken `~/.flightwake/registry.json` stays a
   notice (best-effort, exit 0).
 - Writes replace files atomically (temp file + rename) instead of overwriting in place, so a framework file that is a
-  hardlink to STATE can't overwrite STATE. `uninstall` and `roles remove / apply / assign` go through the same guarded,
+  hardlink to STATE can't overwrite STATE. The replaced file keeps its existing mode (a 0600 `settings.local.json` stays
+  0600; the temp file is never looser than the original). `uninstall` and `roles remove / apply / assign` go through the same guarded,
   preflighted writer (cross-repo roles are protected per target repo); a path of the wrong type (`.claude` is a file)
   stops before writing; files that would be skipped anyway (tracked under `--private`) no longer trigger a refusal.
 - `--private` refuses up front when privacy can't take effect — an artifact is already tracked (e.g. `.flightwake/`) or

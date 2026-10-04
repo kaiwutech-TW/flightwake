@@ -3,7 +3,7 @@ record_id: 261005-setup-wizard
 session: Claude(Opus 5.5) 主實作 + 兩個 sonnet subagent(四語文件、smoke 案例,產出經主實作者逐檔審閱後採用);任務說明設計者 Fable 5.1 代 Kai 回覆澄清
 date: 2026-10-05
 repos: [flightwake]
-tests: bash test/smoke.sh 38 節全過(60 個 ok;Python 3.12 在 PATH 前;含驗收後新增的 35、36.1–36.7、37.1–37.6、38.1–38.5),node --check bin/*.mjs test/*.mjs 全過(本 repo 無 TypeScript)
+tests: bash test/smoke.sh 39 節全過(61 個 ok;Python 3.12 在 PATH 前;含驗收後新增的 35、36.1–36.7、37.1–37.6、38.1–38.5、39),node --check bin/*.mjs test/*.mjs 全過(本 repo 無 TypeScript)
 prod_changes: none(未 push、未 bump、未發版)
 ---
 <!-- flightwake record — 飛行紀錄。 -->
@@ -115,7 +115,7 @@ Astra 複審(原文 `docs/plans/setup.diff-review-astra-2.md`)確認上次六項
 Astra 第三輪(原文 `docs/plans/setup.diff-review-astra-3.md`)確認第二輪五項修好,但判定不能合併,列五項合併前必修,驗收者全數採納。
 先寫 38.1–38.5,用暫時複製的單組 smoke 分別跑出失敗(跑完即刪),再修:
 
-- 38.1 `state-check.mjs` hardlink 到 STATE、skill 檔 hardlink 到 DECISIONS → update 把使用者資料蓋掉(重現)→ 所有寫入改成暫存檔 + rename;skill 目錄逐檔 rename
+- 38.1 `state-check.mjs` hardlink 到 STATE、skill 檔 hardlink 到 DECISIONS → update 把使用者資料蓋掉(重現)→ 所有寫入改成暫存檔 + rename;skill 目錄逐檔 rename(權限見第四輪)
 - 38.2 `.claude/skills` 連到 repo 外 → uninstall 刪掉外部 KEEP(重現);manifest symlink 到 `records/saved.json` → apply/assign 會覆寫 →
   uninstall 與 roles remove/apply/assign 全部改走受防護 writer 並先預檢;跨 repo roles 每個目標 repo 一個 writer(各自為邊界)
 - 38.3 `.git/info/exclude` 是目錄時 `init --private` 印「privacy NOT in effect」卻 exit 0 + ✅(重現)→ exclude 寫不進去、或要排除的產物已受追蹤
@@ -134,3 +134,19 @@ Astra 第三輪(原文 `docs/plans/setup.diff-review-astra-3.md`)確認第二輪
 - 預檢與實際寫入之間樹被改動(競態)、磁碟耗盡等不可預測的 I/O 失敗:不回滾,只保證印「未完成」並以非零退出
 - 放寬更多安全的 symlink 用法(例如 `CLAUDE.md → AGENTS.md`):目前一律拒寫,是記錄在案的相容性取捨
 - `--private` 下核心義務表的 marker 若已在受追蹤檔,`--force`/update 仍會改寫(main 既有行為,未動)
+
+## 第四輪修正(同日,84c6aad..)
+
+Astra 收尾確認(原文 `docs/plans/setup.diff-review-astra-4.md`):第三輪五項必修都修好,接受 `.flightwake` 已受追蹤時 `--private` 改為拒絕、
+也接受暫存檔 + rename 的寫法;只剩一項這輪帶進來的回歸,合併前必修:
+
+- 39 rename 取代既有檔時權限被放寬:umask 022 下 0600 的 `settings.json` 被重寫後變 0644(重現)→ 暫存檔以目的地既有 mode 建立
+  (umask 只會更嚴)、寫完精確設回該 mode 再 rename,任何時刻都不比原檔寬鬆;目的地不存在才用預設。測試涵蓋 settings.json、
+  settings.local.json(含使用者設定,`--private`)、指令檔(取代與附加兩條路徑)、hook 檔、skill 檔,並斷言新檔仍是預設 0644
+
+教訓:**換掉寫入方式(原地 → rename)時,原地寫入「免費」保留的屬性(mode、inode 上的東西)要逐一列出來決定留不留**——hardlink 是刻意切斷,
+mode 是必須保留;只想著要解決的問題,就會把順帶的保證弄丟。
+
+### 已知限制(更新)
+
+- 只保留 mode;所有者/群組與 ACL 不保留(同一使用者下 uid/gid 不變,Astra 實測;跨所有者未驗證)
