@@ -5,6 +5,20 @@
 # 坑 Registry
 
 ---
+name: unquoted-heredoc-runs-backticks
+type: gotcha
+status: active
+tags: [shell, heredoc, flightwake-records, registry, agent-tooling]
+discovered: 2026-10-05
+confidence: confirmed
+---
+
+**症狀**:用 `python3 - <<EOF`(分隔字未加引號)把含反引號的 STATE 文字寫進檔案,輸出出現 `(eval):1: permission denied: docs/plans/integration.md`、`no such file or directory: kaiwutech-TW/integration`,python 報 `SyntaxError: EOL while scanning string literal`,字串中段變成 `flightwake update v0.13.0 → v0.14.0 (lang=zh-TW, statusline) → /Users/…/integration`;之後 `git status` 多出十個 dogfood 檔(skills、CLAUDE.md/AGENTS.md marker、statusline.mjs)的修改,`~/.flightwake/registry.json` 多一筆該 worktree。
+**根因**:未加引號的 heredoc 會做指令替換,flightwake 紀錄慣用的 `` `指令` `` 標記被當成要執行的指令;STATE 裡的 `` `npx flightwake update` `` 因此真的從 npm 抓已發佈版本、在當前目錄執行 update(寫 dogfood 副本與全域 registry)。
+**解法/繞法**:寫任何含反引號或 `$` 的文字時,heredoc 分隔字一律加引號(`<<'EOF'`),需要的變數改由環境變數傳入;或用 Write/Edit 工具。
+**佐證**:bash 手冊 Here Documents 一節(分隔字未加引號時內文做參數展開、指令替換、算術展開);本次實際發生於合併 commit 9274a09 之前(record 261005-integration)
+
+---
 name: smoke-needs-python311-tomllib
 type: gotcha
 status: active
