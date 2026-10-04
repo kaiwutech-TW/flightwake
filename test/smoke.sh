@@ -696,7 +696,7 @@ grep -q '<!-- flightwake:begin v[0-9.]* lang=en -->' AGENTS.md || fail "全預�
 grep -q 'profile=' AGENTS.md && fail "全預設(程式專案)marker 不得帶 profile="
 # 各附加元件單獨回 y(其餘預設)
 newrepo "$TMP/sd-sl" >/dev/null; echo "# 我的" > CLAUDE.md
-node "$DRIVE" --orca=0 -- "" "" y "" "" y >/dev/null || fail "statusline 單選 setup 應成功"
+node "$DRIVE" --orca=0 -- "" "" y "" "" "" y >/dev/null || fail "statusline 單選 setup 應成功"
 grep -q 'statusLine' .claude/settings.json || fail "statusline 答 y 應寫入 statusLine"
 [ -e .claude/skills/fw-roles ] && fail "只答 statusline 不得裝 roles"
 grep -q 'flightwake-orca' CLAUDE.md && fail "只答 statusline 不得有 Orca 區塊"
@@ -955,7 +955,7 @@ pass "--private + roles:install 與 update 後 git status 皆乾淨"
 
 # 35. agent 題:偵測不到任何指令檔 → 直接問用哪些工具(可複選、不預選);偵測得到 → 維持「Enter 沿用」;最終確認預設是
 newrepo "$TMP/ag-none" >/dev/null
-out=$(node "$DRIVE" --orca=0 -- "" "" 1 "" "" "" "" 2>&1) || fail "無指令檔時選 claude 的 setup 應成功(out: $out)"
+out=$(node "$DRIVE" --orca=0 -- "" "" 1 "" "" "" "" "" 2>&1) || fail "無指令檔時選 claude 的 setup 應成功(out: $out)"
 echo "$out" | grep -q 'Which AI coding tools' || fail "無指令檔時應直接問用哪些工具"
 echo "$out" | grep -q 'detected:' && fail "無指令檔時不得顯示偵測結果或預選"
 echo "$out" | grep -q 'Pick at least one' || fail "無指令檔時直接 Enter 應要求至少選一個(不得預設 codex)"
@@ -963,7 +963,7 @@ echo "$out" | grep -q 'Bottom gauge in Claude Code' || fail "選了 claude 應�
 grep -q 'flightwake:begin' CLAUDE.md || fail "選 claude 應寫入 CLAUDE.md"
 [ -e AGENTS.md ] && fail "只選 claude 不得建 AGENTS.md"
 newrepo "$TMP/ag-names" >/dev/null
-node "$DRIVE" --orca=0 -- "" "claude,gemini" "" "" "" "" >/dev/null || fail "以名稱複選應成功"
+node "$DRIVE" --orca=0 -- "" "claude,gemini" "" "" "" "" "" >/dev/null || fail "以名稱複選應成功"
 grep -q 'flightwake:begin' CLAUDE.md && grep -q 'flightwake:begin' GEMINI.md || fail "複選 claude,gemini 應寫兩個指令檔"
 [ -e AGENTS.md ] && fail "未選 codex 不得建 AGENTS.md"
 newrepo "$TMP/ag-bad" >/dev/null
@@ -1088,14 +1088,14 @@ summary_vs_writes() { # $1 描述;其餘 = driver 參數(含 --);在目前目錄
   ' "$TMP/sw.before" "$TMP/sw.after" "$TMP/sw.out" || fail "36.7 $desc:摘要與實際寫入不一致"
 }
 newrepo "$TMP/ax7a" >/dev/null; echo "# 我的" > CLAUDE.md
-summary_vs_writes "新裝全選項(private+statusline+roles+Orca+notes)" --orca=1 --flags='{"private":true}' -- "" "claude,codex" y y y 2 ""
-grep -q 'flightwake-orca:begin' CLAUDE.local.md && [ -f .claude/skills/fw-roles/SKILL.md ] || fail "36.7 測試前提:全選項應已安裝"
+summary_vs_writes "新裝全選項(private+statusline+mod+roles+Orca+notes)" --orca=1 --flags='{"private":true}' -- "" "claude,codex" y y y y 2 ""
+grep -q 'flightwake-orca:begin' CLAUDE.local.md && [ -f .claude/skills/fw-roles/SKILL.md ] && [ -f .claude/skills/flightwake-mod/hooks/register.ts ] || fail "36.7 測試前提:全選項應已安裝"
 newrepo "$TMP/ax7b" >/dev/null
 summary_vs_writes "新裝全預設" --orca=0 -- "" 2 "" "" ""
 sed -i.bak 's/flightwake:begin v[0-9.]*/flightwake:begin v0.0.1/' AGENTS.md && rm -f AGENTS.md.bak
 summary_vs_writes "已安裝 → 升級" -- ""
 mkdir -p "$TMP/ax7c" && cd "$TMP/ax7c"
-summary_vs_writes "非 repo:git init + 安裝" --orca=0 -- y "" 1 y "" "" ""
+summary_vs_writes "非 repo:git init + 安裝" --orca=0 -- y "" 1 y "" "" "" ""
 [ -d .git ] || fail "36.7 測試前提:應已 git init"
 pass "36.7 setup 摘要與實際寫入的路徑集合一致(新裝全選項/全預設/升級/含 git init)"
 
@@ -1146,7 +1146,7 @@ rc=0; out=$(node "$CLI" roles install 2>&1) || rc=$?
 [ -f "$TMP/ay4-out/fw-roles/KEEP" ] && [ "$rc" = 1 ] || fail "37.4 roles install 也不得重建 repo 外的 fw-roles(rc=$rc: $out)"
 # setup 選 roles 時同樣:預檢就拒,外部目錄與 repo 都不被寫
 newrepo "$TMP/ay4b" >/dev/null; mkdir -p "$TMP/ay4b-out" .claude && ln -s "$TMP/ay4b-out" .claude/skills
-b=$(fsnap); rc=0; out=$(node "$DRIVE" --orca=0 -- "" 1 "" y "" "" 2>&1) || rc=$?
+b=$(fsnap); rc=0; out=$(node "$DRIVE" --orca=0 -- "" 1 "" "" y "" "" 2>&1) || rc=$?
 [ "$rc" = 1 ] && [ -z "$(ls -A "$TMP/ay4b-out")" ] && [ "$b" = "$(fsnap)" ] || fail "37.4 setup(含 roles)遇 repo 外落點應在寫入前中止(rc=$rc: $out)"
 pass "37.4 roles 安裝/刷新走同一層防護:repo 外的 fw-roles 不被刪除或重建(update、roles install、setup)"
 
@@ -1297,6 +1297,193 @@ grep -q 'state-check.mjs' .claude/settings.local.json && grep -q 'secret' .claud
 [ "$(fmode .claude/settings.local.json)" = 600 ] || fail "39 settings.local.json 應維持 0600(got $(fmode .claude/settings.local.json))"
 )
 pass "39 rename 取代保留既有權限:settings.json / settings.local.json / 指令檔(取代與附加)/ hook / skill;新檔用預設"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 40+. flightwake-mod 接進安裝器(docs/plans/integration.md「測試」)
+# ═══════════════════════════════════════════════════════════════════════════
+MODREL=.claude/skills/flightwake-mod
+MODSRC="$SRC/mods/flightwake"
+MODV=$(node -e "console.log(require('$MODSRC/.claude-plugin/plugin.json').version)")
+# 套件內「發行內容」的檔案清單(manifest、hooks、types;不含 tests/ 與 scripts/)
+mod_ship_list() { (cd "$MODSRC" && { echo .claude-plugin/plugin.json; find hooks types -type f; } | sort); }
+# mod 自己讀語言的方式:直接 import mod 的 core.ts(MARKER_FILES 順序 + markerLang),不在測試裡另抄一份 regex
+modlang() { node --input-type=module -e "
+  import fs from 'node:fs';
+  import { MARKER_FILES, markerLang } from '$MODSRC/hooks/lib/core.ts';
+  let l = 'en';
+  for (const f of MARKER_FILES) { if (!fs.existsSync(f)) continue; const x = markerLang(fs.readFileSync(f, 'utf8')); if (x !== null) { l = x; break; } }
+  console.log(l);"; }
+
+# 40.1 init --mod(有 claude)→ 只裝發行內容;init 不帶 --mod → 不裝;旗標與 init 不提問的行為不變
+newrepo "$TMP/md1" >/dev/null; echo "# 我的" > CLAUDE.md
+node "$CLI" init >/dev/null
+[ -e $MODREL ] && fail "40.1 init 未給 --mod 不得安裝 mod"
+newrepo "$TMP/md1b" >/dev/null; echo "# 我的" > CLAUDE.md
+rc=0; out=$(node "$CLI" init --mod </dev/null 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "40.1 init --mod 應成功(rc=$rc: $out)"
+[ "$(cd $MODREL && find . -type f | sed 's|^\./||' | sort)" = "$(mod_ship_list)" ] || fail "40.1 安裝內容應恰為發行檔(got: $(cd $MODREL && find . -type f | sort | tr '\n' ' '))"
+for f in $(mod_ship_list); do cmp -s "$MODSRC/$f" "$MODREL/$f" || fail "40.1 $f 應與套件內容相同"; done
+[ ! -e $MODREL/tests ] && [ ! -e $MODREL/scripts ] || fail "40.1 不得把測試與開發腳本裝進使用者 repo"
+echo "$out" | grep -q 'flightwake-mod@skills-dir' || fail "40.1 結尾應說明角色守門怎麼自己開(鍵 flightwake-mod@skills-dir)"
+echo "$out" | grep -qi 'not a security boundary' || fail "40.1 結尾應重申角色守門不是安全邊界"
+echo "$out" | grep -q '2.1.287' || fail "40.1 結尾應提到需要 Claude Code 2.1.287 以上"
+pass "40.1 init --mod 只裝 manifest/hooks/types;不帶 --mod 不裝;結尾說明角色守門啟用方式"
+
+# 40.2 active agents 沒有 claude → 說明並略過,不算錯誤
+newrepo "$TMP/md2" >/dev/null
+rc=0; out=$(node "$CLI" init --mod --agents=codex 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "40.2 沒有 claude 時 --mod 應略過而非失敗(rc=$rc: $out)"
+[ ! -e $MODREL ] || fail "40.2 沒有 claude 時不得安裝 mod"
+echo "$out" | grep -q 'flightwake-mod' && echo "$out" | grep -qi 'Claude Code' || fail "40.2 應說明 mod 只用於 Claude Code 而略過(got: $out)"
+node "$CLI" doctor >/dev/null 2>&1 || fail "40.2 略過 mod 後 doctor 應 0"
+pass "40.2 沒有 claude:--mod 說明並略過,exit 0"
+
+# 40.3 update 只在已安裝的地方刷新;刷新時保留使用者自己加的檔;--force 也刷新既有
+newrepo "$TMP/md3" >/dev/null; node "$CLI" init --agents=claude >/dev/null
+node "$CLI" update >/dev/null
+[ -e $MODREL ] && fail "40.3 未安裝 mod 時 update 不得新增"
+node "$CLI" init --agents=claude --mod >/dev/null
+echo "// stale" > $MODREL/hooks/register.ts; rm $MODREL/types/index.d.ts
+echo "mine" > $MODREL/MY-NOTES.md; mkdir -p $MODREL/.claude-plugin/types && echo "engine" > $MODREL/.claude-plugin/types/x.d.ts
+node "$CLI" update >/dev/null || fail "40.3 update 應成功"
+cmp -s "$MODSRC/hooks/register.ts" $MODREL/hooks/register.ts && cmp -s "$MODSRC/types/index.d.ts" $MODREL/types/index.d.ts || fail "40.3 update 應把發行檔刷新回套件內容"
+[ "$(cat $MODREL/MY-NOTES.md)" = mine ] && [ "$(cat $MODREL/.claude-plugin/types/x.d.ts)" = engine ] || fail "40.3 update 不得刪除使用者(或引擎)在 mod 資料夾自己加的檔"
+echo "// stale" > $MODREL/hooks/register.ts
+node "$CLI" init --agents=claude --force >/dev/null
+cmp -s "$MODSRC/hooks/register.ts" $MODREL/hooks/register.ts || fail "40.3 init --force 也應刷新既有的 mod"
+pass "40.3 update/--force 只刷新既有 mod、保留使用者加的檔;未安裝不新增"
+
+# 40.4 uninstall 移除 mod 資料夾(其餘使用者資料照舊保留)
+node "$CLI" uninstall >/dev/null || fail "40.4 uninstall 應成功"
+[ ! -e $MODREL ] || fail "40.4 uninstall 應移除 mod 資料夾"
+[ -f .flightwake/STATE.md ] || fail "40.4 uninstall 不得刪使用者資料"
+pass "40.4 uninstall 移除 mod 資料夾"
+
+# 40.5 --private:mod 資料夾進排除清單;排除失敗(已受追蹤)= 拒寫;private 安裝後再 init --mod 也不留痕跡
+newrepo "$TMP/md5" >/dev/null; echo x > README; git add README; git commit -qm init
+node "$CLI" init --private --mod --agents=claude >/dev/null || fail "40.5 init --private --mod 應成功"
+[ -f $MODREL/hooks/register.ts ] || fail "40.5 測試前提:mod 應已安裝"
+grep -qx "$MODREL/" .git/info/exclude || fail "40.5 exclude 應含 $MODREL/(got: $(cat .git/info/exclude))"
+[ -z "$(git status --porcelain)" ] || fail "40.5 --private + mod 後 git status 應乾淨(got: $(git status --porcelain | tr '\n' ' '))"
+node "$CLI" update >/dev/null; [ -z "$(git status --porcelain)" ] || fail "40.5 update 後 git status 仍應乾淨"
+node "$CLI" doctor >/dev/null 2>&1 || fail "40.5 private + mod 的 doctor 應 0"
+newrepo "$TMP/md5b" >/dev/null; echo x > README; git add README; git commit -qm init
+node "$CLI" init --private --agents=claude >/dev/null && node "$CLI" init --mod --agents=claude >/dev/null || fail "40.5 private 安裝後 init --mod 應成功"
+[ -f $MODREL/hooks/register.ts ] && [ -z "$(git status --porcelain)" ] || fail "40.5 private 安裝後再 init --mod,mod 也要被排除(got: $(git status --porcelain | tr '\n' ' '))"
+newrepo "$TMP/md5c" >/dev/null; node "$CLI" init --agents=claude --mod >/dev/null && git add -A && git commit -qm shared
+git rm -rq --cached .flightwake .claude/skills/fw-* .claude/settings.json CLAUDE.md && git commit -qm untrack-core
+b=$(fsnap); rc=0; out=$(node "$CLI" init --private --agents=claude 2>&1) || rc=$?
+[ "$rc" = 1 ] && [ "$b" = "$(fsnap)" ] || fail "40.5 mod 資料夾已受追蹤時 --private 無法生效,應在預檢中止且零寫入(rc=$rc: $out)"
+echo "$out" | grep -q "$MODREL" && echo "$out" | grep -q 'git rm -r --cached' || fail "40.5 應點名受追蹤的 mod 資料夾與處理方式(got: $out)"
+pass "40.5 --private:mod 進排除、update 仍乾淨、private 後補裝也排除;mod 已受追蹤 → 預檢中止"
+
+# 40.6 安裝語言經由 marker 傳給 mod(用 mod 自己的讀取邏輯驗):setup / init、profile=notes、CLAUDE.local.md、只剩 AGENTS.md 有 marker
+newrepo "$TMP/md6a" >/dev/null
+node "$DRIVE" --orca=0 -- 2 1 "" y "" "" "" >/dev/null || fail "40.6 setup(zh-TW、claude、mod)應成功"
+[ -f $MODREL/hooks/register.ts ] || fail "40.6 setup 答 y 應裝 mod"
+[ "$(modlang)" = zh-TW ] || fail "40.6 setup 裝 zh-TW 後 mod 讀到的語言應為 zh-TW(got $(modlang))"
+newrepo "$TMP/md6b" >/dev/null
+node "$CLI" init --agents=claude --mod --lang=ja --profile=notes >/dev/null
+grep -q 'lang=ja profile=notes' CLAUDE.md || fail "40.6 測試前提:marker 應帶 lang=ja profile=notes"
+[ "$(modlang)" = ja ] || fail "40.6 profile=notes 的 marker,mod 應讀到 ja(got $(modlang))"
+newrepo "$TMP/md6c" >/dev/null; echo "# 共用" > CLAUDE.md; git add CLAUDE.md; git commit -qm base
+node "$CLI" init --private --agents=claude --mod --lang=zh-CN >/dev/null
+grep -q 'flightwake:begin' CLAUDE.md && fail "40.6 測試前提:受追蹤的 CLAUDE.md 不得被寫"
+[ "$(modlang)" = zh-CN ] || fail "40.6 private(marker 在 CLAUDE.local.md)mod 應讀到 zh-CN(got $(modlang))"
+newrepo "$TMP/md6d" >/dev/null; echo "# 共用" > CLAUDE.md; echo "# 本地" > CLAUDE.local.md; git add -A; git commit -qm base
+node "$CLI" init --private --agents=claude,codex --mod --lang=ja >/dev/null
+grep -q 'flightwake:begin' CLAUDE.md CLAUDE.local.md && fail "40.6 測試前提:兩個受追蹤的 Claude 指令檔都不得被寫"
+grep -q 'flightwake:begin v[0-9.]* lang=ja' AGENTS.md || fail "40.6 測試前提:AGENTS.md 應有 ja marker"
+[ -f $MODREL/hooks/register.ts ] || fail "40.6 測試前提:mod 應已安裝"
+[ "$(modlang)" = ja ] || fail "40.6 只有 AGENTS.md 有 marker 時 mod 應讀到 ja(got $(modlang))"
+pass "40.6 安裝語言經 marker 傳給 mod:setup zh-TW、notes ja、CLAUDE.local.md zh-CN、只剩 AGENTS.md ja"
+
+# 40.7 setup:mod 題只在選了 Claude Code 時問、預設否;摘要含 mod 路徑;兩者都選時一句話說明橫條與儀表
+newrepo "$TMP/md7a" >/dev/null
+out=$(node "$DRIVE" --orca=0 -- "" 2 "" "" "" 2>&1) || fail "40.7 只選 codex 的 setup 應成功(out: $out)"
+echo "$out" | grep -q 'Claude Code mod' && fail "40.7 沒選 Claude Code 不得問 mod"
+newrepo "$TMP/md7b" >/dev/null; echo "# 我的" > CLAUDE.md
+out=$(node "$DRIVE" --orca=0 -- "" "" "" "" "" "" "" 2>&1) || fail "40.7 mod 題預設否的 setup 應成功(out: $out)"
+echo "$out" | grep -q 'Claude Code mod' || fail "40.7 選了 Claude Code 應問 mod"
+echo "$out" | grep -A3 'Claude Code mod' | grep -q '2.1.287' && echo "$out" | grep -A3 'Claude Code mod' | grep -qi 'trust' || fail "40.7 mod 題應提到 2.1.287 與第一次的資料夾信任(got: $out)"
+[ -e $MODREL ] && fail "40.7 mod 題預設否,不得安裝"
+newrepo "$TMP/md7c" >/dev/null; echo "# 我的" > CLAUDE.md
+out=$(node "$DRIVE" --orca=0 -- "" "" y y "" "" "" 2>&1) || fail "40.7 儀表 + mod 的 setup 應成功(out: $out)"
+echo "$out" | sed -n '/These paths will be written/,/Proceed/p' | grep -q "$MODREL/" || fail "40.7 摘要應列出 $MODREL/"
+[ -f $MODREL/hooks/register.ts ] && grep -q statusLine .claude/settings.json || fail "40.7 兩者都選應都安裝(不因 mod 而不裝儀表)"
+echo "$out" | grep -qi 'band above the prompt' && echo "$out" | grep -qi 'bottom gauge' || fail "40.7 兩者都選時結尾應說明橫條與底部儀表各顯示什麼(got: $out)"
+echo "$out" | grep -q 'flightwake-mod@skills-dir' || fail "40.7 setup 裝 mod 後結尾應說明角色守門的啟用方式"
+newrepo "$TMP/md7d" >/dev/null; echo "# 我的" > CLAUDE.md
+summary_vs_writes "新裝含 mod" --orca=0 -- "" "" "" y "" "" ""
+[ -f $MODREL/hooks/register.ts ] || fail "40.7 測試前提:mod 應已安裝"
+summary_vs_writes "已安裝(含 mod)→ 升級" -- ""
+pass "40.7 setup:mod 題只對 Claude 問、預設否、說明版本與信任;摘要 == 實際寫入;儀表與 mod 並存說明"
+
+# 40.8 既有防護涵蓋 mod 路徑:預檢列出 mod;symlink(資料夾連到 repo 外、內部檔指向 STATE)、hardlink、權限
+newrepo "$TMP/md8a" >/dev/null; node "$CLI" init --agents=claude --mod >/dev/null
+mkdir -p "$TMP/md8a-out" && mv $MODREL "$TMP/md8a-out/" && ln -s "$TMP/md8a-out/flightwake-mod" $MODREL
+ob=$(cd "$TMP/md8a-out" && find . -type f | sort | xargs shasum | shasum); b=$(fsnap)
+rc=0; out=$(node "$CLI" update 2>&1) || rc=$?
+[ "$rc" = 1 ] && [ "$b" = "$(fsnap)" ] && [ "$ob" = "$(cd "$TMP/md8a-out" && find . -type f | sort | xargs shasum | shasum)" ] || fail "40.8 mod 資料夾連到 repo 外時 update 應在預檢中止、零寫入(rc=$rc: $out)"
+echo "$out" | grep -q 'flightwake-mod' || fail "40.8 拒寫訊息應點名 mod 路徑(got: $out)"
+rc=0; out=$(node "$CLI" uninstall 2>&1) || rc=$?
+[ "$rc" = 1 ] && [ -f "$TMP/md8a-out/flightwake-mod/hooks/register.ts" ] || fail "40.8 uninstall 不得刪除 repo 外的 mod 內容(rc=$rc)"
+newrepo "$TMP/md8b" >/dev/null; node "$CLI" init --agents=claude --mod >/dev/null; echo "# KEEP" >> .flightwake/STATE.md
+rm $MODREL/hooks/register.ts && ln -s ../../../../.flightwake/STATE.md $MODREL/hooks/register.ts
+st=$(shasum < .flightwake/STATE.md); b=$(fsnap); rc=0; out=$(node "$CLI" update 2>&1) || rc=$?
+[ "$rc" = 1 ] && [ "$st" = "$(shasum < .flightwake/STATE.md)" ] && [ "$b" = "$(fsnap)" ] || fail "40.8 mod 內檔案是指向 STATE 的 symlink 時 update 應拒寫、STATE 不變(rc=$rc: $out)"
+newrepo "$TMP/md8c" >/dev/null; node "$CLI" init --agents=claude --mod >/dev/null; echo "# KEEP" >> .flightwake/STATE.md
+rm $MODREL/hooks/register.ts && ln .flightwake/STATE.md $MODREL/hooks/register.ts
+st=$(shasum < .flightwake/STATE.md); node "$CLI" update >/dev/null || fail "40.8 hardlink 情境 update 應成功"
+[ "$st" = "$(shasum < .flightwake/STATE.md)" ] && cmp -s "$MODSRC/hooks/register.ts" $MODREL/hooks/register.ts || fail "40.8 mod 檔是 STATE 的 hardlink 時,update 應換成獨立的新檔、STATE 不變"
+(
+umask 022
+newrepo "$TMP/md8d" >/dev/null; node "$CLI" init --agents=claude --mod >/dev/null
+chmod 600 $MODREL/hooks/register.ts; echo "// old" > $MODREL/hooks/register.ts; chmod 600 $MODREL/hooks/register.ts
+node "$CLI" update >/dev/null && cmp -s "$MODSRC/hooks/register.ts" $MODREL/hooks/register.ts || fail "40.8 權限情境 update 應刷新檔案"
+[ "$(fmode $MODREL/hooks/register.ts)" = 600 ] || fail "40.8 mod 檔重寫後應維持 0600(got $(fmode $MODREL/hooks/register.ts))"
+[ "$(fmode $MODREL/hooks/hooks.json)" = 644 ] || fail "40.8 mod 新檔用預設 0644"
+)
+pass "40.8 symlink(資料夾在 repo 外、內部檔指向 STATE)、hardlink、權限的既有防護涵蓋 mod 路徑"
+
+# 40.9 doctor:未安裝 = 提醒以外的選配資訊;已安裝檢查 manifest / hooks 模組 / 版本;Claude Code 版本;印出看不到的兩件事
+NOCL="$TMP/nocl-bin"; mkdir -p "$NOCL"; ln -sf "$NODE_BIN" "$NOCL/node"; ln -sf "$(command -v git)" "$NOCL/git"
+fakeclaude() { mkdir -p "$TMP/fc-$1"; printf '#!/bin/sh\necho "%s (Claude Code)"\n' "$1" > "$TMP/fc-$1/claude"; chmod +x "$TMP/fc-$1/claude"; echo "$TMP/fc-$1"; }
+docmod() { local p="$1"; shift; PATH="$p" "$NODE_BIN" "$CLI" doctor 2>&1; }
+newrepo "$TMP/md9" >/dev/null; node "$CLI" init --agents=claude >/dev/null
+rc=0; out=$(docmod "$NOCL") || rc=$?
+[ "$rc" = 0 ] && echo "$out" | grep -qi 'mod: not installed (optional)' || fail "40.9 未安裝 mod 應只回報狀態且 doctor 0(rc=$rc: $out)"
+node "$CLI" init --agents=claude --mod >/dev/null
+rc=0; out=$(docmod "$(fakeclaude 2.1.290):$NOCL") || rc=$?
+[ "$rc" = 0 ] || fail "40.9 新裝 mod 的 doctor 應 0(rc=$rc: $out)"
+echo "$out" | grep -E '^  ok' | grep -q "flightwake-mod.*v$MODV" || fail "40.9 應回報已安裝的 mod 版本(got: $out)"
+echo "$out" | grep -E '^  ok' | grep -q 'Claude Code 2.1.290' || fail "40.9 取得 Claude Code 版本且 ≥2.1.287 應為 ok(got: $out)"
+echo "$out" | grep -qi 'trust' && echo "$out" | grep -qi 'repo root' || fail "40.9 應印出 doctor 看不到的兩件事:資料夾信任、從 repo 根目錄啟動(got: $out)"
+rc=0; out=$(docmod "$(fakeclaude 2.1.200):$NOCL") || rc=$?
+[ "$rc" = 0 ] && echo "$out" | grep -E '^  !' | grep -q '2.1.287' || fail "40.9 Claude Code 低於 2.1.287 應為提醒(不失敗)(rc=$rc: $out)"
+rc=0; out=$(docmod "$NOCL") || rc=$?
+[ "$rc" = 0 ] && echo "$out" | grep -E '^  ·' | grep -q 'claude --version' || fail "40.9 取不到 Claude Code 版本只印提示、不算失敗(rc=$rc: $out)"
+b=$(fsnap); docmod "$(fakeclaude 2.1.290):$NOCL" >/dev/null; [ "$b" = "$(fsnap)" ] || fail "40.9 doctor(含 mod 檢查)必須唯讀"
+mod_doc_variant() { # $1 名稱 $2 破壞指令 $3 預期等級(✗ 或 !)$4 預期文字(grep -E)$5 預期退出碼
+  local dir="$TMP/md9-$(echo "$1" | tr -c 'a-zA-Z0-9\n' _)"; cp -R "$TMP/md9" "$dir"; ( cd "$dir" && eval "$2" )
+  local rc=0 out; out=$(cd "$dir" && PATH="$NOCL" "$NODE_BIN" "$CLI" doctor 2>&1) || rc=$?
+  [ "$rc" = "$5" ] || fail "40.9 doctor:$1 應退出 $5(rc=$rc: $out)"
+  echo "$out" | grep -E "^  $3" | grep -qE "$4" || fail "40.9 doctor:$1 應有點名問題的行(預期 $3 /$4/;got: $out)"
+  echo "$out" | grep -qE 'at .*\.mjs:[0-9]+|TypeError|SyntaxError' && fail "40.9 doctor:$1 不得以例外崩潰(got: $out)"
+  return 0
+}
+mod_doc_variant "缺 manifest" "rm $MODREL/.claude-plugin/plugin.json" '✗' 'flightwake-mod.*plugin\.json' 1
+mod_doc_variant "manifest 損毀" "echo '{ bad' > $MODREL/.claude-plugin/plugin.json" '✗' 'flightwake-mod.*plugin\.json' 1
+mod_doc_variant "缺 hooks.json" "rm $MODREL/hooks/hooks.json" '✗' 'flightwake-mod.*hooks\.json' 1
+mod_doc_variant "缺 hooks 模組" "rm $MODREL/hooks/register.ts" '✗' 'flightwake-mod.*register\.ts' 1
+mod_doc_variant "版本不一致" "jedit $MODREL/.claude-plugin/plugin.json 'j.version=\"0.0.1\"'" '!' 'flightwake-mod.*0\.0\.1.*update' 0
+mod_doc_variant "發行檔被改" "echo '// x' >> $MODREL/hooks/lib/core.ts" '!' 'flightwake-mod.*hooks/lib/core\.ts.*update' 0
+newrepo "$TMP/md9p" >/dev/null; echo x > README; git add README; git commit -qm init
+node "$CLI" init --private --agents=claude --mod >/dev/null
+sed -i.bak "\|^$MODREL/\$|d" .git/info/exclude && rm -f .git/info/exclude.bak
+rc=0; out=$(docmod "$NOCL") || rc=$?
+[ "$rc" = 1 ] && echo "$out" | grep -q "✗.*--private.*flightwake-mod" || fail "40.9 private 下 mod 資料夾沒被忽略時 doctor 應失敗並點名(rc=$rc: $out)"
+pass "40.9 doctor:mod 未安裝/已安裝、manifest/hooks 模組/版本/內容、Claude Code 版本(ok/提醒/取不到)、private 排除、唯讀"
 
 echo ""
 echo "✅ smoke 全過"
