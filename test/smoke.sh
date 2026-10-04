@@ -5,6 +5,9 @@ set -euo pipefail
 
 # Keep tests deterministic and offline: never let the statusline spawn a background update check
 export FLIGHTWAKE_NO_UPDATE_CHECK=1
+# FORCE_COLOR makes node colour console.log output even into a pipe (`1` becomes ESC[33m1ESC[39m) and breaks every
+# string comparison below — TRAPS force-color-colours-piped-node-output
+unset FORCE_COLOR
 
 FW="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
@@ -1602,6 +1605,22 @@ for l in en zh-TW zh-CN ja; do
   grep -q "$k" "$SRC/skills/$l/fw-record/SKILL.md" || fail "43.2 $l fw-record 應說明與其他指令串在一起跑的測試不能當通過證據(關鍵字 $k)"
 done
 pass "43.2 MOD_VERSION 與 plugin.json 一致;安裝結尾與 doctor 指向 /fw-mod;無儀表時說明橫條一律顯示;fw-record 四語提到串接的測試(關鍵字檢查)"
+
+# 44. Astra 收尾複審第 2 點:uninstall 遇到「發行清單中應為檔案、實際是目錄」不遞迴刪除;skill 與 fw-roles 同樣處理;自加檔一律保留並列出
+newrepo "$TMP/un1" >/dev/null; node "$CLI" init --agents=claude --mod >/dev/null && node "$CLI" roles install >/dev/null
+for d in "$MODREL/hooks/register.ts" .claude/skills/fw-record/SKILL.md .claude/skills/fw-roles/SKILL.md; do rm -rf "$d" && mkdir -p "$d" && echo keep > "$d/KEEP"; done
+echo mine > .claude/skills/fw-trap/MINE.md
+rc=0; out=$(node "$CLI" uninstall 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "44 uninstall 應成功(rc=$rc: $out)"
+for d in "$MODREL/hooks/register.ts" .claude/skills/fw-record/SKILL.md .claude/skills/fw-roles/SKILL.md; do
+  [ "$(cat "$d/KEEP" 2>/dev/null)" = keep ] || fail "44 $d 是目錄(型別不符)時 uninstall 不得刪除其中的使用者檔"
+  echo "$out" | grep -q "$(basename "$(dirname "$d")")/SKILL.md\|hooks/register.ts" || fail "44 應列出型別不符而保留的 $d(got: $out)"
+done
+[ "$(cat .claude/skills/fw-trap/MINE.md 2>/dev/null)" = mine ] || fail "44 skill 資料夾裡的自加檔應保留"
+echo "$out" | grep -q 'MINE.md' || fail "44 應列出保留的自加檔 MINE.md(got: $out)"
+[ ! -e .claude/skills/fw-coldstart ] && [ ! -e .claude/skills/fw-handoff ] || fail "44 沒有自加內容的 skill 資料夾應整個移除"
+[ ! -e "$MODREL/hooks/hooks.json" ] && [ ! -e "$MODREL/.claude-plugin/plugin.json" ] || fail "44 其他發行檔仍應移除"
+pass "44 uninstall:發行檔位置是目錄時保留並列出(mod / skill / fw-roles),skill 內自加檔保留並列出,其餘照常移除"
 
 echo ""
 echo "✅ smoke 全過"
