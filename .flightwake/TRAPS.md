@@ -5,6 +5,20 @@
 # 坑 Registry
 
 ---
+name: smoke-needs-python311-tomllib
+type: gotcha
+status: active
+tags: [test, smoke, python, macos, environment]
+discovered: 2026-10-05
+confidence: confirmed
+---
+
+**症狀**:本機 `bash test/smoke.sh` 跑到 roles v2 那節停下:`ModuleNotFoundError: No module named 'tomllib'` → `❌ FAIL: TOML 應可解析且 escape 正確`,看起來像產生的 TOML 壞了;CI 卻是綠的。
+**根因**:smoke 第 22 節用 `python3 -c 'import tomllib'` 驗 TOML,`tomllib` 是 Python 3.11 才進標準庫;macOS 內建 `/usr/bin/python3` 是 3.9.6。CI runner 的 python 夠新。
+**解法/繞法**:PATH 前面放一個 3.11+ 的 `python3` 再跑(例如把 uv 裝的 `python3.12` symlink 成某個目錄裡的 `python3`,`PATH="<該目錄>:$PATH" bash test/smoke.sh`)。這個失敗不代表程式有問題。
+**佐證**:同一份程式碼在 3.9.6 失敗、換 3.12.14 全過,main(9dd685c)與 setup-wizard 分支各做一次(record 261005-setup-wizard 驗證段)
+
+---
 name: codex-project-trust-exact-path
 type: gotcha
 status: active
