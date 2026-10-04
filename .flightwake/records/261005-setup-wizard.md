@@ -3,7 +3,7 @@ record_id: 261005-setup-wizard
 session: Claude(Opus 5.5) 主實作 + 兩個 sonnet subagent(四語文件、smoke 案例,產出經主實作者逐檔審閱後採用);任務說明設計者 Fable 5.1 代 Kai 回覆澄清
 date: 2026-10-05
 repos: [flightwake]
-tests: bash test/smoke.sh 37 節全過(55 個 ok;Python 3.12 在 PATH 前;含驗收後新增的 35、36.1–36.7、37.1–37.6),node --check bin/*.mjs test/*.mjs 全過(本 repo 無 TypeScript)
+tests: bash test/smoke.sh 38 節全過(60 個 ok;Python 3.12 在 PATH 前;含驗收後新增的 35、36.1–36.7、37.1–37.6、38.1–38.5),node --check bin/*.mjs test/*.mjs 全過(本 repo 無 TypeScript)
 prod_changes: none(未 push、未 bump、未發版)
 ---
 <!-- flightwake record — 飛行紀錄。 -->
@@ -109,3 +109,28 @@ Astra 複審(原文 `docs/plans/setup.diff-review-astra-2.md`)確認上次六項
 - `uninstall` 與 `roles apply`/`remove`/`assign` 的寫入仍未走受防護的 writer
 - `--private` 下核心義務表若已在受追蹤檔,`--force`/update 仍會改寫(main 既有行為)
 - 預檢與實際寫入之間樹被改動的情況只能事後回報「未完成」,沒有回滾(DECISIONS 2026-10-05 記重評條件)
+
+## 第三輪修正(同日,f2d46b2..)
+
+Astra 第三輪(原文 `docs/plans/setup.diff-review-astra-3.md`)確認第二輪五項修好,但判定不能合併,列五項合併前必修,驗收者全數採納。
+先寫 38.1–38.5,用暫時複製的單組 smoke 分別跑出失敗(跑完即刪),再修:
+
+- 38.1 `state-check.mjs` hardlink 到 STATE、skill 檔 hardlink 到 DECISIONS → update 把使用者資料蓋掉(重現)→ 所有寫入改成暫存檔 + rename;skill 目錄逐檔 rename
+- 38.2 `.claude/skills` 連到 repo 外 → uninstall 刪掉外部 KEEP(重現);manifest symlink 到 `records/saved.json` → apply/assign 會覆寫 →
+  uninstall 與 roles remove/apply/assign 全部改走受防護 writer 並先預檢;跨 repo roles 每個目標 repo 一個 writer(各自為邊界)
+- 38.3 `.git/info/exclude` 是目錄時 `init --private` 印「privacy NOT in effect」卻 exit 0 + ✅(重現)→ exclude 寫不進去、或要排除的產物已受追蹤
+  (含 `.flightwake/`)= 拒寫,預檢中止;**相容性變更**:main 對已受追蹤的 `.flightwake` 是警告照裝
+- 38.4 `.claude` 是檔案時 init 先寫 STATE 才 ENOTDIR(重現)→ 預檢加祖先/目的地型別檢查;roles install 例外改為未完成訊息 + exit 1
+- 38.5 新回歸:`--private` 下受追蹤且為 symlink 的 `.codex/hooks.json` 讓整個安裝被拒(重現:rc=1)→ 拿掉讀取前的提早檢查,只檢查實際會寫的目的地
+- 測試面:37.2 補退出碼;37.4–37.6 的快照改用含 mtime 的 `fsnap`(同內容重寫也抓得到);36.2/37.2 的「先共享再轉私有」改為只追蹤指令檔
+  (`.flightwake` 受追蹤時 private 不可能生效,改由 38.3 測);37.6 的 settings 案例改成指向會被寫入的 JSON 使用者紀錄
+  (指向非 JSON 的 STATE 時本來就只會跳過——依「只檢查實際會寫的目的地」回 0 才對)
+
+教訓:**「只檢查 symlink」防不了別名;改寫法(rename 取代)才能讓一整類問題消失**。另外,預檢要檢查的是「會寫的目的地」,
+不是「碰得到的路徑」——檢查得太早,會把 main 本來合法跳過的情況變成拒裝。
+
+### 已知限制(Astra 同意留到之後)
+
+- 預檢與實際寫入之間樹被改動(競態)、磁碟耗盡等不可預測的 I/O 失敗:不回滾,只保證印「未完成」並以非零退出
+- 放寬更多安全的 symlink 用法(例如 `CLAUDE.md → AGENTS.md`):目前一律拒寫,是記錄在案的相容性取捨
+- `--private` 下核心義務表的 marker 若已在受追蹤檔,`--force`/update 仍會改寫(main 既有行為,未動)
