@@ -46,6 +46,10 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   empty), keeping and listing anything you added; `--private` excludes it. `doctor` reports
   it (manifest, hooks modules, shipped files, version vs the package, `claude --version` when readable) and prints what it
   can't see (folder trust, starting at the repo root). Guide: `docs/mod.md` (four languages).
+  `/fw-mod` (read-only) shows each feature as on / off / idle, why, and how to make it take effect, plus the mod version,
+  language and profile. Without the bottom gauge the band is always shown with the context percentage (it stands in for the
+  gauge); with the gauge it stays quiet. `/fw-log` lists files changed through shell commands in a separate, "inferred"
+  section and shows local time with UTC; a test run chained with other commands gets a one-time note to run it on its own.
 
 ### Changed
 - `fw-record`: when `/fw-log` exists (the Claude Code mod), its output is the basis for `tests:` evidence and the change list;
@@ -62,6 +66,8 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   before, the copied skill showed up in `git status`.
 
 ### Fixed
+- `setup` in a real terminal: lines holding a typed answer could vanish from the screen (seen in Orca's terminal). setup now
+  reads lines from a cooked tty — plain prompts, no cursor movement or erase sequences — so every question and answer stays.
 - `init`/`setup` no longer tell an existing install to "run fw-coldstart — it writes the first STATE" when STATE is already
   filled in; the next step is then just the commit. `latest_record: none` is the one canonical "no record yet" (fw-coldstart
   writes it); `doctor` treats it — and any value while `records/` is empty — as information, not a warning.

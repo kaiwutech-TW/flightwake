@@ -50,12 +50,12 @@ mod 要同時滿足以下條件才會載入:
 ### 底部儀表與 band 一起用
 
 `setup` 兩個問題都會問。兩者都裝時,收尾訊息會說明分工:底部儀表顯示 health、STATE 落後量與 context 用量;提示列上方的 band 在儀表
-開著時會隱藏這些相同的欄位、保持安靜,只在 context 偏高時跳一次 toast。選 mod 絕不會把儀表移除。
+開著時會隱藏這些相同的欄位、保持安靜,只在 context 偏高時跳一次 toast。選 mod 絕不會把儀表移除。沒有儀表時,band 一律顯示,並在 Claude Code 回報時一直帶著 context 百分比,頂替儀表的位置;安裝器的收尾訊息也會這樣說明。
 
 ### 裝完之後
 
 安裝器會印出:需要 Claude Code 2.1.287+;要從 repo 根目錄開始並接受信任提示;怎麼自己打開角色守門(下面的 `pluginConfigs` 設定,或 `/config`);
-以及它不是安全邊界。
+以及它不是安全邊界。要確認有載入、各功能在做什麼,就在 Claude Code 裡跑 `/fw-mod`。
 
 ### 確認它有沒有載入
 
@@ -70,7 +70,7 @@ mod 要同時滿足以下條件才會載入:
 如果能執行 `claude --version`,它會與 2.1.287 比較(較舊是警告;讀不到只是提示,絕不算失敗)。`doctor` 仍然不寫入任何東西。
 
 `doctor` 看不到資料夾有沒有被信任、session 是不是從 repo 根目錄開始——它會明說這一點。**請在 Claude Code 裡確認 mod 真的載入了**,
-例如看 `/fw-log` 能不能用。
+例如跑 `/fw-mod`(見下面「查看它現在在做什麼」)。
 
 ## 五個功能,各有各的開關
 
@@ -85,8 +85,8 @@ mod 要同時滿足以下條件才會載入:
 | 開關 | 預設 | 做什麼 |
 |---|---|---|
 | `stateInject` | 開 | session 開始時,把 `.flightwake/STATE.md`(每個 session 只取一次的快照)放進 system prompt,並註明這是上次收尾時的狀態,仍應檢查 git。STATE 還是未填的範本時,改放一行「請先跑冷啟動」。超過 6000 字元時,不是截掉前 N 個字,而是注入 frontmatter、「進行中」與「下一步入口」兩段以及檔案路徑,並提示你壓實 STATE。它不取代 `fw-coldstart`(落後檢查與讀最新 record 仍是 skill 的工作)。 |
-| `band` | 開 | 提示列上方的一行:health 顏色、STATE 落後量(與 Stop hook 檢查同一個算法;bot 的 commit 不計)、context 用量,以及建議的下一個指令。一切正常時保持安靜(health 不是 green、落後 ≥3 commits、或 context ≥60% 才出現)。context 到 80% 時跳一次 toast。若 flightwake 的底部儀表(`statusline.mjs`)就是生效中的狀態列,band 會隱藏儀表已經顯示的欄位並保持安靜;toast 照常。 |
-| `recorder` | 開 | session 飛行日誌:改了哪些檔案、commit,以及認得出的測試指令與結果。`/fw-log` 會把它印出來,供 `fw-record` 當作 `tests:` 證據與變更清單。它從不寫 record。 |
+| `band` | 開 | 提示列上方的一行:health 顏色、STATE 落後量(與 Stop hook 檢查同一個算法;bot 的 commit 不計)、context 用量,以及建議的下一個指令。沒有生效中的底部儀表(`statusline.mjs` 不是狀態列)時,band 一律顯示,Claude Code 有回報 context 百分比就一律帶上;它不再等到 60%,一切正常時也不消失,而是頂替儀表。顏色門檻不變(≥60% 黃、≥80% 紅),context 到 80% 時照樣跳一次 toast。STATE 還是未填的範本時,health 顯示為 `?`,並提示「STATE 尚未初始化——先跑 /fw-coldstart」。若 flightwake 的底部儀表(`statusline.mjs`)就是生效中的狀態列,band 會隱藏儀表已經顯示的欄位並保持安靜,只剩 80% 的 toast。 |
+| `recorder` | 開 | session 飛行日誌:改了哪些檔案、commit,以及認得出的測試指令與結果。`/fw-log` 會把它印出來,供 `fw-record` 當作 `tests:` 證據與變更清單;經由 shell 指令改動的檔案會另列一段(推斷而來,可能不完整),時間以本地時間加 UTC 偏移顯示、後面接 UTC。它從不寫 record。 |
 | `tripwire` | 開 | 當 agent 編輯的檔案或執行的指令,符合某則啟用中的 TRAPS 條目的選填欄位 `paths` / `commands` 時,會把該條目的重點與信心程度給 agent 看,每個 session 一次——是在工具跑完*之後*,所以保護的是下一次嘗試,不是這一次。從不阻擋。`probable` / `suspected` 的條目會標成線索,不是結論。 |
 | `roleGuard` | 關 | 針對這個資料夾 Claude 座位上的角色,角色內文(ROLES.md)裡的 `deny-write: [globs]` 行會變成對主 session 的 `Edit` / `Write` / `NotebookEdit` 寫入這些路徑的攔截,訊息會說明是哪個角色、哪條規則、改怎麼做。只有使用者本人能用 `/fw-role-release`(在輸入框打)為本 session 放行;放行期間狀態列持續顯示。細節見 [roles.zh-TW.md](roles.zh-TW.md) 的「選配:Claude Code mod 的角色守門」。 |
 
@@ -101,12 +101,23 @@ commands: ["npm run migrate", "psql"]  # 指令前綴,逐個 token 比對
 
 不支援正規表示式。已被 superseded 的條目永遠不會被比對。
 
+### 查看它現在在做什麼:`/fw-mod`
+
+`/fw-mod` 是唯讀指令,列出五個功能各自是開、關還是閒置(idle)、原因,以及要怎麼讓它生效。例如:band 因為偵測到底部儀表而隱藏;
+tripwire 開著但閒置,因為沒有任何啟用中的 TRAPS 條目有 `paths` 或 `commands`;角色守門關著(並說明怎麼打開),或開著但閒置,因為這個資料夾的座位沒有角色、
+或角色沒有 `deny-write`;STATE 本 session 已注入,或因為 STATE 還沒初始化而只注入「請先跑 /fw-coldstart」的提示。它也會顯示 mod 版本、偵測到的語言與 profile。
+它不改任何東西,也不是五個開關之一——只要裝了 flightwake,隨時都能用。
+
 ## 限制——請先讀這段
 
 - **`/fw-log` 裡的「pass」** 的意思是:一個被直接呼叫、認得出的測試執行器,以可辨識的方式跑完並回傳 0。它看不到設定檔或環境裡讓測試
   根本沒跑的設定(例如 pytest.ini 的 `addopts`、略過測試的 build profile),也不保證測試檢查的內容是對的。任何它無法證明的情況,
   都會記成「unknown」並附上結束碼,而不是 pass。
 - **角色守門不是安全邊界。** Bash 與其他工具不會被檢查,子 agent 不會被檢查,被禁止路徑的 symlink 或其他別名也擋不到。
+- **`/fw-log` 裡經由 shell 指令改動的檔案可能不完整。** 那一段是從指令推斷的:repo 內輸出重導向(`>`、`>>`)的目標,以及 `cp`、`mv`、`rm`、`tee`、`sed -i`。
+  用其他方式寫入的(腳本、其他程式、git)看不到;「agent 改的檔案」清單仍然只含 Edit / Write / NotebookEdit 工具回報的。
+- **測試指令與其他指令串在一起時,結果記成「unknown」。** 例如 `echo … && npm test 2>&1; echo exit=$?`:只看得到整串的結束碼。每個 session 會對 agent 提示一次
+  (附在那次工具結果上):這樣的執行不能算作通過的證據,需要證據時請把測試指令單獨跑一次。這則提示只是說明,不會阻擋任何事。
 - tripwire 無法確定工作目錄時(例如 `||` 之後的 `cd`、子 shell 裡),會在候選目錄下逐一比對——最多 16 個,超過就改成比對路徑的尾段——所以可能提示得比必要的多。
 - 只支援 Claude Code。需要 2.1.287 以上、已接受資料夾信任提示、而且從 repo 根目錄開始。
 - 已在一個真實的 Claude Code session 裡驗證過一次(五個功能都生效)。**還沒有**在真實 session 驗證的:重啟後接續 session、compaction

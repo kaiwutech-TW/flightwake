@@ -177,3 +177,10 @@ tests/<f>.test.ts            各功能測試
 | F5 role-guard | `session.start`、`prompt.submit`(派工卡)、`tool.call`(Edit/Write/NotebookEdit,僅主 loop)、指令 `/fw-role-release` | `roleGuard` | 只 deny 寫入 deny-write 路徑;無 roles 時完全不作用 |
 
 顯示文字一律經 `M(lang, { en, 'zh-TW', 'zh-CN', ja })`,lang 來自 `fwContext(io)`。沒有 `.flightwake/STATE.md` 時 `fwContext` 為 null,所有功能靜默。
+
+## 實測回饋修正(2026-10-05,第三階段;詳見 `docs/plans/integration.md` 同名一節,優先於上文)
+
+- **F2**:沒有有效的底部儀表時橫條一律顯示、一律帶 context 百分比;有儀表時維持隱藏重複欄位。取代上文「一切正常時保持安靜」。
+- **F3**:shell 指令推斷的改動另成一區;`/fw-log` 時間顯示本地時間+偏移與 UTC;串接執行的測試每 session 提示一次。
+- 新增唯讀 `/fw-mod`(不屬於五個開關)。
+

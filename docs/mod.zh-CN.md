@@ -52,7 +52,7 @@ npx flightwake doctor         # 检查安装状态
 - 已安装的版本与包里的版本一致(不一致会给出警告,并指向 `update`);
 - 随包发布的文件有没有被手动改过(警告;`update` 会还原)。
 
-如果能执行 `claude --version`,会拿它与 2.1.287 比较(更旧是警告;读不到只是提示,绝不算失败)。**`doctor` 看不到文件夹是否已被信任、session 是否从 repo 根目录启动**——它会明说这一点。请在 Claude Code 里确认 mod 真的加载了(例如 `/fw-log` 可用)。
+如果能执行 `claude --version`,会拿它与 2.1.287 比较(更旧是警告;读不到只是提示,绝不算失败)。**`doctor` 看不到文件夹是否已被信任、session 是否从 repo 根目录启动**——它会明说这一点。请在 Claude Code 里确认 mod 真的加载了(跑 `/fw-mod`)。
 
 ## 五个功能,各有开关
 
@@ -67,8 +67,8 @@ npx flightwake doctor         # 检查安装状态
 | 开关 | 默认 | 做什么 |
 |---|---|---|
 | `stateInject` | 开 | session 开始时,把 `.flightwake/STATE.md`(每个 session 只取一次快照)加进 system prompt,并附一句说明:这是上次收尾时的状态,仍要检查 git。STATE 还是未填的模板时,改为一行「请运行 cold start」的提示。超过 6000 字符时,注入 frontmatter、「进行中」与「下一步入口」两节以及文件路径,并提示去精简 STATE,而不是粗暴截掉前 N 个字符。它不取代 `fw-coldstart`(落后检查与读最近一份 record 仍是 skill 的工作)。 |
-| `band` | 开 | 输入框上方的一行:健康颜色、STATE 落后数(与 Stop hook 检查用同一个算法;机器人 commit 不算)、上下文用量,以及建议的下一个命令。一切正常时保持安静(健康不是绿色、落后 ≥3 个 commit、或上下文 ≥60% 时才出现)。上下文到 80% 时弹一次提示。当 flightwake 的底部仪表(`statusline.mjs`)就是生效的状态栏时,band 会隐藏仪表已经显示的字段并保持安静;80% 的提示仍会弹出。 |
-| `recorder` | 开 | session 飞行日志:改动的文件、commit、以及识别出的测试命令与结果。`/fw-log` 把它打印出来,供 `fw-record` 当作 `tests:` 证据与改动清单。它从不写 record。 |
+| `band` | 开 | 输入框上方的一行:健康颜色、STATE 落后数(与 Stop hook 检查用同一个算法;机器人 commit 不算)、上下文用量,以及建议的下一个命令。没有生效的底部仪表时,band 一直显示,Claude Code 回报了上下文百分比就一直带着它;不再等到 60%,一切正常也不会消失,它代替仪表。颜色门槛不变(≥60% 黄、≥80% 红),上下文到 80% 时弹一次提示。STATE 还是未填的模板时,健康显示为 `?`,并提示「STATE 尚未初始化——先跑 /fw-coldstart」。当 flightwake 的底部仪表(`statusline.mjs`)就是生效的状态栏时,band 会隐藏仪表已经显示的字段并保持安静;80% 的提示仍会弹出。 |
+| `recorder` | 开 | session 飞行日志:改动的文件、shell 命令推断出的改动(单独一节)、commit、以及识别出的测试命令与结果。`/fw-log` 以本地时间(附 UTC 偏移,后面再列 UTC)把它打印出来,供 `fw-record` 当作 `tests:` 证据与改动清单。它从不写 record。 |
 | `tripwire` | 开 | 当 agent 编辑的文件或执行的命令符合某个有效 TRAPS 条目的可选 `paths` / `commands` 字段时,每个 session 只向 agent 显示一次该条目的要点与可信度——在工具执行*之后*(它保护的是下一次尝试,不是这一次)。绝不阻止。`probable` / `suspected` 条目会标示为线索,不是结论。 |
 | `roleGuard` | 关 | 对这个文件夹里 Claude 座位的角色,角色内文(ROLES.md)中的 `deny-write: [globs]` 行会变成对主 session 的 `Edit` / `Write` / `NotebookEdit` 写入这些路径的拦截,提示会说明角色、规则以及改做什么。只有用户本人能在输入框输入 `/fw-role-release` 为本 session 放行;放行期间状态栏持续显示。细节见 [roles.zh-CN.md](roles.zh-CN.md) 的「可选:Claude Code mod 的角色守门」一节。 |
 
@@ -83,17 +83,23 @@ commands: ["npm run migrate", "psql"]    # 命令前缀,逐个 token 比对
 
 不支持正则。已被取代(superseded)的条目永远不会被匹配。
 
+## 查看它在做什么:/fw-mod
+
+`/fw-mod` 是只读命令:逐一列出五个功能是开启、关闭还是闲置,原因,以及怎样让它生效。例如:band 因为检测到底部仪表而隐藏;tripwire 开着但闲置,因为没有任何有效 TRAPS 条目带 `paths` 或 `commands`;角色守门关闭(并告诉你怎么打开),或开着但闲置,因为这个文件夹的座位没有角色、或没有 `deny-write`;本 session 已注入 STATE,或因为 STATE 未初始化而只注入了「请先跑 /fw-coldstart」的提示。它也会显示 mod 版本、检测到的语言与 profile。它什么都不改,也不属于五个开关之一;只要装了 flightwake 就一直可用。
+
 ## 底部仪表与 band 一起用
 
-`setup` 两个问题都会问。两者都装时,收尾信息会说明:底部仪表显示健康 / STATE 落后 / 上下文用量;输入框上方的 band 在仪表开着时隐藏这些相同的字段、保持安静,只在上下文偏高时弹一次提示。选择 mod 绝不会拿掉仪表。
+`setup` 两个问题都会问。两者都装时,收尾信息会说明:底部仪表显示健康 / STATE 落后 / 上下文用量;输入框上方的 band 在仪表开着时隐藏这些相同的字段、保持安静,只在上下文偏高时弹一次提示。没有仪表时,band 一直显示并代替它,安装程序的收尾信息也会这么说。选择 mod 绝不会拿掉仪表。
 
 ## 安装之后
 
-安装程序会打印:需要 Claude Code 2.1.287+;从 repo 根目录启动并接受信任提示;怎么自己打开角色守门(上面的 `pluginConfigs` 键,或 `/config`);它不是安全边界。
+安装程序会打印:需要 Claude Code 2.1.287+;从 repo 根目录启动并接受信任提示;怎么自己打开角色守门(上面的 `pluginConfigs` 键,或 `/config`);它不是安全边界;要确认有加载、各功能在做什么,在 Claude Code 里跑 `/fw-mod`。
 
 ## 已知限制
 
 - **`/fw-log` 里的「pass」**的意思是:直接调用的、可识别的测试运行器以可识别的方式运行并返回 0。它看不到配置文件或环境里让测试根本不执行的设置(例如 pytest.ini 里的 `addopts`、跳过测试的构建 profile),也不保证测试检查的内容。凡是它无法证明的,都记为「unknown」并附上 exit code,不记为 pass。
+- **`/fw-log` 里 shell 推断的改动可能不完整**:它们是从命令推断的(repo 内 `>`、`>>` 的输出目标,以及 `cp`、`mv`、`rm`、`tee`、`sed -i`),单独列出并标明这一点;脚本、其他程序或 git 造成的写入看不到。「agent 改动的文件」仍只含 Edit/Write/NotebookEdit 工具回报的。
+- **与其他命令串在一起运行的测试记为 unknown**:例如 `echo … && npm test 2>&1; echo exit=$?`,只看得到整串命令的 exit code,所以不能当作通过的证据。每个 session 会给 agent 一次提示(附在该工具结果上),只是说明这一点、不阻止任何事;需要证据时,请单独再跑一次该测试命令。
 - **角色守门不是安全边界**:Bash 与其他工具不检查,子 agent 不检查,被禁止路径的 symlink 或其他别名也拦不到。
 - **tripwire** 在无法确定工作目录时(例如 `||` 之后的 `cd`、子 shell 里),会在候选目录下逐一比对——最多 16 个,超过就改为比对路径的尾段——所以可能多提示一些。
 - 只支持 Claude Code,需要 2.1.287+、已接受的文件夹信任提示,并从 repo 根目录启动。

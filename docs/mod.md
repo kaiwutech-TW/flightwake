@@ -50,14 +50,15 @@ npx flightwake init --mod     # install it directly
   `init --mod` on a private install also adds it to the exclude block.
 
 After installing, the installer prints what you need to know: it needs Claude Code 2.1.287+; start from the repo root
-and accept the trust prompt; how to turn the role guard on yourself (the `pluginConfigs` key below, or `/config`); and
-that it is not a security boundary.
+and accept the trust prompt; run `/fw-mod` in Claude Code to check that it loaded and what each feature is doing; how to
+turn the role guard on yourself (the `pluginConfigs` key below, or `/config`); and that it is not a security boundary.
 
 ### The bottom gauge and the band together
 
 `setup` keeps both questions. If both are installed, the closing message says: the bottom gauge shows health / STATE
 lag / context use; the band above the prompt hides those same fields while the gauge is on, stays quiet, and only
-toasts once when context runs hot. Choosing the mod never removes the gauge.
+toasts once when context runs hot. Choosing the mod never removes the gauge. Without the gauge, the band is always shown
+and stands in for it; the installer's closing message says so.
 
 ## The five features — each has its own switch
 
@@ -73,8 +74,8 @@ Project settings are not read for plugin options, so the installer cannot set th
 | Switch | Default | What it does |
 |---|---|---|
 | `stateInject` | on | At session start, adds `.flightwake/STATE.md` (a snapshot taken once per session) to the system prompt, with a note that it is the state as of the last wrap-up and git should still be checked. An unfilled template STATE gives a one-line "run the cold start" note instead. Over 6000 characters, it injects the frontmatter, the "in progress" and "next entry points" sections and the file path, with a hint to compact STATE, rather than cutting the first N characters. It does not replace `fw-coldstart` — the lag check and reading the latest record are still the skill's job. |
-| `band` | on | A row above the prompt: health colour, STATE lag (same count as the Stop hook's check; bot commits don't count), context use, and the next suggested command. Silent while all is well — it shows when health is not green, lag is ≥3 commits, or context is ≥60%. One toast when context reaches 80%. When flightwake's bottom gauge (`statusline.mjs`) is the effective status line, the band hides the fields the gauge already shows and stays quiet; the toast remains. |
-| `recorder` | on | A session flight log: files changed, commits, and recognised test commands with their result. `/fw-log` prints it for `fw-record` to use as `tests:` evidence and the change list. It never writes a record. |
+| `band` | on | A row above the prompt: health colour, STATE lag (same count as the Stop hook's check; bot commits don't count), context use, and the next suggested command. Without flightwake's bottom gauge (`statusline.mjs`) as the effective status line, the band is always shown and always shows the context percentage when Claude Code reports one — it stands in for the gauge. It turns yellow at ≥60% and red at ≥80%, and one toast appears when context reaches 80%. While STATE is still the unfilled template, it shows health as `?` with the hint "STATE not initialized yet — run /fw-coldstart". When the gauge is the effective status line, the band hides the fields the gauge already shows and stays quiet; the toast remains. |
+| `recorder` | on | A session flight log: files changed, commits, and recognised test commands with their result. Files changed through shell commands are listed separately, as inferred. `/fw-log` prints it, with times in local time and UTC, for `fw-record` to use as `tests:` evidence and the change list. It never writes a record. |
 | `tripwire` | on | When the agent edits a file or runs a command matching an active TRAPS entry's optional `paths` / `commands` fields, the entry's gist and confidence are shown to the agent once per session — after the tool ran, so it protects the next attempt, not this one. Never blocks. `probable` / `suspected` entries are labelled as leads, not conclusions. |
 | `roleGuard` | off | For this folder's Claude seat role, `deny-write: [globs]` lines in the role body (ROLES.md) become blocks on the main session's `Edit` / `Write` / `NotebookEdit` into those paths, with a message naming the role, the rule and what to do instead. Only the person can release it with `/fw-role-release` (typed in the prompt) for this session; the release stays visible in the status line. Details: [the role guard section of roles.md](roles.md#optional-the-claude-code-mods-role-guard). |
 
@@ -91,6 +92,15 @@ commands: ["npm run migrate", "psql"]
 - `commands` — command prefixes, compared token by token. No regex.
 - Superseded entries are never matched.
 
+## Checking what it is doing: /fw-mod
+
+`/fw-mod` is read-only. It lists each of the five features as on, off or idle, with the reason and what to do to make it
+take effect. For example: the band hidden because the bottom gauge was detected; the tripwire on but idle because no
+active TRAPS entry has `paths` or `commands`; the role guard off (with how to turn it on), or on but idle because this
+folder's seat has no role or no `deny-write`; STATE injected this session, or only the "run /fw-coldstart" note because
+STATE is not initialized. It also shows the mod version, the detected language and the profile. It changes nothing, and
+it is not one of the five switches — it is always available where flightwake is installed.
+
 ## Doctor
 
 `npx flightwake doctor` reports whether the mod is installed — it is optional, and not installed is not a problem. When
@@ -105,7 +115,7 @@ installed, it checks:
   still writes nothing.
 
 doctor cannot see whether the folder is trusted or whether sessions start at the repo root, and it says so. Confirm inside
-Claude Code that the mod loaded — for example, `/fw-log` is available.
+Claude Code that the mod loaded — run `/fw-mod`.
 
 ## Limits — read this
 
@@ -113,6 +123,13 @@ Claude Code that the mod loaded — for example, `/fw-log` is available.
   It cannot see settings in config files or the environment that make tests not run (for example `addopts` in
   `pytest.ini`, a build profile that skips tests), and it does not vouch for what the tests check. Anything it cannot
   prove is recorded as "unknown" with the exit code, not as pass.
+- **Shell-inferred changes in `/fw-log` may be incomplete.** They are inferred from the commands, not observed: targets
+  of output redirections (`>`, `>>`), `cp`, `mv`, `rm`, `tee` and `sed -i`, inside the repo. Writes made any other way
+  (scripts, other programs, git) are not seen. The "files changed by the agent" list still holds only what the Edit /
+  Write / NotebookEdit tools reported.
+- **A test command chained with other commands is recorded as "unknown"** (for example `echo … && npm test 2>&1; echo
+  exit=$?` — only the whole chain's exit code is visible). The agent gets one note per session saying such a run cannot
+  count as passing evidence; the note blocks nothing. When you need evidence, run the test command on its own once.
 - **The role guard is not a security boundary.** Bash and other tools are not checked, subagents are not checked, and
   a symlink or other alias of a denied path is not caught.
 - When the tripwire cannot be sure of the working directory (for example `cd` after `||`, or inside subshells), it
