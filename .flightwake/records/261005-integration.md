@@ -192,3 +192,5 @@ setup 的 Ctrl-C/EOF/多行貼上、`date +%z`、提示共用管道、`/fw-mod` 
 驗證:smoke 44 節 `✅ smoke 全過`;`claude plugin test` 297 pass / 0 fail;validate `✔ Validation passed`;tsc clean;git-readonly-check 三項 ok。本輪未重做真機 Claude session(改動為判定與解析,已以真 git 複驗解析)。
 worktree 之外:`$TMPDIR/fw-integration-verify`(驗證工具與隔離的 FLIGHTWAKE_HOME)。
 
+
+**最後確認(同日)**:驗收者 Fable 5.1 複核三項修正通過;GPT-6 Astra 最後確認(原文 `docs/plans/integration.diff-review-astra-3.md`,審至 6211fd2)結論**依約定標準可合併、無剩餘合併前必修**(補跑一般 cp/mv/重導向正確記錄;它追加測試後 302/302,追加的測試未進本分支)。它列的未驗證範圍:本輪未重跑 tsc、真實 Claude session、Windows、CI、競態/磁碟故障;git 確認只證明事後有變更、不證明是該指令造成(日誌維持「推斷」定位)。功能凍結;未 push/bump/發版,等 Kai 決定。
