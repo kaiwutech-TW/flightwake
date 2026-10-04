@@ -58,6 +58,8 @@ export function realContext({ target, fwSrc, version, log = (s) => console.log(s
     preview(plan) {
       const r = install({ ...plan.opts, target, fwSrc, version, marker: detectInstall(target).marker, dry: true });
       const list = [...(plan.gitInit ? ['.git/  (git init)'] : []), ...r.writes];
+      // Paths the guard refuses (symlink / outside the repo) are shown, marked, so nothing surprises after confirming
+      for (const p of r.refused) list.push(`${p}  ✗ (symlink / outside the repo — will not be written)`);
       if (plan.roles) {
         for (const b of rolesBases(r)) list.push(`${b}/fw-roles/`);
         if (plan.opts.private) list.push('.git/info/exclude');
@@ -72,7 +74,7 @@ export function realContext({ target, fwSrc, version, log = (s) => console.log(s
       // Add-ons after the core
       if (plan.roles) installRolesSkill({ target, fwSrc, lang: plan.opts.lang, bases: rolesBases(r), noJunk, log, addExcludes: (e) => addPrivateExcludes(target, e) });
       log('');
-      const code = runDoctor({ target, fwSrc, version, lang: plan.opts.lang, log });
+      const code = Math.max(runDoctor({ target, fwSrc, version, lang: plan.opts.lang, log }), r.refused.length ? 1 : 0);
       if (plan.mode === 'update') {
         log(M({ en: `\n✅ updated to v${version}.`, 'zh-TW': `\n✅ 已更新到 v${version}。`, 'zh-CN': `\n✅ 已更新到 v${version}。`, ja: `\n✅ v${version} に更新しました。` }));
       } else {

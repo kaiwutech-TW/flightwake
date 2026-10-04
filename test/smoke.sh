@@ -978,5 +978,49 @@ newrepo "$TMP/ag-init" >/dev/null
 node "$CLI" init >/dev/null && grep -q 'flightwake:begin' AGENTS.md || fail "init 非互動預設不變:無指令檔仍建 AGENTS.md"
 pass "agent 題:無指令檔直接問(複選、不預選、選 claude 會問儀表);有指令檔維持沿用;確認預設是;init 預設不變"
 
+# 36. Astra diff 審查(docs/plans/setup.diff-review-astra.md)的回歸測試
+# 36.1 doctor 的 private 檢查要從安裝產物推導必要排除:刪掉 exclude 裡的 .flightwake/ → doctor 失敗並點名
+newrepo "$TMP/ax1" >/dev/null; echo x > README; git add README; git commit -qm init
+node "$CLI" init --private >/dev/null
+sed -i.bak '/^\.flightwake\/$/d' .git/info/exclude && rm -f .git/info/exclude.bak
+git status --porcelain | grep -q '.flightwake' || fail "36.1 測試前提:刪掉排除後 .flightwake 應出現在 git status"
+rc=0; out=$(node "$CLI" doctor 2>&1) || rc=$?
+[ "$rc" = 1 ] || fail "36.1 private 必要排除缺 .flightwake/ 時 doctor 應退出 1(rc=$rc: $out)"
+echo "$out" | grep -q '✗.*--private.*\.flightwake' || fail "36.1 doctor 應點名 .flightwake 未被忽略(got: $out)"
+pass "36.1 doctor private:必要排除由安裝產物推導,缺 .flightwake/ 即失敗"
+
+# 36.2 --private 下 Orca 區塊不得寫進受追蹤的指令檔:claude 改寫 CLAUDE.local.md;codex 跳過並警告
+newrepo "$TMP/ax2" >/dev/null
+node "$CLI" init --agents=claude,codex >/dev/null && git add -A && git commit -qm shared
+rc=0; out=$(node "$CLI" init --private --orca --agents=claude,codex 2>&1) || rc=$?
+git diff --quiet -- CLAUDE.md AGENTS.md || fail "36.2 --private --orca 不得改動受追蹤的 CLAUDE.md / AGENTS.md(diff: $(git diff --stat | tr '\n' ' '))"
+grep -q 'flightwake-orca:begin' CLAUDE.local.md 2>/dev/null || fail "36.2 claude 的 Orca 區塊應改寫進 CLAUDE.local.md"
+git check-ignore -q CLAUDE.local.md || fail "36.2 CLAUDE.local.md 應被排除"
+echo "$out" | grep -q -- '--private: AGENTS.md' || fail "36.2 codex 受追蹤時應跳過並警告(got: $out)"
+node "$CLI" update >/dev/null
+git diff --quiet -- CLAUDE.md AGENTS.md || fail "36.2 private 的 update 也不得改動受追蹤的指令檔"
+pass "36.2 --private 下 Orca 區塊不進受追蹤檔(claude 走 CLAUDE.local.md、codex 跳過並警告)"
+
+# 36.3 寫入框架檔前檢查 symlink / 實際落點:hook 指向 ../STATE.md、skill 檔指向 DECISIONS → update 拒寫、使用者資料不變
+newrepo "$TMP/ax3" >/dev/null
+node "$CLI" init >/dev/null
+echo "# 我的 STATE KEEP" >> .flightwake/STATE.md; echo "# 我的決策 KEEP" >> .flightwake/DECISIONS.md
+rm .flightwake/hooks/state-check.mjs && ln -s ../STATE.md .flightwake/hooks/state-check.mjs
+rm .claude/skills/fw-record/SKILL.md && ln -s ../../../.flightwake/DECISIONS.md .claude/skills/fw-record/SKILL.md
+st=$(shasum < .flightwake/STATE.md); de=$(shasum < .flightwake/DECISIONS.md)
+rc=0; out=$(node "$CLI" update 2>&1) || rc=$?
+[ "$st" = "$(shasum < .flightwake/STATE.md)" ] || fail "36.3 update 不得經由 symlink 覆蓋 STATE.md"
+[ "$de" = "$(shasum < .flightwake/DECISIONS.md)" ] || fail "36.3 update 不得經由 symlink 覆蓋 DECISIONS.md"
+[ "$rc" -ne 0 ] || fail "36.3 拒寫時應非零退出,讓自動化看得到"
+echo "$out" | grep -q 'symlink' || fail "36.3 應說明因 symlink 拒寫(got: $out)"
+[ -L .flightwake/hooks/state-check.mjs ] || fail "36.3 拒寫時不得動那個 symlink"
+# 實際落點在 repo 外:.flightwake/hooks 本身是指向外部的目錄 symlink
+newrepo "$TMP/ax3b" >/dev/null; node "$CLI" init >/dev/null
+mkdir -p "$TMP/ax3-outside" && rm -rf .flightwake/hooks && ln -s "$TMP/ax3-outside" .flightwake/hooks
+rc=0; out=$(node "$CLI" update 2>&1) || rc=$?
+[ -z "$(ls -A "$TMP/ax3-outside")" ] || fail "36.3 實際落點在 repo 外時不得寫入(got: $(ls -A "$TMP/ax3-outside"))"
+[ "$rc" -ne 0 ] && echo "$out" | grep -q 'outside' || fail "36.3 應說明落點在 repo 外而拒寫(rc=$rc: $out)"
+pass "36.3 symlink / repo 外落點一律拒寫,使用者資料不被覆蓋"
+
 echo ""
 echo "✅ smoke 全過"

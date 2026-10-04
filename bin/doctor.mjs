@@ -7,9 +7,10 @@
  * Output: one line per check, ok / warn / fail. Exit 1 on any fail, 0 otherwise.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import {
-  LANGS, GROUPS, HOOK_CMD, HOOK_CMD_GIT, SL_CMD, makeM, gitIn, gitAvailable, repoState, excludePath, readMarkers,
+  LANGS, GROUPS, INSTRUCTION_CANDIDATES, HOOK_CMD, HOOK_CMD_GIT, SL_CMD, makeM, gitIn, gitAvailable, repoState, readMarkers,
   detectInstall,
 } from './install.mjs';
 
@@ -156,19 +157,38 @@ export function runDoctor({ target, fwSrc, version, lang, log }) {
   }
   if (platforms.has('gemini')) checkHook('Gemini CLI', ['.gemini/settings.json'], 'AfterAgent', HOOK_CMD_GIT, { optionalIfTracked: true });
 
-  // ── --private: every excluded path that exists must really be ignored (a tracked file defeats exclude) ──
-  if (det.private) {
-    let entries = [];
-    try { entries = (/# flightwake:begin[^\n]*\n([\s\S]*?)# flightwake:end/.exec(readFileSync(excludePath(target), 'utf8'))?.[1] ?? '').split('\n').filter(Boolean); } catch {}
-    const broken = [];
-    for (const e of entries) {
-      const rel = e.replace(/\/$/, '');
-      if (!existsSync(at(rel))) continue;
-      if (isTracked(rel)) { broken.push(`${e} (tracked)`); continue; }
-      try { git('check-ignore', '-q', e); } catch { broken.push(e); }
+  // ── --private: the paths that must be ignored come from what is installed, not from what is left in the exclude
+  //    block (an entry deleted from it would otherwise vanish from the check). Each artifact file must be ignored
+  //    by git in effect; a tracked file defeats exclude, and check-ignore does not report tracked files as ignored.
+  if (det.private && !git) warn(M({ en: '--private: cannot verify the excludes without git at the repo root', 'zh-TW': '--private:沒有 git(或不在 repo root)無法驗證排除', 'zh-CN': '--private:没有 git(或不在 repo root)无法验证排除', ja: '--private:git が無い(または repo root でない)ため除外を検証できない' }));
+  if (det.private && git) {
+    const walk = (rel) => {
+      const p = at(rel);
+      if (!existsSync(p)) return [];
+      if (!statSync(p).isDirectory()) return [rel];
+      return readdirSync(p).flatMap((f) => walk(`${rel}/${f}`));
+    };
+    const has = (rel, needle) => { try { return readFileSync(at(rel), 'utf8').includes(needle); } catch { return false; } };
+    const groups = []; // [label, files]
+    groups.push(['.flightwake/', walk('.flightwake')]);
+    for (const base of ['.claude/skills', '.agents/skills']) {
+      for (const d of (existsSync(at(base)) ? readdirSync(at(base)) : [])) if (d.startsWith('fw-')) groups.push([`${base}/${d}/`, walk(`${base}/${d}`)]);
     }
+    for (const rel of ['.claude/settings.json', '.claude/settings.local.json', '.codex/hooks.json', '.gemini/settings.json']) {
+      if (has(rel, 'state-check.mjs') || has(rel, 'statusline.mjs')) groups.push([rel, [rel]]);
+    }
+    for (const rel of INSTRUCTION_CANDIDATES) {
+      if (has(rel, '<!-- flightwake:begin') || has(rel, '<!-- flightwake-orca:begin')) groups.push([rel, [rel]]);
+    }
+    const files = groups.flatMap(([, f]) => f);
+    let ignored = new Set();
+    try {
+      const outp = execFileSync('git', ['check-ignore', '--stdin'], { cwd: target, input: files.join('\n') + '\n', encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+      ignored = new Set(outp.split('\n').filter(Boolean));
+    } catch (e) { ignored = new Set(String(e.stdout ?? '').split('\n').filter(Boolean)); } // exit 1 = none ignored
+    const broken = groups.filter(([, f]) => f.some((x) => !ignored.has(x))).map(([label, f]) => (f.some((x) => isTracked(x)) ? `${label} (tracked)` : label));
     if (broken.length) fail(M({ en: `--private: not actually ignored by git: ${broken.join(', ')}`, 'zh-TW': `--private:以下沒有真的被 git 忽略:${broken.join(', ')}`, 'zh-CN': `--private:以下没有真的被 git 忽略:${broken.join(', ')}`, ja: `--private:git に実際には無視されていない:${broken.join(', ')}` }));
-    else ok(M({ en: `--private: ${entries.length} exclude entries in effect`, 'zh-TW': `--private:${entries.length} 條排除生效`, 'zh-CN': `--private:${entries.length} 条排除生效`, ja: `--private:${entries.length} 件の除外が有効` }));
+    else ok(M({ en: `--private: all ${groups.length} installed artifacts are ignored by git`, 'zh-TW': `--private:${groups.length} 項安裝產物都已被 git 忽略`, 'zh-CN': `--private:${groups.length} 项安装产物都已被 git 忽略`, ja: `--private:インストール物 ${groups.length} 件すべて git に無視されている` }));
   }
 
   // ── optional add-ons: report state only; not installed is never a problem ──

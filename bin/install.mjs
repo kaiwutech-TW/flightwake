@@ -5,7 +5,7 @@
  * before its final confirmation, instead of a hand-maintained copy that drifts from the code.
  * Zero dependencies: node built-ins + `git` (no shell).
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, statSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, statSync, lstatSync, realpathSync } from 'node:fs';
 import { join, dirname, isAbsolute, relative, sep, delimiter } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
@@ -233,11 +233,67 @@ export function install(o) {
   // Write facade: one code path for real and dry runs
   const writes = [];
   const relOf = (abs) => { const r = relative(TARGET, abs); return (r.startsWith('..') || isAbsolute(r)) ? abs : r.split(sep).join('/'); };
+  // Destination guard (applies to every write, dry or real): never write *through* a symlink, and never land outside
+  // the repo — a framework file symlinked to ../STATE.md would otherwise be overwritten with hook code, breaking
+  // "user data is never overwritten". Refused paths are reported, skipped, and make init/update exit non-zero.
+  const refused = [];
+  const REAL = (() => { try { return realpathSync(TARGET); } catch { return TARGET; } })();
+  const isLink = (p) => { try { return lstatSync(p).isSymbolicLink(); } catch { return false; } };
+  const landsOutside = (p) => {
+    let d = p;
+    while (!existsSync(d) && dirname(d) !== d) d = dirname(d);
+    let r;
+    try { r = realpathSync(d); } catch { return true; }
+    return !(r === REAL || r.startsWith(REAL + sep));
+  };
+  const linkInside = (dir) => { // any symlink inside an existing directory we are about to copy over
+    try {
+      for (const f of readdirSync(dir)) {
+        const q = join(dir, f);
+        if (isLink(q)) return q;
+        if (statSync(q).isDirectory()) { const hit = linkInside(q); if (hit) return hit; }
+      }
+    } catch {}
+    return null;
+  };
+  const refuse = (p, why) => {
+    refused.push(relOf(p));
+    log(`  ⚠️  ${relOf(p)}${M(why === 'outside' ? {
+      en: ' resolves outside this repo — not written (flightwake only writes inside the repo; fix the symlink and rerun)',
+      'zh-TW': ' 的實際落點在 repo 之外 — 未寫入(flightwake 只寫 repo 內;修正 symlink 後重跑)',
+      'zh-CN': ' 的实际落点在 repo 之外 — 未写入(flightwake 只写 repo 内;修正 symlink 后重跑)',
+      ja: ' の実体が repo の外にある — 書き込まない(flightwake は repo 内にしか書かない。symlink を直して再実行)',
+    } : {
+      en: ' is a symlink — not written through it (it could overwrite whatever it points to, e.g. your STATE); replace it with a regular file and rerun',
+      'zh-TW': ' 是 symlink — 不經由它寫入(可能覆蓋它指向的檔,例如你的 STATE);改成一般檔案後重跑',
+      'zh-CN': ' 是 symlink — 不经由它写入(可能覆盖它指向的档,例如你的 STATE);改成一般文件后重跑',
+      ja: ' は symlink — それ越しには書き込まない(指す先、例えば STATE を上書きしうる)。通常のファイルに置き換えて再実行',
+    })}`);
+    return false;
+  };
+  // inRepo: false for paths that live outside the repo by design (git's exclude file, the cross-repo registry)
+  const guard = (p, inRepo = true) => {
+    if (isLink(p)) return refuse(p, 'symlink');
+    if (inRepo && landsOutside(p)) return refuse(p, 'outside');
+    return true;
+  };
   const W = {
-    write: (p, data) => { writes.push(relOf(p)); if (!dry) writeFileSync(p, data); },
-    append: (p, data) => { writes.push(relOf(p)); if (!dry) appendFileSync(p, data); },
-    cp: (src, dst) => { writes.push(`${relOf(dst)}/`); if (!dry) cpSync(src, dst, { recursive: true, force: true, filter: noJunk }); },
-    mkdir: (p, listed) => { if (listed && !existsSync(p)) writes.push(`${relOf(p)}/`); if (!dry) mkdirSync(p, { recursive: true }); },
+    write: (p, data, inRepo = true) => { if (!guard(p, inRepo)) return false; writes.push(relOf(p)); if (!dry) writeFileSync(p, data); return true; },
+    append: (p, data) => { if (!guard(p)) return false; writes.push(relOf(p)); if (!dry) appendFileSync(p, data); return true; },
+    cp: (src, dst) => {
+      if (!guard(dst)) return false;
+      const inner = existsSync(dst) ? linkInside(dst) : null;
+      if (inner) return refuse(inner, 'symlink');
+      writes.push(`${relOf(dst)}/`);
+      if (!dry) cpSync(src, dst, { recursive: true, force: true, filter: noJunk });
+      return true;
+    },
+    mkdir: (p, listed, inRepo = true) => {
+      if (inRepo && landsOutside(p)) return false; // the write that needs it reports the refusal
+      if (listed && !existsSync(p)) writes.push(`${relOf(p)}/`);
+      if (!dry) mkdirSync(p, { recursive: true });
+      return true;
+    },
   };
 
   // --private collects entries for .git/info/exclude (relative to repo root); null = not private
@@ -260,7 +316,7 @@ export function install(o) {
       'zh-CN': '(已存在,用户资料不覆盖)',
       ja: '(既存 — ユーザーデータは上書きしない)',
     })}`);
-    else { W.write(dst, readFileSync(join(FW_SRC, 'templates', LANG, f), 'utf8')); log(`  add  .flightwake/${f}`); }
+    else if (W.write(dst, readFileSync(join(FW_SRC, 'templates', LANG, f), 'utf8'))) log(`  add  .flightwake/${f}`);
   }
 
   // Local-modification guard. Framework-owned files are overwritten by --force/update, by design — but silently
@@ -305,8 +361,7 @@ export function install(o) {
     })}`); continue; }
     const next = read();
     noteClobber(dst, rel, next);
-    W.write(dst, next);
-    log(`  ${existed ? 'update' : 'add '} ${rel}`);
+    if (W.write(dst, next)) log(`  ${existed ? 'update' : 'add '} ${rel}`);
   }
 
   const wanted = o.agents ?? null;
@@ -330,8 +385,7 @@ export function install(o) {
         ja: '(既存 — --force で更新)',
       })}`); continue; }
       noteClobberDir(join(FW_SRC, 'skills', LANG, s), dst, `${baseRel}/${s}`);
-      W.cp(join(FW_SRC, 'skills', LANG, s), dst);
-      log(`  ${existed ? 'update' : 'add '} ${baseRel}/${s}`);
+      if (W.cp(join(FW_SRC, 'skills', LANG, s), dst)) log(`  ${existed ? 'update' : 'add '} ${baseRel}/${s}`);
     }
     // roles add-on installed earlier: keep it inside the exclude block on every private rerun
     if (existsSync(join(TARGET, ...baseRel.split('/'), 'fw-roles'))) privateExcludes?.push(`${baseRel}/fw-roles/`);
@@ -375,8 +429,7 @@ export function install(o) {
       } else {
         settings.hooks.Stop.push({ hooks: [{ type: 'command', command: HOOK_CMD }] });
         W.mkdir(dirname(settingsPath));
-        W.write(settingsPath, JSON.stringify(settings, null, 2) + '\n');
-        log(`  add  ${settingsRel} ← Stop hook${M({
+        if (W.write(settingsPath, JSON.stringify(settings, null, 2) + '\n')) log(`  add  ${settingsRel} ← Stop hook${M({
           en: ' (STATE staleness check)',
           'zh-TW': '(STATE 過期檢查)',
           'zh-CN': '(STATE 过期检查)',
@@ -412,8 +465,7 @@ export function install(o) {
           }
           settings.statusLine = { type: 'command', command: SL_CMD };
           W.mkdir(dirname(settingsPath));
-          W.write(settingsPath, JSON.stringify(settings, null, 2) + '\n');
-          log(`  add  ${settingsRel} ← statusLine${M({ en: ' (flightwake gauge)', 'zh-TW': '(flightwake 儀表)', 'zh-CN': '(flightwake 仪表)', ja: '(flightwake ゲージ)' })}`);
+          if (W.write(settingsPath, JSON.stringify(settings, null, 2) + '\n')) log(`  add  ${settingsRel} ← statusLine${M({ en: ' (flightwake gauge)', 'zh-TW': '(flightwake 儀表)', 'zh-CN': '(flightwake 仪表)', ja: '(flightwake ゲージ)' })}`);
         }
       }
     }
@@ -447,8 +499,7 @@ export function install(o) {
     } else {
       s.hooks[event].push({ hooks: [{ type: 'command', command: HOOK_CMD_GIT }] });
       W.mkdir(dirname(p));
-      W.write(p, JSON.stringify(s, null, 2) + '\n');
-      log(`  add  ${rel} ← ${event} hook${M({
+      if (W.write(p, JSON.stringify(s, null, 2) + '\n')) log(`  add  ${rel} ← ${event} hook${M({
         en: ' (STATE staleness check)',
         'zh-TW': '(STATE 過期檢查)',
         'zh-CN': '(STATE 过期检查)',
@@ -504,8 +555,7 @@ export function install(o) {
         if (privateExcludes && !isTracked(withMarker.rel)) privateExcludes.push(withMarker.rel);
         if (FORCE) {
           const updated = readFileSync(withMarker.path, 'utf8').replace(/<!-- flightwake:begin[\s\S]*?<!-- flightwake:end -->\n?/, block);
-          W.write(withMarker.path, updated);
-          log(`  update ${withMarker.rel}${M({ en: ' snippet', 'zh-TW': ' 片段', 'zh-CN': ' 片段', ja: ' スニペット' })}`);
+          if (W.write(withMarker.path, updated)) log(`  update ${withMarker.rel}${M({ en: ' snippet', 'zh-TW': ' 片段', 'zh-CN': ' 片段', ja: ' スニペット' })}`);
         } else {
           log(`  skip ${withMarker.rel}${M({
             en: ' snippet (installed — --force to update)',
@@ -534,7 +584,7 @@ export function install(o) {
           continue;
         }
         if (dirname(dst.rel) !== '.') W.mkdir(dirname(dst.path));
-        W.append(dst.path, (existsSync(dst.path) ? '\n' : '') + block);
+        if (!W.append(dst.path, (existsSync(dst.path) ? '\n' : '') + block)) continue;
         snippetFile[name] = dst;
         privateExcludes?.push(dst.rel);
         log(`  add  ${dst.rel} ← ${M({ en: 'obligation table', 'zh-TW': '觸發義務表', 'zh-CN': '触发义务表', ja: '義務表' })}`);
@@ -548,16 +598,29 @@ export function install(o) {
     const src = join(FW_SRC, 'addons', 'orca', LANG, 'orca-snippet.md');
     const block = `${ORCA_BEGIN} v${VERSION} lang=${LANG} -->\n${readFileSync(src, 'utf8').replace(/^<!--[\s\S]*?-->\n?/, '').trimEnd()}\n${ORCA_END}\n`;
     for (const name of Object.keys(GROUPS)) {
-      const f = snippetFile[name];
+      let f = snippetFile[name];
       if (!f) continue;
+      // --private: same rule as every other private write — a git-tracked file would carry the trace.
+      // claude has a local twin (CLAUDE.local.md); other platforms have none → skip and say so.
+      if (PRIVATE && isTracked(f.rel)) {
+        if (name !== 'claude') {
+          if (o.orca || readFileSync(f.path, 'utf8').includes(ORCA_BEGIN)) log(`  ⚠️  --private: ${f.rel}${M({
+            en: ' is git-tracked, writing would leave a trace — Orca collaboration block skipped',
+            'zh-TW': ' 受 git 追蹤,寫入會留下痕跡 — 跳過 Orca 協作區塊',
+            'zh-CN': ' 受 git 追踪,写入会留下痕迹 — 跳过 Orca 协作区块',
+            ja: ' は git 管理下のため、書き込むと痕跡が残る — Orca 連携ブロックはスキップ',
+          })}`);
+          continue;
+        }
+        f = { rel: 'CLAUDE.local.md', path: join(TARGET, 'CLAUDE.local.md') };
+        privateExcludes?.push(f.rel);
+      }
       const cur = existsSync(f.path) ? readFileSync(f.path, 'utf8') : '';
       if (cur.includes(ORCA_BEGIN)) {
         if (!FORCE) continue;
-        W.write(f.path, cur.replace(/<!-- flightwake-orca:begin[\s\S]*?<!-- flightwake-orca:end -->\n?/, block));
-        log(`  update ${f.rel}${M({ en: ' Orca collaboration block', 'zh-TW': ' Orca 協作區塊', 'zh-CN': ' Orca 协作区块', ja: ' Orca 連携ブロック' })}`);
+        if (W.write(f.path, cur.replace(/<!-- flightwake-orca:begin[\s\S]*?<!-- flightwake-orca:end -->\n?/, block))) log(`  update ${f.rel}${M({ en: ' Orca collaboration block', 'zh-TW': ' Orca 協作區塊', 'zh-CN': ' Orca 协作区块', ja: ' Orca 連携ブロック' })}`);
       } else if (o.orca) {
-        W.append(f.path, '\n' + block);
-        log(`  add  ${f.rel} ← ${M({ en: 'Orca collaboration block', 'zh-TW': 'Orca 協作區塊', 'zh-CN': 'Orca 协作区块', ja: 'Orca 連携ブロック' })}`);
+        if (W.append(f.path, (cur ? '\n' : '') + block)) log(`  add  ${f.rel} ← ${M({ en: 'Orca collaboration block', 'zh-TW': 'Orca 協作區塊', 'zh-CN': 'Orca 协作区块', ja: 'Orca 連携ブロック' })}`);
       }
     }
   }
@@ -569,13 +632,12 @@ export function install(o) {
     const exBlock = `# flightwake:begin v${VERSION}${NOTES ? ' profile=notes' : ''}\n${entries.join('\n')}\n# flightwake:end\n`;
     try {
       const ep = excludePath(TARGET);
-      W.mkdir(dirname(ep));
+      W.mkdir(dirname(ep), false, false);
       const cur = existsSync(ep) ? readFileSync(ep, 'utf8') : '';
       const next = cur.includes('# flightwake:begin')
         ? cur.replace(/# flightwake:begin[\s\S]*?# flightwake:end\n?/, exBlock)
         : cur + (cur && !cur.endsWith('\n') ? '\n' : '') + exBlock;
-      W.write(ep, next);
-      log(`  add  .git/info/exclude ← ${entries.length}${M({ en: ' entries (local ignore)', 'zh-TW': ' 條(本地忽略)', 'zh-CN': ' 条(本地忽略)', ja: ' 件(ローカル ignore)' })}`);
+      if (W.write(ep, next, false)) log(`  add  .git/info/exclude ← ${entries.length}${M({ en: ' entries (local ignore)', 'zh-TW': ' 條(本地忽略)', 'zh-CN': ' 条(本地忽略)', ja: ' 件(ローカル ignore)' })}`);
     } catch {
       log(`  ⚠️  ${M({
         en: 'Failed to write .git/info/exclude — privacy NOT in effect! Add these entries manually:',
@@ -617,13 +679,12 @@ export function install(o) {
       const reg = readRegistry();
       const today = new Date().toISOString().slice(0, 10);
       reg.repos[TARGET] = { ...(reg.repos[TARGET] ?? { registered: today }), fw_version: VERSION };
-      W.mkdir(dirname(REGISTRY));
-      W.write(REGISTRY, JSON.stringify(reg, null, 2) + '\n');
-      log(`  reg  ${REGISTRY}${M({ en: ' ← repo registered (cross-repo index)', 'zh-TW': ' ← 已登記(跨 repo 索引)', 'zh-CN': ' ← 已登记(跨 repo 索引)', ja: ' ← 登録済(クロス repo インデックス)' })}`);
+      W.mkdir(dirname(REGISTRY), false, false);
+      if (W.write(REGISTRY, JSON.stringify(reg, null, 2) + '\n', false)) log(`  reg  ${REGISTRY}${M({ en: ' ← repo registered (cross-repo index)', 'zh-TW': ' ← 已登記(跨 repo 索引)', 'zh-CN': ' ← 已登记(跨 repo 索引)', ja: ' ← 登録済(クロス repo インデックス)' })}`);
     } catch { log(`  ⚠️  ${REGISTRY} could not be updated — skipped (cross-repo tools won't see this repo)`); }
   }
 
-  return { writes: [...new Set(writes)], active: ACTIVE, agentsSkills: AGENTS_SKILLS };
+  return { writes: [...new Set(writes)], refused: [...new Set(refused)], active: ACTIVE, agentsSkills: AGENTS_SKILLS };
 }
 
 /** The closing message of a fresh (non-update) install: what to do next, and the opt-ins not taken. */

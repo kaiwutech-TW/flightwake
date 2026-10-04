@@ -244,3 +244,13 @@ if (IS_UPDATE) {
 } else {
   printNext({ ...opts, langExplicit: !!langArg, marker: det.marker, log }, result);
 }
+// Refused writes (symlinks / outside the repo) were reported inline — surface them in the exit code too
+if (result.refused.length) {
+  log(M({
+    en: `\n⚠️  ${result.refused.length} path(s) were not written (symlink or outside the repo): ${result.refused.join(', ')}`,
+    'zh-TW': `\n⚠️  有 ${result.refused.length} 個路徑未寫入(symlink 或落點在 repo 外):${result.refused.join(', ')}`,
+    'zh-CN': `\n⚠️  有 ${result.refused.length} 个路径未写入(symlink 或落点在 repo 外):${result.refused.join(', ')}`,
+    ja: `\n⚠️  ${result.refused.length} 個のパスは書き込んでいない(symlink または repo 外):${result.refused.join(', ')}`,
+  }));
+  process.exit(1);
+}
