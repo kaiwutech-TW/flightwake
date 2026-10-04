@@ -156,6 +156,18 @@ apply 只会改写或删除仍与它当初生成的内容一致、或已经等�
 - **Codex 只在受信任的项目里加载 `.codex/agents/`——而且必须是那个确切的 repo 路径受信任**(受信任的上层文件夹不涵盖里面的 git repo,每个 worktree 路径也各自分开算)。确认方式是实际召唤一次,而不是看文件在不在;带有 Codex 不认识字段的定义会被悄悄丢掉,这就是为什么 flightwake 只写 `name`、`description` 与 `developer_instructions`。
 - 角色的「When to call」是告诉 agent 的信息,不会自己触发。座位区块带有明确规则(「任务符合时,就由那个角色做——召唤它或派活给它」),测试中正是这条让 agent 真的去转派。
 
+### 可选:Claude Code mod 的角色守门
+
+如果你使用 `flightwake-mod` 这个 Claude Code mod,它的**角色守门**开关(`roleGuard`,默认关闭)可以把一条机器可读的规则变成拦截。上面那条对其他一切仍然成立。
+
+- **写在哪里。** 写在 `ROLES.md` 里该角色正文中自成一行:`deny-write: ["src/**", "lib/**"]`(repo 相对的 glob;不含 `/` 的样式会匹配任意深度的该文件名)。`roles apply` 与 `roles card` 会原文带过去,所以这一行会跟着进座位区块与派活卡。
+- **mod 强制什么。** 开关打开时,*主* Claude Code session 对这些路径的 `Edit`、`Write`、`NotebookEdit` 会被拦下,提示会说明是哪个角色的哪条规则、该怎么做(派给负责的角色,或请用户放行)。
+- **仍然只是指引的部分。** 其他一切:Bash 与所有其他工具、MCP、子 agent,以及自然语言的「禁止」项——它们不会被转成规则。
+- **覆盖。** 以派活卡开头的 session 改按卡片上的角色,不按座位(没有 `deny-write` 的卡片就不守任何路径)。子 agent(包括为某件事召唤的待命角色)是明确的指派,不会被检查。
+- **放行。** 只有用户本人能执行 `/fw-role-release`(在输入框里敲,不能由插件或模型代敲):不带参数会列出规则;带 glob 或其编号就放行该条;`all` 放行全部;`revoke` 收回放行。放行只在本 session 有效,生效期间状态栏持续显示,并在对话记录里留下一条说明。
+- **何时生效。** 角色在 session 开始时读取一次;改了座位或 `deny-write` 之后,要开新 session(或 `/clear`)才会生效。
+- **不是安全边界。** 这只是个方便,用来挡住「经理顺手去写产品代码」这类常见失误。蓄意的 agent 仍可通过 Bash 写入。你真正的防护请继续保留。
+
 ## 参考过的前例
 
 我们参考过的角色库(只参考、没有复制任何文字):[BMAD-METHOD](https://github.com/bmad-code-org/BMAD-METHOD) · [ruflo](https://github.com/ruvnet/ruflo) · [wshobson/agents](https://github.com/wshobson/agents) · [multi-agent-shogun](https://github.com/yohey-w/multi-agent-shogun)。multi-agent-shogun 每个角色的禁止行为清单,跟我们的「禁止」最接近;Gas Town 的长期 crew 与短期 worker 之分,跟我们的座位与待命最接近。
