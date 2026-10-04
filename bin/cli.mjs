@@ -110,9 +110,10 @@ if (cmd === 'setup') {
 // ── doctor: read-only; reports git/repo problems as findings instead of bailing out ──
 if (cmd === 'doctor') process.exit(runDoctor({ target: TARGET, fwSrc: FW_SRC, version: VERSION, lang: LANG, log }));
 
-// git must be runnable before anything else — with a .git directory but no git binary, the --private
-// tracked-file checks would silently read "untracked" and could write into tracked files
-if (!gitAvailable()) { log(gitMissingMessage(M)); process.exit(1); }
+// init (and setup, inside its flow) require a runnable git — with a .git directory but no git binary, the --private
+// tracked-file checks would silently read "untracked" and could write into tracked files. Other commands keep
+// main's behavior: uninstall/update/roles still work on a repo whose git binary is missing (repo = .git exists).
+if (cmd === 'init' && !gitAvailable()) { log(gitMissingMessage(M)); process.exit(1); }
 const repo = repoState(TARGET);
 if (repo.kind === 'sub') {
   // Monorepo policy: one install per repo, at the git root — sessions cross directories, so records follow the session, not the directory

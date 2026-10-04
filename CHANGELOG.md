@@ -46,6 +46,19 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 - `roles` (install) under a `--private` install now adds `fw-roles` to the exclude block, and `update` keeps it there —
   before, the copied skill showed up in `git status`.
 
+### Fixed
+- **Writes never go through a symlink or land outside the repo** (pre-existing): a framework file symlinked to
+  `../STATE.md` let `update` overwrite STATE. Such destinations are now refused and reported, and init/update exit 1;
+  `setup` marks them in its summary.
+- `doctor`: under `--private`, the paths that must be ignored are derived from what is installed (deleting `.flightwake/`
+  from the exclude block now fails); platforms are derived from installed hook files too (a deleted marker no longer hides a
+  broken `.codex/hooks.json`); hooks must match event, `type: "command"` and command; malformed settings are reported item by
+  item instead of crashing.
+- `--private --orca` no longer appends the Orca block to a git-tracked instruction file (Claude → `CLAUDE.local.md`;
+  Codex/Gemini → skipped with a warning).
+- The git check applies to `init` and `setup` only; `uninstall` works again on a repo whose git binary is missing.
+- `fw-coldstart`: after filling an uninitialized STATE, a repo with any history still goes through the normal takeover steps.
+
 ### Documentation
 - READMEs (en / zh-TW / zh-CN / ja): `setup` is the primary install entry, `init` is documented as the non-interactive form;
   new `doctor`, `--profile=notes`, Orca and `--git-init` sections; the Security "Fixed write scope" list now includes

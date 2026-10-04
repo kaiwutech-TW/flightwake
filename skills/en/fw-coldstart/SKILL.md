@@ -12,7 +12,7 @@ Purpose: before touching any file, recover to a "safe takeover" state with the m
 1. Read `.flightwake/STATE.md` (where we are, in progress, next entry points, standing facts)
    **Not initialized yet?** If STATE still carries the shipped template's own placeholders — the frontmatter
    `updated: {{DATE}}`, `updated_by: {{SESSION_OR_PERSON}}`, `latest_record: records/{{YYMMDD}}-{{slug}}.md`, or body lines
-   that are exactly the template's `{{…}}` lines — this is a first run, not a takeover. Write the first STATE, then skip to step 5:
+   that are exactly the template's `{{…}}` lines — STATE was never initialized. Fill in the unfilled fields first:
    - Only those known template lines count as unfilled. Any other `{{…}}` is the user's content (an example, a template of
      their own) and stays as written; anything already filled in stays as written too — replace only the unfilled lines
    - Fill from the repo as it is: README/docs, `git log --oneline -20`, the directory layout, obvious open work.
@@ -22,7 +22,10 @@ Purpose: before touching any file, recover to a "safe takeover" state with the m
      (e.g. `health: yellow  # first STATE — nothing verified yet`)
    - Missing material: no commits → "no history yet"; no README → describe from the file tree and say so; no records →
      `latest_record: none`. Write "unknown" rather than guess
-   - Report the first STATE to the user (one paragraph, plus what you could not determine) before continuing
+   - Then decide how to continue. If the repo already has history — any record in `.flightwake/records/`, entries in
+     DECISIONS/TRAPS beyond the template, or commits — this is a takeover with a half-filled STATE: continue with steps 2–4
+     as usual (latest record, relevant DECISIONS/TRAPS, the lag check). Only a truly fresh install (none of those) goes
+     straight to step 5. Either way, the step-5 report includes the STATE you filled in and what you could not determine
 2. Read the `latest_record` the STATE frontmatter points to (full context of the last wrap-up)
 3. Read only when needed: `DECISIONS.md` (mandatory before changing an established direction), `TRAPS.md` (check when hitting weird symptoms;
    **also — if the work you're about to do touches the territory of a trap, read that entry before you act**, don't wait for the

@@ -106,6 +106,8 @@ doctor 只能宣稱「安裝結構正確」,不能宣稱 hook 在執行期確實
 - 定義缺料時的行為:沒有任何 record、沒有 commit、沒有 README。
 - health 不能猜 green;沒有驗證依據時如實標示。未初始化的 STATE 裡,範本預填的 `health: green` 視為未填:有驗證依據才標 green,否則標 yellow 並寫明原因;範本本身不動(2026-10-05 設計者確認)。
 
+- 補完欄位後,repo 若已有任何歷史(record、DECISIONS/TRAPS 範本以外的條目、commit),繼續走原本的冷啟動流程(讀最新 record、落後量檢查);只有真正全新的安裝才直接回報(2026-10-05 Astra 審查第 6 點,設計者採納)。
+
 README 的「第一次安裝後」步驟同步更新。
 
 ## 項目 5:Orca 協作(選配附加元件)

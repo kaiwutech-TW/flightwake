@@ -85,7 +85,29 @@ export function runDoctor({ target, fwSrc, version, lang, log }) {
   // ── markers ──
   const markers = readMarkers(target).filter((m) => !m.orphanOrca);
   const platformOf = (rel) => (rel === 'AGENTS.md' ? 'codex' : rel === 'GEMINI.md' ? 'gemini' : 'claude');
-  const platforms = new Set(markers.map((m) => platformOf(m.rel)));
+  const markerPlatforms = new Set(markers.map((m) => platformOf(m.rel)));
+  // Platforms are also derived from what is installed — otherwise deleting a marker would make that platform's
+  // broken hook file vanish from the checks. A hook file that mentions state-check, or that no longer parses
+  // (can't tell, so check it), counts as evidence; so do .agents/skills/fw-* (Codex or Gemini).
+  const rawHas = (rel, needle) => { try { return readFileSync(at(rel), 'utf8').includes(needle); } catch { return false; } };
+  const parses = (rel) => !existsSync(at(rel)) || readJson(rel).ok;
+  const artifactEvidence = {
+    codex: rawHas('.codex/hooks.json', 'state-check.mjs') || !parses('.codex/hooks.json') ? '.codex/hooks.json' : null,
+    gemini: rawHas('.gemini/settings.json', 'state-check.mjs') || !parses('.gemini/settings.json') ? '.gemini/settings.json' : null,
+  };
+  const platforms = new Set([...markerPlatforms, ...Object.keys(artifactEvidence).filter((k) => artifactEvidence[k])]);
+  for (const [name, ev] of Object.entries(artifactEvidence)) {
+    if (!ev || markerPlatforms.has(name)) continue;
+    const file = GROUPS[name][0];
+    const tracked = det.private && existsSync(at(file)) && isTracked(file);
+    (tracked ? warn : fail)(tracked
+      ? M({ en: `${ev} is installed but ${file} has no obligation table (--private skips a git-tracked ${file})`, 'zh-TW': `${ev} 已安裝,但 ${file} 沒有義務表(--private 會跳過受追蹤的 ${file})`, 'zh-CN': `${ev} 已安装,但 ${file} 没有义务表(--private 会跳过受追踪的 ${file})`, ja: `${ev} はインストール済だが ${file} に義務表がない(--private は git 管理下の ${file} を飛ばす)` })
+      : M({ en: `inconsistent install: ${ev} is installed but ${file} has no flightwake marker block — npx flightwake init --agents=… --force`, 'zh-TW': `安裝不一致:${ev} 已安裝,但 ${file} 沒有 flightwake 標記區塊 — npx flightwake init --agents=… --force`, 'zh-CN': `安装不一致:${ev} 已安装,但 ${file} 没有 flightwake 标记区块 — npx flightwake init --agents=… --force`, ja: `インストールの不整合:${ev} はあるが ${file} に flightwake のマーカーブロックがない — npx flightwake init --agents=… --force` }));
+  }
+  const agentsSkillDirs = existsSync(at('.agents/skills')) && readdirSync(at('.agents/skills')).some((d) => d.startsWith('fw-'));
+  if (agentsSkillDirs && !platforms.has('codex') && !platforms.has('gemini')) {
+    warn(M({ en: 'inconsistent install: .agents/skills/fw-* exists but neither Codex nor Gemini CLI has a marker or hook', 'zh-TW': '安裝不一致:有 .agents/skills/fw-*,但 Codex 與 Gemini CLI 都沒有標記區塊或 hook', 'zh-CN': '安装不一致:有 .agents/skills/fw-*,但 Codex 与 Gemini CLI 都没有标记区块或 hook', ja: 'インストールの不整合:.agents/skills/fw-* があるが Codex にも Gemini CLI にもマーカーや hook がない' }));
+  }
   if (!markers.length) {
     if (det.private) warn(M({ en: 'no obligation table in any instruction file (a --private install skips git-tracked files)', 'zh-TW': '所有指令檔都沒有義務表(--private 會跳過受 git 追蹤的檔)', 'zh-CN': '所有指令档都没有义务表(--private 会跳过受 git 追踪的档)', ja: 'どの指示ファイルにも義務表がない(--private は git 管理下のファイルを飛ばす)' }));
     else fail(M({ en: 'no flightwake marker block in CLAUDE.md / AGENTS.md / GEMINI.md — rerun npx flightwake init', 'zh-TW': 'CLAUDE.md / AGENTS.md / GEMINI.md 都沒有 flightwake 標記區塊 — 請重跑 npx flightwake init', 'zh-CN': 'CLAUDE.md / AGENTS.md / GEMINI.md 都没有 flightwake 标记区块 — 请重跑 npx flightwake init', ja: 'CLAUDE.md / AGENTS.md / GEMINI.md に flightwake のマーカーブロックがない — npx flightwake init を再実行' }));
@@ -110,14 +132,23 @@ export function runDoctor({ target, fwSrc, version, lang, log }) {
   const hookScript = existsSync(at('.flightwake/hooks/state-check.mjs'));
   if (hookScript) ok('.flightwake/hooks/state-check.mjs');
   else fail(M({ en: '.flightwake/hooks/state-check.mjs missing — npx flightwake update', 'zh-TW': '缺 .flightwake/hooks/state-check.mjs — npx flightwake update', 'zh-CN': '缺 .flightwake/hooks/state-check.mjs — npx flightwake update', ja: '.flightwake/hooks/state-check.mjs がない — npx flightwake update' }));
-  // Collect every hook command mentioning state-check.mjs, per event, from one settings file
-  const hookEntries = (value) => {
+  // Collect every hook entry mentioning state-check.mjs, per event, from one settings file. Structure problems on
+  // the path to our hook are findings, reported one by one — never an exception.
+  const hookEntries = (value, rel, wantEvent) => {
     const out = [];
-    for (const [event, list] of Object.entries(value?.hooks ?? {})) {
-      if (!Array.isArray(list)) continue;
-      for (const e of list) for (const h of e?.hooks ?? []) if (String(h?.command ?? '').includes('state-check.mjs')) out.push({ event, command: h.command });
+    const problems = [];
+    const mentions = (x) => JSON.stringify(x ?? null).includes('state-check.mjs');
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return { out, problems: [`${rel}: top level is not a JSON object`] };
+    if (value.hooks === undefined) return { out, problems };
+    if (value.hooks === null || typeof value.hooks !== 'object' || Array.isArray(value.hooks)) return { out, problems: [`${rel}: "hooks" is not an object`] };
+    for (const [event, list] of Object.entries(value.hooks)) {
+      if (!Array.isArray(list)) { if (mentions(list) || event === wantEvent) problems.push(`${rel}: hooks.${event} is not an array`); continue; }
+      list.forEach((e, i) => {
+        if (!e || typeof e !== 'object' || !Array.isArray(e.hooks)) { if (mentions(e) || event === wantEvent) problems.push(`${rel}: hooks.${event}[${i}].hooks is not an array`); return; }
+        for (const h of e.hooks) if (h && typeof h === 'object' && String(h.command ?? '').includes('state-check.mjs')) out.push({ event, command: h.command, type: h.type });
+      });
     }
-    return out;
+    return { out, problems };
   };
   const checkHook = (label, files, wantEvent, wantCmd, { optionalIfTracked = false } = {}) => {
     let found = [];
@@ -126,12 +157,20 @@ export function runDoctor({ target, fwSrc, version, lang, log }) {
       if (!existsSync(at(rel))) continue;
       const j = readJson(rel);
       if (!j.ok) { fail(M({ en: `${rel} is not valid JSON`, 'zh-TW': `${rel} 不是合法 JSON`, 'zh-CN': `${rel} 不是合法 JSON`, ja: `${rel} は不正な JSON` })); broken = true; continue; }
-      found = found.concat(hookEntries(j.value).map((h) => ({ ...h, rel })));
+      const { out, problems } = hookEntries(j.value, rel, wantEvent);
+      for (const pr of problems) fail(M({ en: `${pr} — cannot read the hook registration`, 'zh-TW': `${pr} — 無法讀取 hook 登記`, 'zh-CN': `${pr} — 无法读取 hook 登记`, ja: `${pr} — hook の登録を読めない` }));
+      if (problems.length) broken = true;
+      found = found.concat(out.map((h) => ({ ...h, rel })));
     }
     if (broken) return;
-    const exact = found.filter((h) => h.event === wantEvent && h.command === wantCmd);
-    const wrong = found.filter((h) => !(h.event === wantEvent && h.command === wantCmd));
+    const isExact = (h) => h.event === wantEvent && h.command === wantCmd && h.type === 'command';
+    const exact = found.filter(isExact);
+    const wrong = found.filter((h) => !isExact(h));
     for (const h of wrong) {
+      if (h.event === wantEvent && h.command === wantCmd) {
+        fail(M({ en: `${h.rel}: ${wantEvent} hook has type "${h.type}" — expected "command"`, 'zh-TW': `${h.rel}:${wantEvent} hook 的 type 是「${h.type}」— 應為「command」`, 'zh-CN': `${h.rel}:${wantEvent} hook 的 type 是「${h.type}」— 应为「command」`, ja: `${h.rel}:${wantEvent} hook の type が「${h.type}」— 「command」のはず` }));
+        continue;
+      }
       fail(h.event !== wantEvent
         ? M({ en: `${h.rel}: state-check hook registered under "${h.event}" — ${label} expects "${wantEvent}"`, 'zh-TW': `${h.rel}:state-check hook 登記在「${h.event}」— ${label} 應為「${wantEvent}」`, 'zh-CN': `${h.rel}:state-check hook 登记在「${h.event}」— ${label} 应为「${wantEvent}」`, ja: `${h.rel}:state-check hook が「${h.event}」に登録 — ${label} は「${wantEvent}」のはず` })
         : M({ en: `${h.rel}: ${wantEvent} hook command differs from the expected one: ${wantCmd}`, 'zh-TW': `${h.rel}:${wantEvent} hook 的 command 與預期不符,應為:${wantCmd}`, 'zh-CN': `${h.rel}:${wantEvent} hook 的 command 与预期不符,应为:${wantCmd}`, ja: `${h.rel}:${wantEvent} hook の command が想定と違う。正しくは:${wantCmd}` }));
@@ -192,7 +231,7 @@ export function runDoctor({ target, fwSrc, version, lang, log }) {
   }
 
   // ── optional add-ons: report state only; not installed is never a problem ──
-  const settingsSL = ['.claude/settings.json', '.claude/settings.local.json'].map((rel) => (existsSync(at(rel)) ? readJson(rel) : null)).filter((j) => j?.ok).map((j) => j.value.statusLine).filter(Boolean);
+  const settingsSL = ['.claude/settings.json', '.claude/settings.local.json'].map((rel) => (existsSync(at(rel)) ? readJson(rel) : null)).filter((j) => j?.ok && j.value && typeof j.value === 'object').map((j) => j.value.statusLine).filter((v) => v && typeof v === 'object');
   const ours = settingsSL.filter((s) => JSON.stringify(s).includes('statusline.mjs'));
   if (!ours.length) info(M({ en: 'statusline: not installed (optional)', 'zh-TW': '儀表:未安裝(選配)', 'zh-CN': '仪表:未安装(选配)', ja: 'ゲージ:未インストール(オプション)' }));
   else if (ours.some((s) => s.command !== SL_CMD) || !existsSync(at('.flightwake/hooks/statusline.mjs'))) warn(M({ en: 'statusline: installed but its command or script is off — npx flightwake update', 'zh-TW': '儀表:已安裝但 command 或腳本不對 — npx flightwake update', 'zh-CN': '仪表:已安装但 command 或脚本不对 — npx flightwake update', ja: 'ゲージ:インストール済だが command かスクリプトがおかしい — npx flightwake update' }));

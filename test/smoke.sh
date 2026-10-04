@@ -859,19 +859,22 @@ node "$CLI" init --agents=claude >/dev/null
 rc=0; out=$(node "$CLI" doctor 2>&1) || rc=$?
 [ "$rc" = 0 ] || fail "新裝後 doctor 應退出 0(rc=$rc: $out)"
 echo "$out" | grep -qi 'unfilled' || fail "新裝後 doctor 應提醒 STATE 未填(提醒不影響退出碼)"
-doc_variant() { # $1 名稱 $2 在副本內執行的破壞指令(shell);預期 doctor 退出 1
+doc_variant() { # $1 名稱 $2 在副本內執行的破壞指令(shell) $3 預期出現在失敗行(✗)的文字(grep -E);預期 doctor 退出 1
   local name="$1" dir="$TMP/doc-v-$(echo "$1" | tr -c 'a-zA-Z0-9\n' _)"
   cp -R "$TMP/doc-base" "$dir"; ( cd "$dir" && eval "$2" )
   local rc=0 out; out=$(cd "$dir" && node "$CLI" doctor 2>&1) || rc=$?
   [ "$rc" = 1 ] || fail "doctor:$name 應退出 1(rc=$rc: $out)"
+  echo "$out" | grep -E '^  ✗' | grep -qE "$3" || fail "doctor:$name 應有點名問題的失敗行(預期 /$3/;got: $out)"
+  echo "$out" | grep -qE 'at .*\.mjs:[0-9]+|TypeError|SyntaxError' && fail "doctor:$name 不得以例外崩潰(got: $out)"
+  return 0
 }
-doc_variant "缺 skill 目錄" 'rm -rf .claude/skills/fw-record'
-doc_variant "移除 Stop hook" 'jedit .claude/settings.json "delete j.hooks.Stop"'
-doc_variant "改 hook command" 'jedit .claude/settings.json "j.hooks.Stop[0].hooks[0].command+=\" --extra\""'
-doc_variant "JSON 損毀" 'echo "{ not json" > .claude/settings.json'
-doc_variant "hook 重複登記" 'jedit .claude/settings.json "j.hooks.Stop.push(JSON.parse(JSON.stringify(j.hooks.Stop[0])))"'
-doc_variant "缺 hook 腳本" 'rm .flightwake/hooks/state-check.mjs'
-doc_variant "缺 .flightwake" 'rm -rf .flightwake'
+doc_variant "缺 skill 目錄" 'rm -rf .claude/skills/fw-record' '\.claude/skills.*fw-record'
+doc_variant "移除 Stop hook" 'jedit .claude/settings.json "delete j.hooks.Stop"' 'Claude Code.*Stop hook'
+doc_variant "改 hook command" 'jedit .claude/settings.json "j.hooks.Stop[0].hooks[0].command+=\" --extra\""' 'command differs'
+doc_variant "JSON 損毀" 'echo "{ not json" > .claude/settings.json' 'settings\.json is not valid JSON'
+doc_variant "hook 重複登記" 'jedit .claude/settings.json "j.hooks.Stop.push(JSON.parse(JSON.stringify(j.hooks.Stop[0])))"' 'registered 2 times'
+doc_variant "缺 hook 腳本" 'rm .flightwake/hooks/state-check.mjs' 'state-check\.mjs missing'
+doc_variant "缺 .flightwake" 'rm -rf .flightwake' '\.flightwake/ missing'
 newrepo "$TMP/doc-gem" >/dev/null
 node "$CLI" init --agents=gemini >/dev/null
 rc=0; node "$CLI" doctor >/dev/null 2>&1 || rc=$?
@@ -879,7 +882,7 @@ rc=0; node "$CLI" doctor >/dev/null 2>&1 || rc=$?
 jedit .gemini/settings.json 'j.hooks.Stop=j.hooks.AfterAgent; delete j.hooks.AfterAgent'
 rc=0; out=$(node "$CLI" doctor 2>&1) || rc=$?
 [ "$rc" = 1 ] || fail "Gemini hook 登記在 Stop(應為 AfterAgent)doctor 應退出 1(rc=$rc: $out)"
-echo "$out" | grep -q 'AfterAgent' || fail "doctor 應指出 Gemini 應為 AfterAgent"
+echo "$out" | grep -E '^  ✗' | grep -q 'AfterAgent' || fail "doctor 應以失敗行指出 Gemini 應為 AfterAgent"
 # 唯讀證明:--private 安裝(有被 git 忽略的檔)+ 全 agent + statusline + roles,doctor 前後逐檔雜湊 + .git/info/exclude + registry 完全相同
 newrepo "$TMP/doc-ro" >/dev/null
 echo x > README; git add README; git commit -qm init
@@ -1021,6 +1024,79 @@ rc=0; out=$(node "$CLI" update 2>&1) || rc=$?
 [ -z "$(ls -A "$TMP/ax3-outside")" ] || fail "36.3 實際落點在 repo 外時不得寫入(got: $(ls -A "$TMP/ax3-outside"))"
 [ "$rc" -ne 0 ] && echo "$out" | grep -q 'outside' || fail "36.3 應說明落點在 repo 外而拒寫(rc=$rc: $out)"
 pass "36.3 symlink / repo 外落點一律拒寫,使用者資料不被覆蓋"
+
+# 36.4 doctor 平台清單也從安裝產物推導;hook 驗 type 與 command;結構異常逐項回報不崩潰
+newrepo "$TMP/ax4" >/dev/null; echo "# 我的 AGENTS 內容" > AGENTS.md
+node "$CLI" init --agents=claude,codex >/dev/null
+node -e "const fs=require('fs');fs.writeFileSync('AGENTS.md',fs.readFileSync('AGENTS.md','utf8').replace(/\n?<!-- flightwake:begin[\s\S]*?<!-- flightwake:end -->\n?/,'\n'))"
+grep -q 'flightwake:begin' AGENTS.md && fail "36.4 測試前提:AGENTS.md 的 marker 應已刪除"
+rc=0; out=$(node "$CLI" doctor 2>&1) || rc=$?
+[ "$rc" = 1 ] && echo "$out" | grep -E '^  ✗' | grep -q 'AGENTS.md' || fail "36.4 marker 被刪但 Codex 產物還在,doctor 應以失敗回報不一致(rc=$rc: $out)"
+echo "{ broken" > .codex/hooks.json
+rc=0; out=$(node "$CLI" doctor 2>&1) || rc=$?
+[ "$rc" = 1 ] && echo "$out" | grep -E '^  ✗' | grep -q '\.codex/hooks.json is not valid JSON' || fail "36.4 marker 刪除後壞掉的 .codex/hooks.json 仍須被檢查到(rc=$rc: $out)"
+doc_variant "hook type 被改成 prompt" 'jedit .claude/settings.json "j.hooks.Stop[0].hooks[0].type=\"prompt\""' 'type'
+doc_variant "hooks 是字串" 'jedit .claude/settings.json "j.hooks=\"oops\""' '"hooks" is not an object'
+doc_variant "hooks.Stop 是物件" 'jedit .claude/settings.json "j.hooks.Stop={x:1}"' 'hooks\.Stop is not an array'
+doc_variant "頂層是陣列" 'echo "[]" > .claude/settings.json' 'not a JSON object'
+pass "36.4 doctor:平台由產物推導、marker 遺失報不一致、hook 驗 type、結構異常逐項回報不崩潰"
+
+# 36.5 git 前置檢查只套用在 init 與 setup:有 .git、PATH 沒有 git 時 uninstall 仍要完成移除(與 main 相同)
+newrepo "$TMP/ax5" >/dev/null; echo "# 我的" > CLAUDE.md
+node "$CLI" init --agents=claude >/dev/null
+rc=0; out=$(PATH="$NOGIT" "$NODE_BIN" "$CLI" uninstall 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "36.5 無 git 時 uninstall 應成功(rc=$rc: $out)"
+[ ! -e .claude/skills/fw-record ] && ! grep -q 'flightwake:begin' CLAUDE.md || fail "36.5 無 git 時 uninstall 應移除框架檔與區塊"
+grep -q '# 我的' CLAUDE.md && [ -f .flightwake/STATE.md ] || fail "36.5 uninstall 不得動使用者內容與資料"
+pass "36.5 無 git 時 uninstall 照常完成(git 前置檢查只限 init / setup)"
+
+# 36.6 fw-coldstart 未初始化分支(四語):補完欄位後,有 record/DECISIONS/TRAPS/commit 歷史就續走原流程;只有真正全新才直接回報
+for pair in "en:truly fresh:then skip to step 5" "zh-TW:真正全新:然後直接跳到第 5 步" "zh-CN:真正全新:然后直接跳到第 5 步" "ja:まったくの新規:ステップ 5 へ直接進む"; do
+  l=${pair%%:*}; rest=${pair#*:}; want=${rest%%:*}; old=${rest#*:}
+  f="$SRC/skills/$l/fw-coldstart/SKILL.md"
+  grep -q "$want" "$f" || fail "36.6 $l fw-coldstart 應寫明只有真正全新的安裝才直接回報(缺「${want}」)"
+  grep -q "$old" "$f" && fail "36.6 $l fw-coldstart 不得再無條件跳到第 5 步(仍有「${old}」)"
+  grep -q 'latest_record' "$f" && grep -q 'rev-list --count' "$f" || fail "36.6 $l 原流程步驟應保留"
+done
+pass "36.6 fw-coldstart 未初始化分支四語:有歷史續走原流程,全新才直接回報"
+
+# 36.7 setup 摘要列出的路徑 == 實際寫入的路徑(新增或內容變動的檔;目錄項涵蓋其下的檔;registry 另計)
+# 檔案清單 + 雜湊 + mtime(同內容重寫也算寫入;.git 只取 info/exclude)+ registry
+fsnap() { node -e '
+    const fs=require("fs"),path=require("path"),crypto=require("crypto");
+    const out=[]; const add=(f)=>{ const st=fs.statSync(f,{bigint:true}); out.push(crypto.createHash("sha1").update(fs.readFileSync(f)).digest("hex")+":"+st.mtimeNs+" "+f); };
+    const walk=(d)=>{ for (const n of fs.readdirSync(d)) { const p=d==="."?n:path.join(d,n); if (p===".git") continue; const st=fs.lstatSync(p); if (st.isDirectory()) walk(p); else if (st.isFile()) add(p); } };
+    walk("."); if (fs.existsSync(".git/info/exclude")) add(".git/info/exclude");
+    const reg=process.env.FLIGHTWAKE_HOME+"/registry.json"; if (fs.existsSync(reg)) add(reg);
+    console.log(out.sort().join("\n"));'; }
+summary_vs_writes() { # $1 描述;其餘 = driver 參數(含 --);在目前目錄跑,比對摘要與實際變動
+  local desc="$1"; shift; fsnap > "$TMP/sw.before"
+  node "$DRIVE" "$@" > "$TMP/sw.out" 2>&1 || fail "36.7 $desc:setup 應成功($(tail -5 "$TMP/sw.out"))"
+  fsnap > "$TMP/sw.after"
+  node -e '
+    const fs=require("fs"); const [b,a,o]=process.argv.slice(1).map((f)=>fs.readFileSync(f,"utf8"));
+    const map=(t)=>new Map(t.split("\n").filter(Boolean).map((l)=>{const i=l.indexOf(" ");return [l.slice(i+1),l.slice(0,i)];}));
+    const B=map(b), A=map(a);
+    const changed=[...A].filter(([f,h])=>B.get(f)!==h).map(([f])=>f);
+    const lines=o.split("\n"); const i=lines.findIndex((l)=>/These paths will be written:/.test(l));
+    const listed=[]; for (let k=i+1;k<lines.length&&lines[k].startsWith("  ");k++) listed.push(lines[k].trim().replace(/\s+\(git init\)$/,""));
+    const covers=(e,f)=>e===f||(e.endsWith("/")&&f.startsWith(e));
+    const unlisted=changed.filter((f)=>!listed.some((e)=>covers(e,f)));
+    const unused=listed.filter((e)=>e!==".git/"&&!changed.some((f)=>covers(e,f))&&!(e.endsWith("/")&&fs.existsSync(e)));
+    if (unlisted.length||unused.length){console.log("unlisted writes: "+unlisted.join(", ")+" | listed but not written: "+unused.join(", "));process.exit(1);}
+  ' "$TMP/sw.before" "$TMP/sw.after" "$TMP/sw.out" || fail "36.7 $desc:摘要與實際寫入不一致"
+}
+newrepo "$TMP/ax7a" >/dev/null; echo "# 我的" > CLAUDE.md
+summary_vs_writes "新裝全選項(private+statusline+roles+Orca+notes)" --orca=1 --flags='{"private":true}' -- "" "claude,codex" y y y 2 ""
+grep -q 'flightwake-orca:begin' CLAUDE.local.md && [ -f .claude/skills/fw-roles/SKILL.md ] || fail "36.7 測試前提:全選項應已安裝"
+newrepo "$TMP/ax7b" >/dev/null
+summary_vs_writes "新裝全預設" --orca=0 -- "" 2 "" "" ""
+sed -i.bak 's/flightwake:begin v[0-9.]*/flightwake:begin v0.0.1/' AGENTS.md && rm -f AGENTS.md.bak
+summary_vs_writes "已安裝 → 升級" -- ""
+mkdir -p "$TMP/ax7c" && cd "$TMP/ax7c"
+summary_vs_writes "非 repo:git init + 安裝" --orca=0 -- y "" 1 y "" "" ""
+[ -d .git ] || fail "36.7 測試前提:應已 git init"
+pass "36.7 setup 摘要與實際寫入的路徑集合一致(新裝全選項/全預設/升級/含 git init)"
 
 echo ""
 echo "✅ smoke 全過"
