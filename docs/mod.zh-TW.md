@@ -43,7 +43,7 @@ mod 要同時滿足以下條件才會載入:
 - **複製了什麼**:外掛的 manifest(`.claude-plugin/plugin.json`)、`hooks/` 與 `types/`——不含它的測試與開發用腳本。
 - **`npx flightwake update`**(以及 `init --force`)只在已經裝了 mod 的地方刷新它,逐檔處理;你自己加在
   `.claude/skills/flightwake-mod/` 裡的檔案會保留。`update` 不會替你新增 mod。
-- **`npx flightwake uninstall`** 會移除整個 `.claude/skills/flightwake-mod/` 資料夾。
+- **`npx flightwake uninstall`** 只移除 flightwake 發行到這裡的檔,以及因此變空的資料夾。`.claude/skills/flightwake-mod/` 裡的其他東西(你自己加的檔、Claude Code 寫的檔)會保留,並在輸出列出;`uninstall --purge` 只針對 `.flightwake/`,也不會刪它們。
 - **`--private`**:mod 資料夾會進 `.git/info/exclude` 的標記區塊。如果該資料夾已經被 git 追蹤,`--private` 會在寫入任何東西之前
   就拒絕(與其他 private 的前置條件相同)。之後才對 private 安裝補跑 `init --mod`,也會把它加進 exclude 區塊。
 
@@ -107,7 +107,7 @@ commands: ["npm run migrate", "psql"]  # 指令前綴,逐個 token 比對
   根本沒跑的設定(例如 pytest.ini 的 `addopts`、略過測試的 build profile),也不保證測試檢查的內容是對的。任何它無法證明的情況,
   都會記成「unknown」並附上結束碼,而不是 pass。
 - **角色守門不是安全邊界。** Bash 與其他工具不會被檢查,子 agent 不會被檢查,被禁止路徑的 symlink 或其他別名也擋不到。
-- tripwire 無法確定工作目錄時(例如 `||` 之後的 `cd`、子 shell 裡),會把每個可能的目錄都檢查一遍,所以可能提示得比必要的多。
+- tripwire 無法確定工作目錄時(例如 `||` 之後的 `cd`、子 shell 裡),會在候選目錄下逐一比對——最多 16 個,超過就改成比對路徑的尾段——所以可能提示得比必要的多。
 - 只支援 Claude Code。需要 2.1.287 以上、已接受資料夾信任提示、而且從 repo 根目錄開始。
 - 已在一個真實的 Claude Code session 裡驗證過一次(五個功能都生效)。**還沒有**在真實 session 驗證的:重啟後接續 session、compaction
   之後的行為、80% 的 toast、桌面版 / VS Code 的外觀,以及 `/config` 是否真的列出這些選項(文件是這樣描述的)。

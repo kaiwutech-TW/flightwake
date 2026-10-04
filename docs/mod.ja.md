@@ -40,7 +40,7 @@ mod 自身が持つ状態は session ごとのもの(`$.state`)だけ。mod の�
 npx flightwake setup           # アドオンの手順に 1 つ質問が増える
 npx flightwake init --mod      # 直接インストールする
 npx flightwake update          # すでに入っている場所だけ refresh する
-npx flightwake uninstall       # .claude/skills/flightwake-mod/ を丸ごと削除する
+npx flightwake uninstall       # 配布したファイルだけ削除(自分で足したファイルは残る)
 ```
 
 - **`setup`**:アドオンの手順で、質問が 1 つ増える。Claude Code を選んだ場合にだけ尋ね、既定は No。
@@ -51,7 +51,7 @@ npx flightwake uninstall       # .claude/skills/flightwake-mod/ を丸ごと削�
   テストと開発用スクリプトは含まれない。
 - **`update`(と `init --force`)**:mod がすでにインストールされている場所だけ、ファイルごとに refresh する。
   `.claude/skills/flightwake-mod/` の中にあなたが足したファイルは残る。`update` が mod を新たに追加することはない。
-- **`uninstall`**:`.claude/skills/flightwake-mod/` フォルダーごと削除する。
+- **`uninstall`**:flightwake がここに配布したファイルと、それで空になったフォルダーだけを削除する。`.claude/skills/flightwake-mod/` のそれ以外(自分で足したファイル、Claude Code が書いたファイル)は残し、出力に一覧を出す。`uninstall --purge` は `.flightwake/` だけが対象で、これらも削除しない。
 - **`--private`**:mod のフォルダーは `.git/info/exclude` のブロックに入る。フォルダーが既に git で追跡されている場合、
   `--private` は何も書き込む前に拒否する(ほかの private の要件と同じ)。private のインストールに後から `init --mod` で
   mod を足した場合も、exclude ブロックに加えられる。
@@ -128,7 +128,7 @@ mod を選んでもゲージが外れることはない。
   テストが何を検査しているかを保証するものでもない。証明できないものは、pass ではなく「unknown」として終了コードとともに記録される。
 - **ロールガードはセキュリティ境界ではない。** Bash とそのほかのツールは検査されず、サブ agent も検査されず、
   禁止パスの symlink などの別名も捕まえられない。
-- tripwire が作業ディレクトリを確定できないとき(たとえば `||` の後の `cd`、サブシェルの中)は、考えられるすべてのディレクトリを調べるので、必要以上にヒントが出ることがある。
+- tripwire が作業ディレクトリを確定できないとき(たとえば `||` の後の `cd`、サブシェルの中)は、候補ディレクトリごとに照合する(最大 16 個。超えるとパスの末尾部分での照合に切り替える)ので、必要以上にヒントが出ることがある。
 - Claude Code 専用。2.1.287 以降、承認済みのフォルダー信頼プロンプト、repo のルートからの開始が必要。
 - 実際の Claude Code の session で 1 回検証した(5 つの機能すべてが効いた)。**まだ実際の session で検証していないもの**:
   再起動後の session の再開、compaction 後の挙動、80% の toast、デスクトップ / VS Code での見た目、`/config` にオプションが並ぶかどうか(ドキュメントにはそう書かれている)。

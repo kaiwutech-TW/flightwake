@@ -30,7 +30,7 @@ mod 已經做好,但目前只是 repo 裡的 `mods/flightwake/` 原始碼,使用
 - 安裝內容:把 `mods/flightwake/` 的發行內容複製到 `.claude/skills/flightwake-mod/`。測試檔、開發用腳本不需要裝進使用者的 repo;實際要帶哪些檔由你依外掛載入所需決定,並記進 DECISIONS。
 - 安裝時把安裝語言傳給 mod 的方式:mod 目前從指令檔 marker 讀語言,確認經由 setup / init 安裝後語言正確(含 `profile=notes` 的 marker、只有 AGENTS.md 的 repo)。
 - `update`:只在已安裝的地方刷新(比照 roles、Orca 的做法)。使用者在該資料夾裡自己加的檔要保留。
-- `uninstall`:移除 mod 資料夾。
+- `uninstall`:只移除發行過的檔案與因此變空的目錄;資料夾裡還有其他內容(使用者或引擎自己加的檔)時保留它們,並在輸出列出留下了什麼。`uninstall --purge` 的語意維持只針對 `.flightwake/` 使用者資料,不擴大成也刪這些檔。(2026-10-05 驗收修正:原文「移除 mod 資料夾」與資料保護衝突,以資料保護為準,見 `integration.diff-review-astra.md` 第 1 點。)
 - `--private`:mod 資料夾要進排除清單;排除失敗的處理與其他 private 必要條件一致。
 - 預檢與 setup 的寫入摘要要包含 mod 的路徑。
 

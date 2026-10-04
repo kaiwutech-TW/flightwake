@@ -42,7 +42,9 @@ npx flightwake init --mod     # install it directly
   development scripts.
 - `npx flightwake update` (and `init --force`) refresh the mod **only where it is already installed**, file by file; files
   you added inside `.claude/skills/flightwake-mod/` are kept. `update` never adds the mod.
-- `npx flightwake uninstall` removes the whole `.claude/skills/flightwake-mod/` folder.
+- `npx flightwake uninstall` removes the files flightwake shipped there and the folders that leaves empty. Anything else
+  in `.claude/skills/flightwake-mod/` (files you added, files Claude Code wrote) is kept and listed in the output;
+  `uninstall --purge` is about `.flightwake/` only and does not delete them either.
 - `--private`: the mod folder goes into the `.git/info/exclude` block. If the folder is already tracked by git,
   `--private` refuses before writing anything (same as the other private requirements). Adding the mod later with
   `init --mod` on a private install also adds it to the exclude block.
@@ -114,7 +116,8 @@ Claude Code that the mod loaded — for example, `/fw-log` is available.
 - **The role guard is not a security boundary.** Bash and other tools are not checked, subagents are not checked, and
   a symlink or other alias of a denied path is not caught.
 - When the tripwire cannot be sure of the working directory (for example `cd` after `||`, or inside subshells), it
-  checks every possible directory and may hint more than necessary.
+  checks each candidate directory — up to 16 of them; beyond that it falls back to matching the tail of the path — so
+  it may hint more than necessary.
 - Claude Code only. Requires 2.1.287+, an accepted folder trust prompt, and starting at the repo root.
 - **Verified once in a real Claude Code session**, where all five features took effect. Not yet verified in a real
   session: resuming a session after a restart, behaviour after compaction, the 80% toast, the desktop / VS Code look,

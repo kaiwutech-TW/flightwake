@@ -150,7 +150,7 @@ skill 與 hook 是各平台的便利糖衣——同一套四個 skill、同一�
 
 **`--orca`**(選配;`setup` 也會問,但只在偵測到 Orca 時)在每個啟用平台的指令檔加一個標記區塊:跨 agent 討論與審查要用看得見的 Orca 分頁,不要用藏在背景的執行;並附單一寫手審查協議(被請來審查的 agent 不寫 record、不碰 STATE;提問方把採納的結論寫進自己的 record)。`uninstall` 會移除;`update` 只在已安裝處刷新。
 
-**`--mod`**(選配;`setup` 也會問,但只在你選了 Claude Code 時)安裝 Claude Code mod(`flightwake-mod`)到 `.claude/skills/flightwake-mod/`:一組 function hook,在 session 裡注入 STATE、顯示 band、記錄飛行日誌、觸發 TRAPS 絆線,並可選配角色守門。只支援 Claude Code(需要 2.1.287+、接受資料夾信任提示、從 repo 根目錄開始);若這次沒有設定 Claude Code,會印說明並略過。`update` 只在已安裝處刷新,`uninstall` 會移除。完整說明見 [docs/mod.zh-TW.md](docs/mod.zh-TW.md)。
+**`--mod`**(選配;`setup` 也會問,但只在你選了 Claude Code 時)安裝 Claude Code mod(`flightwake-mod`)到 `.claude/skills/flightwake-mod/`:一組 function hook,在 session 裡注入 STATE、顯示 band、記錄飛行日誌、觸發 TRAPS 絆線,並可選配角色守門。只支援 Claude Code(需要 2.1.287+、接受資料夾信任提示、從 repo 根目錄開始);若這次沒有設定 Claude Code,會印說明並略過。`update` 只在已安裝處刷新,`uninstall` 只移除發行的檔,你在該資料夾自己加的檔會保留並列出。完整說明見 [docs/mod.zh-TW.md](docs/mod.zh-TW.md)。
 
 **`--git-init`** 讓 `init` 在目錄不是 git repo 時先建立它——只有明確給旗標才會做;沒給就停下並告知。`init` 與 `setup` 都會先檢查 git 是否已安裝,沒有則依平台給出安裝提示。
 
@@ -214,7 +214,7 @@ flightwake 不會把 workflow 寫進你的 repo——`.github/workflows/` 權限
 ## 安全性
 
 - **零依賴、無網路、無 install script**:安裝器只做檔案複製;hook 只用 `git`(無 shell)做唯讀查詢。
-- **寫入範圍固定**:`init` 只碰 `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`、agent 指令檔裡的標記區塊(含 Orca 區塊,僅在你選用時)、`~/.flightwake/registry.json`(init/update 會寫;uninstall 移除本 repo 的條目)、`.claude/skills/fw-roles` / `.agents/skills/fw-roles`(僅在你選用 roles 時)、`.claude/skills/flightwake-mod/`(僅在你選用 mod 時;`uninstall` 會移除;`--private` 時加進 exclude 區塊),以及(偵測到 Codex / Gemini CLI 時)`.agents/skills/fw-*`、`.codex/hooks.json`、`.gemini/settings.json`;`--private` 時改碰 `.claude/settings.local.json`、`CLAUDE.local.md` 與 `.git/info/exclude` 裡的標記區塊(Codex/Gemini 那幾個檔只在未受追蹤時才寫,並加進 exclude)。`uninstall` 反向清除同一範圍。任何寫入都不經由 symlink、也不落在 repo 之外:安裝前先預檢,有必要路徑會被拒寫就在寫入任何東西之前中止並點名該路徑(以非零退出)。檔案一律以「暫存檔 + rename」取代,不原地覆寫;uninstall 與 roles 指令遵守同樣規則。`--private` 若隱私無法生效(要排除的東西已受追蹤,或 `.git/info/exclude` 寫不進去)會在一開始就拒絕。`doctor` 不寫入任何東西(裝了 mod 時,它會執行唯讀的 `claude --version`)。「只複製檔案」唯一的例外是 `git init`:只在你於 `setup` 最後摘要確認後,或你傳了 `--git-init` 時才會執行。
+- **寫入範圍固定**:`init` 只碰 `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`、agent 指令檔裡的標記區塊(含 Orca 區塊,僅在你選用時)、`~/.flightwake/registry.json`(init/update 會寫;uninstall 移除本 repo 的條目)、`.claude/skills/fw-roles` / `.agents/skills/fw-roles`(僅在你選用 roles 時)、`.claude/skills/flightwake-mod/`(僅在你選用 mod 時;`uninstall` 只移除發行的檔、保留你自己加的;`--private` 時加進 exclude 區塊),以及(偵測到 Codex / Gemini CLI 時)`.agents/skills/fw-*`、`.codex/hooks.json`、`.gemini/settings.json`;`--private` 時改碰 `.claude/settings.local.json`、`CLAUDE.local.md` 與 `.git/info/exclude` 裡的標記區塊(Codex/Gemini 那幾個檔只在未受追蹤時才寫,並加進 exclude)。`uninstall` 反向清除同一範圍。任何寫入都不經由 symlink、也不落在 repo 之外:安裝前先預檢,有必要路徑會被拒寫就在寫入任何東西之前中止並點名該路徑(以非零退出)。檔案一律以「暫存檔 + rename」取代,不原地覆寫;uninstall 與 roles 指令遵守同樣規則。`--private` 若隱私無法生效(要排除的東西已受追蹤,或 `.git/info/exclude` 寫不進去)會在一開始就拒絕。`doctor` 不寫入任何東西(裝了 mod 時,它會執行唯讀的 `claude --version`)。「只複製檔案」唯一的例外是 `git init`:只在你於 `setup` 最後摘要確認後,或你傳了 `--git-init` 時才會執行。
 - **hook 進 git**:`.flightwake/hooks/state-check.mjs` 是 repo 內的檔案,能 commit 的人就能改——與所有 repo-local 設定同級,Claude Code 載入時會要求確認。
 - 漏洞回報見 [SECURITY.md](SECURITY.md)。以 npm Trusted Publishing 發布(附 provenance),可用 `npm audit signatures` 驗證。
 

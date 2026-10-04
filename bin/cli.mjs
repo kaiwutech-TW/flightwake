@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { runRoles, removeRoleArtifacts } from './roles.mjs';
 import {
-  LANGS, PROFILES, GROUPS, isAgentName, INSTRUCTION_CANDIDATES, ORCA_BLOCK_RE, MOD_REL, noJunk, makeM, gitAvailable, repoState, excludePath,
+  LANGS, PROFILES, GROUPS, isAgentName, INSTRUCTION_CANDIDATES, ORCA_BLOCK_RE, MOD_REL, modShipList, noJunk, makeM, gitAvailable, repoState, excludePath,
   addPrivateExcludes, gitMissingMessage, monorepoMessage, notRepoMessage, detectInstall, resolveOptions, install,
   printNext, unregisterRepo, createWriter, refusalReport, incompleteReport,
 } from './install.mjs';
@@ -179,8 +179,36 @@ if (cmd === 'uninstall') {
       rm(`.agents/skills/${sk}`);
     }
     rm('.flightwake/TEMPLATE-record.md');
-    // Claude Code mod add-on: the whole plugin folder (flightwake-written; files added in it go with it)
-    rm(MOD_REL);
+    // Claude Code mod add-on: only the files flightwake ships, then the directories that leaves empty (deepest first).
+    // Anything else in the folder — your notes, files the engine wrote — is kept and named: uninstall never deletes
+    // what it did not write (and --purge is about .flightwake/ only).
+    const modDir = join(TARGET, ...MOD_REL.split('/'));
+    if (existsSync(modDir) || isLink(modDir)) {
+      const shipped = modShipList(FW_SRC);
+      for (const f of shipped) rm(`${MOD_REL}/${f}`);
+      const dirs = new Set();
+      for (const f of shipped) for (let d = dirname(f); d !== '.'; d = dirname(d)) dirs.add(d);
+      for (const d of [...dirs].sort((a, b) => b.split('/').length - a.split('/').length)) rmdirQuiet(`${MOD_REL}/${d}`);
+      rmdirQuiet(MOD_REL);
+      if (!dry && existsSync(modDir) && !isLink(modDir)) {
+        const left = [];
+        const walk = (dir, rel) => {
+          for (const f of readdirSync(dir)) {
+            const r = rel ? `${rel}/${f}` : f;
+            let isDirectory = false;
+            try { isDirectory = lstatSync(join(dir, f)).isDirectory(); } catch {}
+            if (isDirectory) walk(join(dir, f), r); else left.push(r);
+          }
+        };
+        walk(modDir, '');
+        if (left.length) out(`  ${M({
+          en: `kept ${MOD_REL}/ — not shipped by flightwake, so left in place: ${left.join(', ')}`,
+          'zh-TW': `保留 ${MOD_REL}/ — 以下不是 flightwake 發行的檔,原樣留下:${left.join(', ')}`,
+          'zh-CN': `保留 ${MOD_REL}/ — 以下不是 flightwake 发行的文件,原样留下:${left.join(', ')}`,
+          ja: `${MOD_REL}/ を残す — flightwake が配布したファイルではないためそのまま:${left.join(', ')}`,
+        })}`);
+      }
+    }
     // roles add-on: its skill and role blocks are framework-written too (ROLES.md is user data, kept like STATE)
     removeRoleArtifacts(TARGET, out, W);
     rm('.flightwake/hooks/state-check.mjs');

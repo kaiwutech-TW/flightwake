@@ -31,7 +31,7 @@
 npx flightwake setup          # 附加项那一步多一个问题,默认 No
 npx flightwake init --mod     # 直接安装
 npx flightwake update         # 只刷新已安装的 mod
-npx flightwake uninstall      # 移除整个 .claude/skills/flightwake-mod/ 文件夹
+npx flightwake uninstall      # 只移除发行的文件;你自己加的文件保留
 npx flightwake doctor         # 检查安装状态
 ```
 
@@ -39,7 +39,7 @@ npx flightwake doctor         # 检查安装状态
 - **`init --mod`**:安装它。如果这次设置的 agent 里没有 Claude Code,会打印一条说明并跳过 mod(不算错误)。如果该文件夹已经存在,`init --mod` 会跳过,除非加 `--force`。
 - **复制了什么**:插件的 manifest(`.claude-plugin/plugin.json`)、`hooks/` 与 `types/`——不含它的测试与开发脚本。
 - **`update`**(以及 `init --force`)只在已经安装 mod 的地方刷新,逐个文件进行;你自己加在 `.claude/skills/flightwake-mod/` 里的文件会保留。`update` 不会替你新增 mod。
-- **`uninstall`**:移除整个 `.claude/skills/flightwake-mod/` 文件夹。
+- **`uninstall`**:只移除 flightwake 发行到这里的文件,以及因此变空的文件夹。`.claude/skills/flightwake-mod/` 里的其他东西(你自己加的文件、Claude Code 写的文件)会保留,并在输出列出;`uninstall --purge` 只针对 `.flightwake/`,也不会删它们。
 - **`--private`**:mod 文件夹会进入 `.git/info/exclude` 的区块;如果该文件夹已被 git 跟踪,`--private` 会在写入任何东西之前拒绝(与其他 private 要求相同)。之后在 private 安装上用 `init --mod` 补装,同样会把它加进 exclude 区块。
 
 ### doctor 检查什么
@@ -95,6 +95,6 @@ commands: ["npm run migrate", "psql"]    # 命令前缀,逐个 token 比对
 
 - **`/fw-log` 里的「pass」**的意思是:直接调用的、可识别的测试运行器以可识别的方式运行并返回 0。它看不到配置文件或环境里让测试根本不执行的设置(例如 pytest.ini 里的 `addopts`、跳过测试的构建 profile),也不保证测试检查的内容。凡是它无法证明的,都记为「unknown」并附上 exit code,不记为 pass。
 - **角色守门不是安全边界**:Bash 与其他工具不检查,子 agent 不检查,被禁止路径的 symlink 或其他别名也拦不到。
-- **tripwire** 在无法确定工作目录时(例如 `||` 之后的 `cd`、子 shell 里),会检查所有可能的目录,可能多提示一些。
+- **tripwire** 在无法确定工作目录时(例如 `||` 之后的 `cd`、子 shell 里),会在候选目录下逐一比对——最多 16 个,超过就改为比对路径的尾段——所以可能多提示一些。
 - 只支持 Claude Code,需要 2.1.287+、已接受的文件夹信任提示,并从 repo 根目录启动。
 - 只在一个真实的 Claude Code session 里验证过一次(五个功能都生效)。**尚未在真实 session 里验证**:重启后恢复 session、compaction 之后的行为、80% 提示、桌面版 / VS Code 的外观,以及 `/config` 是否列出这些选项(文档如此描述)。

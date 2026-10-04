@@ -325,6 +325,12 @@ export function createWriter({ target, dry = false, log = () => {}, M = makeM('e
       else if (!filter || filter(r)) replaceFile(d2, readFileSync(s2));
     }
   };
+  const treeFiles = (src, filter, rel = '') => readdirSync(src).flatMap((f) => {
+    if (!noJunk(f)) return [];
+    const r = rel ? `${rel}/${f}` : f;
+    if (statSync(join(src, f)).isDirectory()) return treeFiles(join(src, f), filter, r);
+    return !filter || filter(r) ? [r] : [];
+  });
   const hasWanted = (dir, filter, rel) => readdirSync(dir).some((f) => {
     const r = `${rel}/${f}`;
     return statSync(join(dir, f)).isDirectory() ? hasWanted(join(dir, f), filter, r) : filter(r);
@@ -351,6 +357,10 @@ export function createWriter({ target, dry = false, log = () => {}, M = makeM('e
       if (!check(dst, true, 'dir')) return false;
       const inner = existsSync(dst) ? linkInside(dst) : null;
       if (inner) return refuse(inner, 'symlink');
+      // Every file this copy will write is checked like a single write: a directory where a shipped file goes, or a
+      // regular file where one of its directories must be, would otherwise fail half-way (EISDIR / ENOTDIR) after
+      // other files were written. A replace removes the old tree first, so only its root matters there.
+      if (!replace) for (const rel of treeFiles(src, filter)) if (!check(join(dst, ...rel.split('/')))) return false;
       writes.push(`${relOf(dst)}/`);
       if (!dry) {
         if (replace && existsSync(dst)) rmSync(dst, { recursive: true });

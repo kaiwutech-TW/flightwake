@@ -34,7 +34,7 @@ prod_changes: none(未 push、未 bump、未發版)
 ## 交付 / Commits
 
 9274a09..(本 record 的 commit)。合併(9274a09)→ 任務說明入版控 → 紅燈測試(465e8e8,smoke 40 節;6 組選了 Claude 的 setup 答案序列各補一個答案)→
-安裝器實作(6992c75)→ DECISIONS ×7 → 延後三件事(fe463c3,smoke 41 節)→ 四語文件、README、CHANGELOG(d8694db)→ 項目 7 的 TRAPS。
+安裝器實作(6992c75)→ DECISIONS ×7 → 延後三件事(fe463c3,smoke 41 節——只是關鍵字的文字檢查,不驗證 agent 行為)→ 四語文件、README、CHANGELOG(d8694db)→ 項目 7 的 TRAPS。
 
 檔案:`bin/install.mjs`(`MOD_REL`/`modShips`/`modShipList`、writer `cp` 的 `filter`、步驟 5c、`printModNotes`、`detectedAgents` 修正)、
 `bin/setup.mjs`(mod 題)、`bin/cli.mjs`(`--mod`、help、uninstall)、`bin/doctor.mjs`(`checkMod`、private 排除含 mod)、`test/smoke.sh`(40、41 節)、
@@ -65,7 +65,7 @@ STATE 以 setup-wizard 版為底、加入 mods 段落並改寫 frontmatter 與�
 - **合併後**(開工前):smoke 39 節 `✅ smoke 全過`;`claude plugin test` 276/276;validate 通過(僅 author 警告);tsc clean;git-readonly-check 三項 ok。
 - **先紅後綠**:465e8e8 時 smoke 停在 `❌ FAIL: 36.7 測試前提:全選項應已安裝`;實作後依序修掉 40.5(private update,見發現 2)、40.7(grep 太寬,
   比到 doctor 的「Claude Code mod: not installed」)、40.9(變體目錄名把 CJK 全換成 `_` 而撞名,改用計數器)兩個測試本身的問題,最後全過。
-  41 節加入時 `❌ FAIL: 41 en TRAPS 範本條目應有空的 paths / commands 欄位`,修文字後過。
+  41 節(關鍵字文字檢查)加入時 `❌ FAIL: 41 en TRAPS 範本條目應有空的 paths / commands 欄位`,修文字後過。
 - **最終**:smoke 41 節 `✅ smoke 全過`;`claude plugin test mods/flightwake` → `276 pass / 0 fail, Ran 276 tests across 10 files`;
   `claude plugin validate mods/flightwake` → `✔ Validation passed`(零警告);安裝後的子集 `.claude/skills/flightwake-mod` 單獨 validate 也通過;
   tsc clean;git-readonly-check:control 讓 index 雜湊改變、mod 的指令組讓 index 位元組不變。
@@ -100,3 +100,23 @@ STATE 以 setup-wizard 版為底、加入 mods 段落並改寫 frontmatter 與�
 - 本 repo 自己的 dogfood 安裝副本仍未刷新(刻意留到發版後,同前一階段)。
 - 未驗證:F5 與 mod 題在 setup 中的其他語言外觀;真的 resume/compact(沿用 mods record 的未驗證清單);Windows。
 - 已知限制沿用 [[261005-flightwake-mod]] 的「驗證範圍」與 [[261005-setup-wizard]] 的已知限制;mod 文件的限制段依該 record 撰寫。
+
+## 驗收修正(同日,b9d38f5..)
+
+驗收者(Fable 5.1)獨立驗過後通過整合本身;GPT-6 Astra 讀 diff(原文 `docs/plans/integration.diff-review-astra.md`,審至 284ceef)判定兩項合併前必修,驗收者採納。
+先寫測試(b9d38f5)、跑出失敗再修:
+
+1. **uninstall 會刪掉使用者在 mod 資料夾自己加的檔**——規格(任務說明「移除 mod 資料夾」)本身與資料保護衝突,以資料保護為準。
+   紅:`❌ FAIL: 40.4 uninstall 不得刪除使用者在 mod 資料夾自己加的檔`(原 40.4 刪掉 40.3 建立的 MY-NOTES.md 卻只檢查 STATE)。
+   修:uninstall 依目前套件的發行清單逐檔經受防護 writer 移除,再由深到淺移除變空的目錄;剩下的(MY-NOTES.md、引擎寫的 `.claude-plugin/types/x.d.ts`)保留並列出;
+   `--purge` 只針對 `.flightwake/`。沒有自加檔時整個資料夾消失。任務說明對應段落已改。
+   限制:發行清單取自執行 uninstall 的套件版本;舊版發行過、新版已刪除的檔會被當成「不是 flightwake 發行的」而保留並列出(寧可多留,不誤刪)。
+2. **mod 複製的預檢漏掉內層型別衝突**:`hooks/register.ts` 是目錄時 `init --agents=claude --mod --force` 先寫了 STATE/skills/settings/指令檔才 EISDIR。
+   紅:`❌ FAIL: 40.8 mod 發行檔位置是目錄:應在第一個寫入前中止、零寫入`。修:writer 的 `cp`(非整目錄替換時)對每個要寫的發行檔做單檔寫入同一套檢查;
+   **skill 的複製有同樣缺口**,一併修、一併測(`.claude/skills/fw-record/SKILL.md` 是目錄 → update 預檢中止)。fw-roles 是整目錄替換,內部型別衝突本來就會被換掉,加測確認仍成功。
+3. 文件:mod 文件四語的「檢查每個可能的 cwd」改為如實描述(最多 16 個候選,超過改用路徑尾段比對);uninstall 的描述同步改(mod 文件、README、CHANGELOG 四語)。
+4. 41 節的測試名稱與本 record 的描述改成如實寫「只是關鍵字的文字檢查」。
+
+驗證:smoke 41 節 `✅ smoke 全過`;`claude plugin test` 276 pass / 0 fail;validate `✔ Validation passed`(零警告);tsc clean;git-readonly-check 三項 ok。
+本輪未重做真機載入(改動在安裝器的移除與預檢,mod 本身未變)。DECISIONS 2026-10-05 首兩條。
+Astra 列為可延後、未修:未寫入的自加 symlink 仍會讓 update 被拒(沿用既定的 symlink 相容性取捨)。

@@ -42,7 +42,8 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   hints from the new optional `paths` / `commands` fields, and an off-by-default role guard for `deny-write` paths (not a
   security boundary; turned on per person in `/config` or user settings — the installer can't). Reads `.flightwake/` and
   git only, never writes your records. Skipped with a note when Claude Code is not among the agents; `update` refreshes it
-  only where installed and keeps files you added there; `uninstall` removes it; `--private` excludes it. `doctor` reports
+  only where installed and keeps files you added there; `uninstall` removes only the files it shipped (and folders left
+  empty), keeping and listing anything you added; `--private` excludes it. `doctor` reports
   it (manifest, hooks modules, shipped files, version vs the package, `claude --version` when readable) and prints what it
   can't see (folder trust, starting at the repo root). Guide: `docs/mod.md` (four languages).
 
