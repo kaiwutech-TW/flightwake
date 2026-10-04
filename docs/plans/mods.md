@@ -125,6 +125,14 @@ flightwake 有幾處靠「模型自覺」或外部 node 腳本在撐,Claude Code
 6. **F1** 未初始化只認範本自己的 frontmatter 欄位(`{{DATE}}`、`{{SESSION_OR_PERSON}}`、`{{YYMMDD}}`、`{{slug}}`),STATE 內容裡合法的 `{{…}}` 不算;marker 解析容忍額外屬性(`lang=zh-TW profile=notes`),語言另可從 AGENTS.md / GEMINI.md 的 marker 取得。
 7. `/fw-role-release` 只接受來源為 composer(使用者本人在輸入框按 Enter);沒有來源的一律拒絕。
 
+## 驗收修正第 2 輪(2026-10-05,驗收者依 `docs/plans/mods.diff-review-astra-2.md` 改判定方式;優先於上文)
+
+1. **F3 正面證明**:結果預設 unknown;只有「單一、直接呼叫已知 runner(非 `sh -c`/`bash -c`/`eval`/`xargs`/`env`/`time` 等包裝,非複合、非管線、非指令替換),且每個旗標都落在該 runner 自己的表內」才記 pass/fail。表在 `mods/flightwake/hooks/lib/testcmd.ts`(每個 runner:安全旗標、帶值旗標、代表不執行測試的旗標,mvn 另有 `-D` 鍵表、cargo 另有 `--` 之後的表)。經 npm/pnpm/yarn/bun script 執行時,script 本體(含引號內的 shell 本體、加上額外參數)走同一判定,可遞迴。STATE 或 package 宣告的指令沒有豁免;唯一的額外允許是「直接執行一個腳本檔」(`bash test/smoke.sh`、`node scripts/test.js`),因為那是 repo 自己點名的測試檔。不滿足的照樣收錄,標 unknown 並附原因、保留退出碼與原指令;不因旗標不認得而整筆不收錄。`cd X &&` 前綴:exit 0 可證明,非 0 可能是 cd 失敗 → unknown。
+2. **F5**:「全部放行」改存獨立旗標 `isAllReleased`,與字面規則 `*` 不共用值。
+3. **F4**(只提示、不攔):只有連續的 `cd X &&` 視為確定切換;`||`、`&`、管線、`;`、換行之後或子 shell 內無法確定 cwd 時,把路徑在每個可能的 cwd 下都解析,任一命中就提示;`( … )` 子 shell 會被走進去解析。同一條每 session 仍只提示一次。
+4. **生命週期**:測試引擎只能手動觸發事件——自動測試「模擬」/clear(session.end + 新 id)與模組重載(同 id 再觸發 session.start),測試名稱照實寫;真正的 resume/compact 未重現。真機只觀察過一次熱重載。未驗證項列在 record。
+5. 路徑別名(symlink 等)可繞過 F5:維持「不是安全邊界」,roles 文件限制段已點明,不修。
+
 ## 介面約定(管理者,2026-10-05;實作者照此開發)
 
 外掛:`mods/flightwake/`,名稱 `flightwake-mod`(之後安裝到 `.claude/skills/flightwake-mod/`)。

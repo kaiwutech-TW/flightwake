@@ -95,7 +95,7 @@ describe('guard on the main session', () => {
     expect((await write($, '/repo/src/a.ts')).deny).toBeUndefined()
   })
 
-  test('lazy snapshot on the first tool call (no session.start, as after /clear)', ON, async ($, on) => {
+  test('lazy snapshot on the first tool call (no session.start — the situation after a /clear; simulated)', ON, async ($, on) => {
     installWorld(on, base())
     engineBelow(on)
     expect((await write($, '/repo/src/x.ts')).deny).toBeDefined()
@@ -270,7 +270,7 @@ describe('release', () => {
 })
 
 describe('lifecycle', () => {
-  test('reload (session.start again, same id) keeps role and releases and re-shows the status', ON, async ($, on) => {
+  test('session.start raised again with the same id (as a module reload does; simulated) keeps role and releases and re-shows the status', ON, async ($, on) => {
     const w = installWorld(on, base())
     const p = engineBelow(on)
     await start($)

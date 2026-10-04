@@ -84,22 +84,28 @@ describe('(1) F3 never records an unproven pass', () => {
       expect(log).toMatch(/\| unknown \|/)
     })
   }
+  // Round 2 changed the contract: such runs are recorded (command and exit code kept) as unknown, never dropped.
   for (const cmd of ['pytest --help', 'pytest -h', 'jest --version', 'vitest --version', 'pytest --collect-only', 'jest --listTests',
     'go test -list .', 'cargo test -- --list', 'playwright test --list', 'npm test -- --help', 'jest --watch', 'vitest list']) {
-    test(`"${cmd}" runs no tests: not recorded`, async ($, on) => {
+    test(`"${cmd}" runs no tests: recorded as unknown, never pass`, async ($, on) => {
       const w = installWorld(on, { files: installed({ 'package.json': JSON.stringify({ scripts: { test: 'jest' } }) }), git: gitBehind(0) })
       engineBelow(on, w)
       await start($, w)
       await bash($, cmd)
-      expect(await fwLog($)).toContain('Nothing observed yet')
+      const log = await fwLog($)
+      expect(log).toContain(cmd.replace(/\|/g, '\\|'))
+      expect(log).not.toMatch(/\| pass \|/)
+      expect(log).toMatch(/\| unknown \|/)
     })
   }
-  test('npm test whose script only lists tests is not recorded', async ($, on) => {
+  test('npm test whose script only lists tests is recorded as unknown', async ($, on) => {
     const w = installWorld(on, { files: installed({ 'package.json': JSON.stringify({ scripts: { test: 'jest --listTests' } }) }), git: gitBehind(0) })
     engineBelow(on, w)
     await start($, w)
     await bash($, 'npm test')
-    expect(await fwLog($)).toContain('Nothing observed yet')
+    const log = await fwLog($)
+    expect(log).not.toMatch(/\| pass \|/)
+    expect(log).toMatch(/\| unknown \|/)
   })
   test('a plain recognised run still records pass (no regression)', async ($, on) => {
     const w = installWorld(on, { files: installed({ 'package.json': JSON.stringify({ scripts: { test: 'vitest run' } }) }), git: gitBehind(0) })

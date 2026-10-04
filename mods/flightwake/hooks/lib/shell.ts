@@ -10,6 +10,8 @@ export type Segment = {
   env: string[]
   /** The operator that ended this segment: '&&', '||', ';', '|', '&', '\n', or '' for the last one. */
   op: string
+  /** A subshell boundary marker (`(` / `)`), carrying no words; F4 walks into subshells, F3 counts it as compound. */
+  group?: 'open' | 'close'
 }
 
 export type ParsedCommand = {
@@ -62,9 +64,36 @@ export function parseCommand(command: string): ParsedCommand {
       hasCur = true
       continue
     }
-    if (c === '`' || (c === '$' && command[i + 1] === '(') || c === '(' || c === ')' || (c === '<' && command[i + 1] === '<')) {
+    // `$( … )` and backticks: command substitution stays inside the word (nested parens counted)
+    if (c === '$' && command[i + 1] === '(') {
       isComplex = true
+      let depth = 0
+      for (; i < command.length; i++) {
+        const d = command[i] as string
+        cur += d
+        if (d === '(') depth++
+        else if (d === ')' && --depth === 0) break
+      }
+      hasCur = true
+      continue
     }
+    if (c === '`') {
+      isComplex = true
+      const close = command.indexOf('`', i + 1)
+      const end = close < 0 ? command.length - 1 : close
+      cur += command.slice(i, end + 1)
+      i = end
+      hasCur = true
+      continue
+    }
+    // A bare `(` / `)` opens / closes a subshell: an explicit marker segment, so the commands inside stay visible
+    if (c === '(' || c === ')') {
+      isComplex = true
+      endSegment('')
+      segments.push({ tokens: [], env: [], op: '', group: c === '(' ? 'open' : 'close' })
+      continue
+    }
+    if (c === '<' && command[i + 1] === '<') isComplex = true
     // `&` inside a redirection (`2>&1`, `>&2`, `<&3`, `&>file`, `&>>file`) is part of the word, not an operator
     const isRedirAmp = c === '&' && (command[i - 1] === '>' || command[i - 1] === '<' || command[i + 1] === '>')
     const op = isRedirAmp ? undefined : OPS.find((o) => command.startsWith(o, i))

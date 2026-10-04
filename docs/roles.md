@@ -174,7 +174,7 @@ If you use the `flightwake-mod` Claude Code mod, its **role guard** switch (`rol
 - **Overrides.** A session that opens with a dispatch card follows the card's role instead of the seat (a card without `deny-write` guards nothing). A subagent, including an on-call role spawned for a task, is an explicit assignment and is not checked.
 - **Release.** Only the person can run `/fw-role-release` (typed in the prompt, not from a plugin or the model): with no argument it lists the rules; with a glob or its number it releases that rule; `all` releases every rule; `revoke` takes the releases back. A release lasts for this session only, stays visible in the status line while it is active, and leaves a note in the transcript.  When a path falls under several rules, every one of them must be released: releasing `src/**` does not release `src/private/**`. The guard only acts in a folder where flightwake is installed (`.flightwake/STATE.md` exists); moving the session to another folder re-reads that folder's seat.
 - **When changes apply.** The role is read once when a session starts; edit the seat or `deny-write` and start a new session (or `/clear`) to pick it up.
-- **Not a security boundary.** This is a convenience that catches the common slip of a manager writing product code. A determined agent can still write through Bash. Keep your real guardrails in place.
+- **Not a security boundary.** This is a convenience that catches the common slip of a manager writing product code. A determined agent can still write through Bash. Paths are compared as written (normalized, but symlinks and other aliases of the same file are not resolved), so an alias of a denied path is not caught either. Keep your real guardrails in place.
 
 ## Prior art
 

@@ -72,8 +72,10 @@ export type FwRoleGuard = {
   role: string | null
   source: 'seat' | 'card' | 'none'
   denyWrite: string[]
-  /** Released globs for this session ('*' = every rule); shown persistently while non-empty. */
+  /** Rules released one by one this session, each by its literal glob (a rule may itself be `*`). */
   released: string[]
+  /** `/fw-role-release all`: every rule released. Kept apart from `released` so a literal `*` rule never means "all". */
+  isAllReleased: boolean
 }
 
 declare module 'claude-code' {

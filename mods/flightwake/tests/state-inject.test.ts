@@ -148,7 +148,7 @@ describe('F1 state-inject', () => {
     expect(w.reads.length).toBe(readsAfterStart)
   })
 
-  test('new session id (resume / new session) retakes the snapshot', async ($, on) => {
+  test('a new session id retakes the snapshot (simulated; a real resume was not reproduced)', async ($, on) => {
     const w = world(on, base(STATE_FILLED))
     await stateOf($)
     w.files['.flightwake/STATE.md'] = STATE_FILLED.replace('billing', 'payments')
@@ -166,7 +166,7 @@ describe('F1 state-inject', () => {
     expect((await stateOf($))!.text).toContain('payments')
   })
 
-  test('compact: same id keeps the snapshot', async ($, on) => {
+  test('same session id after more events keeps the snapshot (stands in for compaction; a real compaction was not reproduced)', async ($, on) => {
     const w = world(on, base(STATE_FILLED))
     const first = (await stateOf($))!.text
     w.files['.flightwake/STATE.md'] = STATE_FILLED.replace('billing', 'payments')

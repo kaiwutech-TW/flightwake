@@ -18,6 +18,7 @@ import { M, STATE_REL, fwContext, packageScripts, readRel, relToRoot } from '../
 import type { Io, Lang } from '../lib/core'
 import { parseCommand } from '../lib/shell'
 import type { Segment } from '../lib/shell'
+import { declaredCommands, judge, type Judgment } from '../lib/testcmd'
 
 const flightLog = atom({ plugin: 'flightwake-mod', key: 'flightLog' } as const, null)
 
@@ -69,153 +70,16 @@ export function redact(text: string, cap = CAP_COMMAND): string {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Recognising a test command (pure: no world access). Returns what to look up, never a verdict.
+// Judging a Bash call before it runs: hooks/lib/testcmd.ts (positive proof; pure). Here: the cd prefix and the cwd.
 // ---------------------------------------------------------------------------------------------------------------
-
-/** What a single simple command is, before any package.json / STATE lookup. */
-type Candidate =
-  | { kind: 'runner' }
-  | { kind: 'typecheck' }
-  | { kind: 'script'; script: string; isNpmTest: boolean }
-
-const SCRIPT_NAME_RE = /^(test|check|verify|typecheck|lint)([:._-].*)?$/
-const WORKSPACE_FLAGS = new Set(['--prefix', '--workspace', '-w', '--workspaces', '--filter', '-F', '-C', '--cwd', '--dir', '--recursive', '-r', '--if-present-in'])
-
-/** Tokens without redirections (`> f`, `2>/dev/null`, `2>&1`, `&>f`, `< in`): lib/shell keeps them as words. */
-function stripRedirects(tokens: readonly string[]): string[] {
-  const out: string[] = []
-  for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i] as string
-    const m = /^(?:\d*|&)(>>?|<)(.*)$/.exec(t)
-    if (m) {
-      if ((m[2] ?? '') === '') i++ // the target is the next word
-      continue
-    }
-    out.push(t)
-  }
-  return out
-}
-
-/** Strips `npx [flags]`, `pnpm exec`, `pnpm dlx`-free forms and `bunx`; null when the command is not wrapped. */
-function unwrapExec(t: readonly string[]): string[] | null {
-  let rest: string[] | null = null
-  if (t[0] === 'npx') rest = t.slice(1)
-  else if (t[0] === 'bunx') rest = t.slice(1)
-  else if ((t[0] === 'pnpm' || t[0] === 'yarn') && t[1] === 'exec') rest = t.slice(2)
-  if (rest === null) return null
-  while (rest.length && (rest[0] as string).startsWith('-')) rest = rest.slice(1)
-  return rest
-}
-
-const DIRECT_RUNNERS = new Set(['vitest', 'jest', 'mocha', 'ava', 'tap', 'pytest', 'rspec', 'phpunit'])
-const TYPECHECKERS = new Set(['tsc', 'vue-tsc', 'mypy', 'pyright'])
-
-function isRunner(t: readonly string[]): boolean {
-  const [a, b, c] = t
-  if (a === undefined) return false
-  if (DIRECT_RUNNERS.has(a)) return true
-  if (a === 'playwright' && b === 'test') return true
-  if ((a === 'python' || a === 'python3') && b === '-m' && c === 'pytest') return true
-  if (a === 'go' && b === 'test') return true
-  if (a === 'cargo' && b === 'test') return true
-  if (a === 'deno' && b === 'test') return true
-  if (a === 'bun' && b === 'test') return true
-  if (a === 'make' && (b === 'test' || b === 'check')) return true
-  if (a === 'claude' && b === 'plugin' && c === 'test') return true
-  if (a === 'node' && t.includes('--test')) return true
-  if (a === 'bundle' && b === 'exec' && c === 'rspec') return true
-  if (a === 'mvn' && b === 'test') return true
-  if ((a === 'gradle' || a === './gradlew') && b === 'test') return true
-  if (a === 'dotnet' && b === 'test') return true
-  if (a === 'mix' && b === 'test') return true
-  return false
-}
-
-/**
- * Words that make a runner print help/version, list or collect tests, or watch instead of running them once: such an
- * invocation proves nothing about the tests, so it is not recorded at all (acceptance 2026-10-05).
- */
-const NO_RUN_FLAGS = new Set([
-  '--help', '-h', '--version', '-V', '--collect-only', '--co', '--listTests', '--list-tests', '--list', '-list',
-  '--showConfig', '--show-config', '--watch', '--watchAll', '--init', '--dry-run',
-])
-const NO_RUN_SUBCOMMANDS: Record<string, readonly string[]> = { vitest: ['list', 'watch', 'dev', 'init'], jest: [], playwright: ['show-report', 'codegen'] }
-
-export function isNoRun(tokens: readonly string[]): boolean {
-  if (tokens.some((t) => NO_RUN_FLAGS.has(t) || t.startsWith('--help=') || t.startsWith('--list='))) return true
-  const t = unwrapExec(tokens) ?? [...tokens]
-  const sub = NO_RUN_SUBCOMMANDS[t[0] ?? '']
-  return sub !== undefined && t[1] !== undefined && sub.includes(t[1])
-}
-
-export function classify(tokensIn: readonly string[]): Candidate | null {
-  const t = stripRedirects(tokensIn)
-  const first = t[0]
-  if (first === undefined) return null
-  if (isNoRun(t)) return null
-  const wrapped = unwrapExec(t)
-  if (wrapped !== null) {
-    const w0 = wrapped[0]
-    if (w0 === undefined) return null
-    if (TYPECHECKERS.has(w0)) return { kind: 'typecheck' }
-    return isRunner(wrapped) ? { kind: 'runner' } : null
-  }
-  if (TYPECHECKERS.has(first)) return { kind: 'typecheck' }
-  if (isRunner(t)) return { kind: 'runner' }
-
-  if (first === 'npm' || first === 'pnpm' || first === 'yarn' || first === 'bun') {
-    // A workspace/prefix flag points at another package.json than the one we would read: don't guess.
-    if (t.some((x) => WORKSPACE_FLAGS.has(x) || x.startsWith('--prefix=') || x.startsWith('--workspace=') || x.startsWith('--filter=') || x.startsWith('--cwd='))) return null
-    const sub = t[1]
-    if (sub === undefined) return null
-    if (first === 'npm' && (sub === 'test' || sub === 't' || sub === 'tst')) return { kind: 'script', script: 'test', isNpmTest: true }
-    if (sub === 'run' || sub === 'run-script') {
-      const name = t[2]
-      return name !== undefined && SCRIPT_NAME_RE.test(name) ? { kind: 'script', script: name, isNpmTest: first === 'npm' && name === 'test' } : null
-    }
-    if (first !== 'npm' && sub === 'test') return { kind: 'script', script: 'test', isNpmTest: false }
-    if ((first === 'pnpm' || first === 'yarn' || first === 'bun') && SCRIPT_NAME_RE.test(sub)) return { kind: 'script', script: sub, isNpmTest: false }
-  }
-  return null
-}
-
-/** A script that hides its own failures: `… || true`, `… || exit 0`, `…; true`. */
-export function masksExit(script: string): boolean {
-  return /\|\|\s*(true|exit\s+0|:)(\s|$|;|&|\))/.test(script) || /;\s*(true|exit\s+0)(\s|$|;)/.test(script)
-}
-
-/** Backtick spans on STATE lines that talk about testing/verifying — the commands this repo declares as its checks. */
-export function declaredCommands(stateText: string): string[] {
-  const out: string[] = []
-  const talk = /test|verify|smoke|check|驗證|验证|測試|测试|檢查|检查|テスト|検証/i
-  for (const line of stateText.split(/\r?\n/)) {
-    if (!talk.test(line)) continue
-    for (const m of line.matchAll(/`([^`\n]+)`/g)) {
-      const span = (m[1] ?? '').replace(/\s+/g, ' ').trim()
-      if (span && !span.includes('{{')) out.push(span)
-    }
-  }
-  return out
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// Planning a Bash call before it runs
-// ---------------------------------------------------------------------------------------------------------------
-
-type Planned = {
-  kind: FwTestRun['kind']
-  script?: string
-  isMasked: boolean
-  /** The package script's own body is compound / piped / not plainly readable: its exit code proves nothing. */
-  isScriptCompound?: boolean
-}
 
 type Plan = {
   cwd: string
   /** Absolute cwd, for git. */
   cwdAbs: string
-  isCompound: boolean
-  items: Planned[]
+  /** Leading `cd <dir> &&` segments were stripped: exit 0 still proves the run, a non-zero exit may be the cd's. */
+  hasCdPrefix: boolean
+  judgment: Judgment
 }
 
 const isCdPrefix = (s: Segment): boolean => s.tokens[0] === 'cd' && s.tokens.length === 2 && s.op === '&&' && s.env.length === 0
@@ -224,56 +88,23 @@ async function planBash(io: Io, root: string, cwd0: string, command: string): Pr
   const parsed = parseCommand(command.trim())
   let segs = parsed.segments
   let cwdAbs = cwd0 || root
+  let hasCdPrefix = false
   // Leading `cd <dir> &&` segments only move the cwd.
   while (segs.length > 1 && isCdPrefix(segs[0] as Segment)) {
     const dir = (segs[0] as Segment).tokens[1] as string
     if (dir === '-' || dir.startsWith('~') || dir.includes('$')) return null // not resolvable without guessing
     cwdAbs = dir.startsWith('/') ? dir : `${cwdAbs}/${dir}`
     segs = segs.slice(1)
+    hasCdPrefix = true
   }
   if (segs.length === 0) return null
   const rel = relToRoot(root, cwdAbs)
   const cwdRel = rel === null ? cwdAbs : rel
-  const isCompound = segs.length > 1 || segs.some((s) => s.op !== '') || parsed.isComplex
-
-  const normalized = command.replace(/\s+/g, ' ').trim()
-  let declared: string[] | null = null
-  const declaredList = async (): Promise<string[]> => {
-    if (declared === null) {
-      const t = await readRel(io, root, STATE_REL)
-      declared = t === null ? [] : declaredCommands(t)
-    }
-    return declared
-  }
-
-  const items: Planned[] = []
-  for (const seg of segs) {
-    const c = classify(seg.tokens)
-    if (c === null) {
-      const joined = stripRedirects(seg.tokens).join(' ')
-      const decl = await declaredList()
-      // The whole command (cd prefix and all) or this one segment, whitespace-normalised, equals a declared span.
-      if (decl.includes(joined) || (segs.length === 1 && decl.includes(normalized.replace(/\s*\d*>&\d+/g, '')))) items.push({ kind: 'state-declared', isMasked: false })
-      continue
-    }
-    if (c.kind === 'script') {
-      const scripts = await packageScripts(io, root, cwdRel === '' ? '' : cwdRel)
-      const body = scripts?.[c.script]
-      if (body === undefined || body.trim() === '') continue
-      if (c.isNpmTest && /no test specified/i.test(body)) continue // npm's placeholder is not a test
-      // The script body gets the same reading as a typed command: a body that only prints help or lists tests is not
-      // a test run (not recorded); a compound, piped or substituted body can't turn its exit code into pass/fail.
-      const bodyParsed = parseCommand(body.trim())
-      const bodySegs = bodyParsed.segments
-      if (bodySegs.length === 1 && !bodyParsed.isComplex && isNoRun(stripRedirects((bodySegs[0] as Segment).tokens))) continue
-      const isScriptCompound = bodyParsed.isComplex || bodySegs.length !== 1 || bodySegs.some((x) => x.op !== '')
-      items.push({ kind: 'package-script', script: redact(body, CAP_SCRIPT), isMasked: masksExit(body), isScriptCompound })
-      continue
-    }
-    items.push({ kind: c.kind, isMasked: false })
-  }
-  if (items.length === 0) return null
-  return { cwd: cwdRel === '' ? '.' : cwdRel, cwdAbs, isCompound, items }
+  const stateText = await readRel(io, root, STATE_REL)
+  const scripts = rel === null ? null : await packageScripts(io, root, cwdRel)
+  const judgment = judge(segs, parsed.isComplex, { scripts, declared: stateText === null ? [] : declaredCommands(stateText) })
+  if (judgment === null) return null
+  return { cwd: cwdRel === '' ? '.' : cwdRel, cwdAbs, hasCdPrefix, judgment }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -284,31 +115,32 @@ type Outcome = { result: FwTestRun['result']; exitCode: number | null; reason?: 
 
 type BashResultFields = { interrupted?: boolean; backgroundTaskId?: string; timedOutAfterMs?: number; gitOperation?: { commit?: { sha: string; kind: string } } }
 
-export function outcomeOf(
-  res: { isError?: boolean; result?: unknown; text?: string },
-  isBackground: boolean,
-  isCompound: boolean,
-  isMasked: boolean,
-): Outcome {
-  let o: Outcome
+/** What the tool observably did: its exit code when it completed in the foreground, else why there is none. */
+export function observe(res: { isError?: boolean; result?: unknown; text?: string }, isBackground: boolean): { exitCode: number | null; reason?: string } {
   if (res.isError === true) {
     const text = typeof res.text === 'string' ? res.text : typeof res.result === 'string' ? res.result : ''
     const m = /^Exit code (\d+)/.exec(text)
-    o = m ? { result: 'fail', exitCode: Number(m[1]) } : { result: 'unknown', exitCode: null, reason: 'no-exit-code' }
-  } else {
-    const r = res.result
-    if (r === undefined || r === null || typeof r !== 'object') o = { result: 'unknown', exitCode: null, reason: 'no-result' }
-    else {
-      const b = r as BashResultFields
-      if (isBackground || b.backgroundTaskId) o = { result: 'unknown', exitCode: null, reason: 'background' }
-      else if (b.interrupted === true) o = { result: 'unknown', exitCode: null, reason: 'interrupted' }
-      else if (b.timedOutAfterMs !== undefined) o = { result: 'unknown', exitCode: null, reason: 'timeout' }
-      else o = { result: 'pass', exitCode: 0 }
-    }
+    return m ? { exitCode: Number(m[1]) } : { exitCode: null, reason: 'no-exit-code' }
   }
-  if (isCompound) return { result: 'unknown', exitCode: null, reason: 'compound' } // never pass/fail from the overall exit
-  if (isMasked && o.result !== 'unknown') return { result: 'unknown', exitCode: null, reason: 'script-masks-exit' }
-  return o
+  const r = res.result
+  if (r === undefined || r === null || typeof r !== 'object') return { exitCode: null, reason: 'no-result' }
+  const b = r as BashResultFields
+  if (isBackground || b.backgroundTaskId) return { exitCode: null, reason: 'background' }
+  if (b.interrupted === true) return { exitCode: null, reason: 'interrupted' }
+  if (b.timedOutAfterMs !== undefined) return { exitCode: null, reason: 'timeout' }
+  return { exitCode: 0 }
+}
+
+/**
+ * pass/fail only for a proven judgment with an observed exit code; everything else is unknown with its reason, and
+ * keeps whatever exit code was observed so the reader can weigh it.
+ */
+export function outcomeOf(j: Judgment, seen: { exitCode: number | null; reason?: string }, hasCdPrefix: boolean): Outcome {
+  if (seen.exitCode === null) return { result: 'unknown', exitCode: null, reason: seen.reason ?? 'no-exit-code' }
+  if (!j.isProven) return { result: 'unknown', exitCode: seen.exitCode, reason: j.reason ?? 'unproven' }
+  if (seen.exitCode === 0) return { result: 'pass', exitCode: 0 }
+  if (hasCdPrefix) return { result: 'unknown', exitCode: seen.exitCode, reason: 'cd-prefix' }
+  return { result: 'fail', exitCode: seen.exitCode }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -524,27 +356,23 @@ export function registerRecorder(on: On): void {
         const commit = res.isError === true ? undefined : (res.result as BashResultFields | undefined)?.gitOperation?.commit
         const runs: FwTestRun[] = []
         if (plan !== null && typeof command === 'string') {
-          for (const item of plan.items) {
-            // A masked script reports why it is masked; any other compound script body reports script-compound.
-            const o = item.isScriptCompound === true && !plan.isCompound && !item.isMasked
-              ? { result: 'unknown' as const, exitCode: null, reason: 'script-compound' }
-              : outcomeOf(res, isBackground, plan.isCompound, item.isMasked)
-            const run: FwTestRun = {
-              command: redact(command.trim()),
-              kind: item.kind,
-              cwd: plan.cwd,
-              startedAt,
-              finishedAt,
-              revision,
-              isDirty,
-              result: o.result,
-              exitCode: o.exitCode,
-            }
-            if (item.script !== undefined) run.script = item.script
-            if (o.reason !== undefined) run.reason = o.reason
-            if (agentId !== undefined) run.agentId = agentId
-            runs.push(run)
+          const j = plan.judgment
+          const o = outcomeOf(j, observe(res, isBackground), plan.hasCdPrefix)
+          const run: FwTestRun = {
+            command: redact(command.trim()),
+            kind: j.kind,
+            cwd: plan.cwd,
+            startedAt,
+            finishedAt,
+            revision,
+            isDirty,
+            result: o.result,
+            exitCode: o.exitCode,
           }
+          if (j.script !== undefined) run.script = redact(j.script, CAP_SCRIPT)
+          if (o.reason !== undefined) run.reason = o.reason
+          if (agentId !== undefined) run.agentId = agentId
+          runs.push(run)
         }
         if (runs.length > 0 || (commit !== undefined && commit.sha)) {
           await ensureCommand($)

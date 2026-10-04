@@ -53,15 +53,31 @@ function matchFile(entries: TrapEntry[], root: string, filePath: string): Hit[] 
 }
 
 /**
- * Bash: command prefixes per segment, and path-like words resolved the way the shell would see them — against the
- * session's cwd, moved by any `cd <dir>` earlier in the same command (`cd pkg && rm src/a.ts` touches pkg/src/a.ts).
- * A `cd` we can't resolve without guessing (`cd -`, `~`, `$VAR`, bare `cd`) stops path matching for what follows.
+ * Bash: command prefixes per segment, and path-like words resolved against every directory the shell could be in.
+ * F4 only hints and hints once per entry per session, so when the cwd is uncertain it over-hints rather than miss:
+ * - only a plain chain `cd X && …` is a certain move (the set of cwds is replaced);
+ * - a `cd` followed by `||`, `&`, `|`, `;` or a newline, or after any such operator, may or may not have moved this
+ *   shell: the moved directories are ADDED to the set;
+ * - `( … )` subshells are walked: inside, cds apply as above; after the `)`, the set from before the `(` is back;
+ * - a `cd` that can't be resolved without guessing (`cd -`, `~`, `$VAR`, bare `cd`) leaves the set as it is.
  */
 function matchBash(entries: TrapEntry[], root: string, cwd0: string, command: string): Hit[] {
   const parsed = parseCommand(command)
   const out = new Map<TrapEntry, string>()
-  let cwd: string | null = cwd0
+  let cwds = new Set<string>([cwd0])
+  let isCertain = true
+  const stack: Array<{ cwds: Set<string>; isCertain: boolean }> = []
   for (const seg of parsed.segments) {
+    if (seg.group === 'open') {
+      stack.push({ cwds: new Set(cwds), isCertain })
+      continue
+    }
+    if (seg.group === 'close') {
+      const saved = stack.pop()
+      if (saved) ({ cwds, isCertain } = saved)
+      if (seg.op && seg.op !== '&&') isCertain = false
+      continue
+    }
     for (const entry of entries) {
       if (out.has(entry)) continue
       const prefix = entry.commands.find((p) => startsWithTokens(seg.tokens, p))
@@ -69,21 +85,27 @@ function matchBash(entries: TrapEntry[], root: string, cwd0: string, command: st
         out.set(entry, prefix.trim().split(/\s+/).join(' '))
         continue
       }
-      if (!entry.paths.length || cwd === null) continue
-      for (const tok of seg.tokens) {
+      if (!entry.paths.length) continue
+      search: for (const tok of seg.tokens) {
         if (!looksLikePath(tok)) continue
-        const rel = relToRoot(root, tok.startsWith('/') ? tok : `${cwd}/${tok}`)
-        if (rel !== null && rel !== '' && matchAny(entry.paths, rel) !== null) {
-          out.set(entry, rel)
-          break
+        for (const cwd of tok.startsWith('/') ? [''] : cwds) {
+          const rel = relToRoot(root, tok.startsWith('/') ? tok : `${cwd}/${tok}`)
+          if (rel !== null && rel !== '' && matchAny(entry.paths, rel) !== null) {
+            out.set(entry, rel)
+            break search
+          }
         }
       }
     }
-    if (seg.tokens[0] === 'cd' && seg.op !== '|') {
+    if (seg.tokens[0] === 'cd') {
       const dir = seg.tokens[1]
-      if (seg.tokens.length !== 2 || dir === undefined || dir === '-' || dir.startsWith('~') || dir.includes('$')) cwd = null
-      else if (cwd !== null) cwd = dir.startsWith('/') ? dir : `${cwd}/${dir}`
+      const isResolvable = seg.tokens.length === 2 && dir !== undefined && dir !== '-' && !dir.startsWith('~') && !dir.includes('$')
+      if (isResolvable) {
+        const moved = [...cwds].map((c) => (dir.startsWith('/') ? dir : `${c}/${dir}`))
+        cwds = isCertain && seg.op === '&&' ? new Set(moved) : new Set([...cwds, ...moved])
+      }
     }
+    if (seg.op && seg.op !== '&&') isCertain = false
   }
   return [...out].map(([entry, via]) => ({ entry, via }))
 }

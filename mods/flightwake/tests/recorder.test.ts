@@ -2,7 +2,8 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { declaredCommands, masksExit, redact } from '../hooks/features/recorder'
+import { redact } from '../hooks/features/recorder'
+import { declaredCommands, masksExit } from '../hooks/lib/testcmd'
 import { installWorld, MARKER, STATE_FILLED, STATE_TEMPLATE } from './world'
 import type { World } from './world'
 
@@ -98,7 +99,8 @@ describe('recorder: tests', () => {
     await $.tool.call({ tool: 'Bash', command: 'pytest | tail -5' })
     await $.tool.call({ tool: 'Bash', command: 'jest; echo done' })
     const t = getLog()?.tests
-    expect(t?.map((x) => [x.result, x.reason, x.exitCode])).toEqual([['unknown', 'compound', null], ['unknown', 'compound', null]])
+    // round 2: an unproven run keeps the exit code it was observed with (the reader judges it)
+    expect(t?.map((x) => [x.result, x.reason, x.exitCode])).toEqual([['unknown', 'compound', 0], ['unknown', 'compound', 1]])
   })
 
   test('plain trailing redirections are not compound', async ($, on) => {
@@ -154,11 +156,11 @@ describe('recorder: tests', () => {
     expect([t?.result, t?.reason]).toEqual(['unknown', 'script-masks-exit'])
   })
 
-  test('workspace flags make package scripts unrecognisable (wrong package.json)', async ($, on) => {
+  test('workspace flags point at another package.json: recorded, never proven (round 2: record, mark unknown)', async ($, on) => {
     boot(on, { files: { '.flightwake/STATE.md': STATE_FILLED, 'package.json': JSON.stringify({ scripts: { test: 'vitest' } }) } })
     await $.tool.call({ tool: 'Bash', command: 'npm test --workspace=web' })
     await $.tool.call({ tool: 'Bash', command: 'pnpm --filter web test' })
-    expect(getLog()).toBe(null)
+    expect(getLog()?.tests.map((x) => [x.kind, x.result, x.reason])).toEqual([['package-script', 'unknown', 'workspace-flag'], ['package-script', 'unknown', 'workspace-flag']])
   })
 
   test('a command STATE.md declares as verification is recognised', async ($, on) => {
@@ -338,7 +340,7 @@ describe('recorder: /fw-log', () => {
     const r = await run($)
     const text = r.text as string
     expect(text).toContain('`src/a.ts`')
-    expect(text).toContain('| `vitest run \\| tail` | runner | unknown | - | 2023-11-14 22:13:20 UTC | abcdef1* | `.` | compound |')
+    expect(text).toContain('| `vitest run \\| tail` | runner | unknown | 0 | 2023-11-14 22:13:20 UTC | abcdef1* | `.` | compound |')
     expect(text).toContain('| `cargo test` | runner | fail | 1 |')
     expect(text).toContain('`cafe123` committed')
     expect(text).toContain('verbatim')

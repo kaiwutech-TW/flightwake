@@ -43,9 +43,9 @@ async function readSeat(io: Io, root: string, sid: string): Promise<FwRoleGuard>
     const t = await readRel(io, root, rel)
     if (t === null) continue
     const seat = parseSeatBlock(t)
-    if (seat) return { sessionId: sid, root, role: seat.id, source: 'seat', denyWrite: seat.denyWrite, released: [] }
+    if (seat) return { sessionId: sid, root, role: seat.id, source: 'seat', denyWrite: seat.denyWrite, released: [], isAllReleased: false }
   }
-  return { sessionId: sid, root, role: null, source: 'none', denyWrite: [], released: [] }
+  return { sessionId: sid, root, role: null, source: 'none', denyWrite: [], released: [], isAllReleased: false }
 }
 
 /**
@@ -61,7 +61,8 @@ async function ensureSnapshot($: EngineInterface, io: Io, root: string, sid: str
   return fresh
 }
 
-const isReleased = (g: FwRoleGuard, glob: string): boolean => g.released.includes('*') || g.released.includes(glob)
+const isReleased = (g: FwRoleGuard, glob: string): boolean => g.isAllReleased === true || g.released.includes(glob)
+const hasReleases = (g: FwRoleGuard): boolean => g.isAllReleased === true || g.released.length > 0
 
 const sourceLabel = (lang: Lang, s: FwRoleGuard['source']): string =>
   s === 'card'
@@ -69,7 +70,7 @@ const sourceLabel = (lang: Lang, s: FwRoleGuard['source']): string =>
     : M(lang, { en: 'seat', 'zh-TW': '座位', 'zh-CN': '座位', ja: '席' })
 
 function releasedText(lang: Lang, g: FwRoleGuard): string {
-  const what = g.released.includes('*')
+  const what = g.isAllReleased === true
     ? M(lang, { en: 'all rules', 'zh-TW': '全部規則', 'zh-CN': '全部规则', ja: 'すべてのルール' })
     : g.released.join(', ')
   return M(lang, {
@@ -83,7 +84,7 @@ function releasedText(lang: Lang, g: FwRoleGuard): string {
 /** Persistent status line while releases exist; cleared otherwise. */
 function showStatus($: EngineInterface, lang: Lang, g: FwRoleGuard): void {
   try {
-    $.ui.status(g.released.length > 0 ? releasedText(lang, g) : undefined)
+    $.ui.status(hasReleases(g) ? releasedText(lang, g) : undefined)
   } catch {}
 }
 
@@ -130,9 +131,11 @@ async function runRelease($: EngineInterface, io: Io, root: string, lang: Lang, 
   if (arg === '') return listText(lang, g)
 
   let next: string[]
+  let nextAll: boolean
   let done: string
   if (arg === 'revoke') {
     next = []
+    nextAll = false
     done = M(lang, {
       en: 'role guard: releases revoked, rules apply again.',
       'zh-TW': '角色守門:已收回放行,規則恢復生效。',
@@ -140,11 +143,12 @@ async function runRelease($: EngineInterface, io: Io, root: string, lang: Lang, 
       ja: 'ロールガード:解除を取り消しました。ルールが再び有効です。',
     })
   } else {
-    let glob: string | null
-    if (arg === 'all') glob = '*'
+    const isAll = arg === 'all'
+    let glob: string | null = null
+    if (isAll) glob = null
     else if (/^\d+$/.test(arg)) glob = g.denyWrite[Number(arg) - 1] ?? null
     else glob = g.denyWrite.includes(arg) ? arg : null
-    if (glob === null) {
+    if (!isAll && glob === null) {
       return (
         M(lang, {
           en: `role guard: "${arg}" is not one of this role's rules.`,
@@ -156,9 +160,9 @@ async function runRelease($: EngineInterface, io: Io, root: string, lang: Lang, 
         listText(lang, g)
       )
     }
-    next = glob === '*' ? ['*'] : [...new Set([...g.released.filter((r) => r !== '*'), glob])]
-    const label =
-      glob === '*' ? M(lang, { en: 'all rules', 'zh-TW': '全部規則', 'zh-CN': '全部规则', ja: 'すべてのルール' }) : glob
+    nextAll = isAll || g.isAllReleased === true
+    next = isAll || glob === null ? [...g.released] : [...new Set([...g.released, glob])]
+    const label = isAll ? M(lang, { en: 'all rules', 'zh-TW': '全部規則', 'zh-CN': '全部规则', ja: 'すべてのルール' }) : (glob as string)
     done = M(lang, {
       en: `role guard: released ${label} for this session.`,
       'zh-TW': `角色守門:本 session 已放行 ${label}。`,
@@ -166,8 +170,8 @@ async function runRelease($: EngineInterface, io: Io, root: string, lang: Lang, 
       ja: `ロールガード:この session では ${label} を解除しました。`,
     })
   }
-  const after: FwRoleGuard = { ...g, released: next }
-  await update($, guardAtom, (cur) => (cur && cur.sessionId === sid && cur.root === root ? { ...cur, released: next } : after))
+  const after: FwRoleGuard = { ...g, released: next, isAllReleased: nextAll }
+  await update($, guardAtom, (cur) => (cur && cur.sessionId === sid && cur.root === root ? { ...cur, released: next, isAllReleased: nextAll } : after))
   showStatus($, lang, after)
   await trace($, done)
   return done
@@ -195,7 +199,7 @@ export function registerRoleGuard(on: On): void {
         const sid = await io.sessionId()
         // Reload keeps the stored snapshot (role and releases); a new session id re-reads the seat.
         const g = await ensureSnapshot($, io, root, sid)
-        if (g.released.length > 0) showStatus($, lang, g)
+        if (hasReleases(g)) showStatus($, lang, g)
       }
     } catch {}
     return next(e)
@@ -211,7 +215,7 @@ export function registerRoleGuard(on: On): void {
           const ctx = await fwContext(io)
           if (ctx !== null) {
             const { root, lang } = ctx
-            const g: FwRoleGuard = { sessionId: sid, root, role: card.id, source: 'card', denyWrite: card.denyWrite, released: [] }
+            const g: FwRoleGuard = { sessionId: sid, root, role: card.id, source: 'card', denyWrite: card.denyWrite, released: [], isAllReleased: false }
             await update($, guardAtom, () => g)
             showStatus($, lang, g)
           }

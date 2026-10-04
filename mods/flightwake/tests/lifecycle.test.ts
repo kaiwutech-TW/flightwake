@@ -1,6 +1,7 @@
-// Cross-feature lifecycle (plan r2 "測試"): the whole plugin loaded with every switch on, driven through /clear,
-// reload, resume, compaction (same id), a working-directory switch, subagents, external changes, and one capability
-// failing. Each feature's own file covers its details; this file checks they keep working side by side.
+// Cross-feature lifecycle (plan r2 "測試"): the whole plugin loaded with every switch on. What the test kit can do is
+// raise events by hand, so these SIMULATE a /clear (session.end + new id) and a module reload (session.start again,
+// same id); a real reload, resume or compaction is not reproduced here — see the record for what was seen live and
+// what remains unverified. Also: a working-directory switch, subagents, external changes, a capability failing.
 import { describe, expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
@@ -98,7 +99,7 @@ describe('lifecycle: all features side by side', () => {
     expect(w.writes).toEqual([])
   })
 
-  test('/clear: snapshot retaken, log fresh, trap hinted again, guard re-read', ALL_ON, async ($, on) => {
+  test('simulated /clear (session.end reason clear + a new session id; no real /clear in the kit): snapshot retaken, log fresh, trap hinted again, guard re-read', ALL_ON, async ($, on) => {
     const w = installWorld(on, { files: files(), git: gitBehind(0) })
     engineBelow(on, w)
     await start($, w)
@@ -115,7 +116,7 @@ describe('lifecycle: all features side by side', () => {
     expect((await write($, '/repo/src/a.ts')).deny).toBeDefined()
   })
 
-  test('reload / compaction / resume keep the session id: snapshot, log and releases are kept', ALL_ON, async ($, on) => {
+  test('session.start raised again with the same session id (what a module reload does; real reload/resume/compact are NOT reproduced here): snapshot, log and releases are kept', ALL_ON, async ($, on) => {
     const w = installWorld(on, { files: files(), git: gitBehind(0) })
     engineBelow(on, w)
     await start($, w)
