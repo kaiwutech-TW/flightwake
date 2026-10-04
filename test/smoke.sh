@@ -1519,5 +1519,39 @@ done
 node -e "const a=require('$SRC/mods/flightwake/.claude-plugin/plugin.json').author; if(!a||!a.name) process.exit(1)" || fail "41 mod manifest 應有 author"
 pass "41 文字檢查(關鍵字,不驗證 agent 行為):fw-record 提到 /fw-log 與 unknown、fw-trap 與 TRAPS 範本有 paths/commands(四語);manifest 有 author"
 
+# 42. 既有安裝的試裝回饋:「下一步」依 STATE 是否已初始化;「尚無 record」的正規寫法(latest_record: none)
+filled_state() { printf -- '---\nupdated: 2026-10-05\nupdated_by: tester\nlatest_record: %s\nhealth: yellow  # test\n---\n\n# Where we are\n\nfilled\n' "$1" > .flightwake/STATE.md; }
+newrepo "$TMP/nx1" >/dev/null
+out=$(node "$CLI" init --agents=claude 2>&1) || fail "42 新裝應成功"
+echo "$out" | grep -q 'writes the first STATE' || fail "42 新裝(STATE 未填)的下一步應提示 fw-coldstart 寫第一版 STATE(got: $out)"
+filled_state none
+for c in "init --agents=claude --force" "init --agents=claude --force --mod" "update"; do
+  out=$(node "$CLI" $c 2>&1) || fail "42 $c 應成功"
+  echo "$out" | grep -qi 'first STATE' && fail "42 STATE 已初始化時,$c 的結尾不得再說會寫出第一版 STATE(got: $out)"
+done
+out=$(node "$CLI" init --agents=claude --force 2>&1)
+echo "$out" | grep -q 'git commit' || fail "42 STATE 已初始化時 init --force 的下一步應只提示 commit(got: $out)"
+newrepo "$TMP/nx2" >/dev/null; node "$CLI" init --agents=claude --mod >/dev/null
+filled_state none; rm -f .claude/skills/flightwake-mod/hooks/register.ts
+out=$(node "$CLI" init --agents=claude --force --mod --lang=zh-TW 2>&1) || fail "42 zh-TW --force 應成功"
+echo "$out" | grep -q '第一版 STATE' && fail "42 zh-TW:STATE 已初始化不得說寫出第一版 STATE(got: $out)"
+newrepo "$TMP/nx3" >/dev/null; echo x > README; git add README; git commit -qm i
+node "$CLI" init --private >/dev/null; filled_state none
+out=$(node "$CLI" init --private --force 2>&1) || fail "42 private --force 應成功"
+echo "$out" | grep -qi 'first STATE' && fail "42 private:STATE 已初始化不得說寫出第一版 STATE(got: $out)"
+# doctor:latest_record: none 是正規的「尚無 record」;records/ 為空時其他寫法也不算問題;records/ 有檔卻指向不存在才提醒
+newrepo "$TMP/nx4" >/dev/null; node "$CLI" init --agents=claude >/dev/null
+for v in none '(尚無)' 'records/YYMMDD-none.md'; do
+  filled_state "$v"; rc=0; out=$(node "$CLI" doctor 2>&1) || rc=$?
+  [ "$rc" = 0 ] || fail "42 doctor latest_record=$v 應 0(rc=$rc: $out)"
+  echo "$out" | grep -E '^  (!|✗)' | grep -q 'latest_record' && fail "42 doctor:records/ 為空時 latest_record=$v 不得列為提醒或失敗(got: $out)"
+  echo "$out" | grep -E '^  ·' | grep -q 'no record yet' || fail "42 doctor:應以資訊列回報尚無 record(latest_record=$v;got: $out)"
+done
+echo '---' > .flightwake/records/260101-x.md; filled_state records/260102-missing.md
+out=$(node "$CLI" doctor 2>&1)
+echo "$out" | grep -E '^  !' | grep -q 'latest_record' || fail "42 doctor:records/ 有檔卻指向不存在的檔,仍應提醒(got: $out)"
+for l in en zh-TW zh-CN ja; do grep -q 'latest_record: none' "$SRC/skills/$l/fw-coldstart/SKILL.md" && grep -q 'doctor' "$SRC/skills/$l/fw-coldstart/SKILL.md" || fail "42 $l fw-coldstart 應說明 none 是唯一正規寫法(doctor 認得)"; done
+pass "42 下一步依 STATE 是否已初始化(init --force/update/private/zh-TW);latest_record: none 與空 records/ 不算問題;fw-coldstart 四語提到正規寫法(關鍵字檢查)"
+
 echo ""
 echo "✅ smoke 全過"
