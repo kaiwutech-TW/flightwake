@@ -1023,7 +1023,7 @@ mkdir -p "$TMP/ax3-outside" && rm -rf .flightwake/hooks && ln -s "$TMP/ax3-outsi
 rc=0; out=$(node "$CLI" update 2>&1) || rc=$?
 [ -z "$(ls -A "$TMP/ax3-outside")" ] || fail "36.3 實際落點在 repo 外時不得寫入(got: $(ls -A "$TMP/ax3-outside"))"
 [ "$rc" -ne 0 ] && echo "$out" | grep -q 'outside' || fail "36.3 應說明落點在 repo 外而拒寫(rc=$rc: $out)"
-pass "36.3 symlink / repo 外落點一律拒寫,使用者資料不被覆蓋"
+pass "36.3 hook 檔 symlink 與 hooks 目錄落點在 repo 外:拒寫、STATE/DECISIONS 不被覆蓋(其他路徑類別見 37.6)"
 
 # 36.4 doctor 平台清單也從安裝產物推導;hook 驗 type 與 command;結構異常逐項回報不崩潰
 newrepo "$TMP/ax4" >/dev/null; echo "# 我的 AGENTS 內容" > AGENTS.md
@@ -1050,7 +1050,7 @@ rc=0; out=$(PATH="$NOGIT" "$NODE_BIN" "$CLI" uninstall 2>&1) || rc=$?
 grep -q '# 我的' CLAUDE.md && [ -f .flightwake/STATE.md ] || fail "36.5 uninstall 不得動使用者內容與資料"
 pass "36.5 無 git 時 uninstall 照常完成(git 前置檢查只限 init / setup)"
 
-# 36.6 fw-coldstart 未初始化分支(四語):補完欄位後,有 record/DECISIONS/TRAPS/commit 歷史就續走原流程;只有真正全新才直接回報
+# 36.6 fw-coldstart 未初始化分支(四語)的 skill 文字:包含「有歷史就續走原流程、只有真正全新才直接回報」的指示(文字檢查,不驗證 agent 實際行為)
 for pair in "en:truly fresh:then skip to step 5" "zh-TW:真正全新:然後直接跳到第 5 步" "zh-CN:真正全新:然后直接跳到第 5 步" "ja:まったくの新規:ステップ 5 へ直接進む"; do
   l=${pair%%:*}; rest=${pair#*:}; want=${rest%%:*}; old=${rest#*:}
   f="$SRC/skills/$l/fw-coldstart/SKILL.md"
@@ -1058,7 +1058,7 @@ for pair in "en:truly fresh:then skip to step 5" "zh-TW:真正全新:然後直�
   grep -q "$old" "$f" && fail "36.6 $l fw-coldstart 不得再無條件跳到第 5 步(仍有「${old}」)"
   grep -q 'latest_record' "$f" && grep -q 'rev-list --count' "$f" || fail "36.6 $l 原流程步驟應保留"
 done
-pass "36.6 fw-coldstart 未初始化分支四語:有歷史續走原流程,全新才直接回報"
+pass "36.6 fw-coldstart 四語 skill 文字包含續走流程的指示(文字檢查,未驗證 agent 是否遵循)"
 
 # 36.7 setup 摘要列出的路徑 == 實際寫入的路徑(新增或內容變動的檔;目錄項涵蓋其下的檔;registry 另計)
 # 檔案清單 + 雜湊 + mtime(同內容重寫也算寫入;.git 只取 info/exclude)+ registry
@@ -1131,6 +1131,61 @@ echo "$out" | grep -q '✅ done' || fail "37.3 registry 問題不影響安裝完
 rc=0; FLIGHTWAKE_HOME="$RH" node "$CLI" update >/dev/null 2>&1 || rc=$?
 [ "$rc" = 0 ] || fail "37.3 registry 是 symlink 時 update 也應 exit 0"
 pass "37.3 registry 是 symlink:只提醒、不寫入、安裝與 update 照常 exit 0"
+
+# 37.4 roles 的安裝與 update 刷新也走同一層寫入防護:.claude/skills 連到 repo 外 → 不刪、不重建外部的 fw-roles
+newrepo "$TMP/ay4" >/dev/null; node "$CLI" init >/dev/null && node "$CLI" roles install >/dev/null
+mkdir -p "$TMP/ay4-out" && mv .claude/skills/* "$TMP/ay4-out/" && rmdir .claude/skills && ln -s "$TMP/ay4-out" .claude/skills
+echo keep > "$TMP/ay4-out/fw-roles/KEEP"; ob=$(cd "$TMP/ay4-out" && find . -type f | sort | xargs shasum | shasum)
+rc=0; out=$(node "$CLI" update 2>&1) || rc=$?
+[ -f "$TMP/ay4-out/fw-roles/KEEP" ] || fail "37.4 update 不得刪除 repo 外的 fw-roles(KEEP 消失)"
+[ "$ob" = "$(cd "$TMP/ay4-out" && find . -type f | sort | xargs shasum | shasum)" ] || fail "37.4 update 不得改動 repo 外的任何 skill 檔"
+[ "$rc" = 1 ] && echo "$out" | grep -q 'outside' || fail "37.4 應以 repo 外落點拒寫並非零退出(rc=$rc: $out)"
+rc=0; out=$(node "$CLI" roles install 2>&1) || rc=$?
+[ -f "$TMP/ay4-out/fw-roles/KEEP" ] && [ "$rc" = 1 ] || fail "37.4 roles install 也不得重建 repo 外的 fw-roles(rc=$rc: $out)"
+# setup 選 roles 時同樣:預檢就拒,外部目錄與 repo 都不被寫
+newrepo "$TMP/ay4b" >/dev/null; mkdir -p "$TMP/ay4b-out" .claude && ln -s "$TMP/ay4b-out" .claude/skills
+b=$(snap); rc=0; out=$(node "$DRIVE" --orca=0 -- "" 1 "" y "" "" 2>&1) || rc=$?
+[ "$rc" = 1 ] && [ -z "$(ls -A "$TMP/ay4b-out")" ] && [ "$b" = "$(snap)" ] || fail "37.4 setup(含 roles)遇 repo 外落點應在寫入前中止(rc=$rc: $out)"
+pass "37.4 roles 安裝/刷新走同一層防護:repo 外的 fw-roles 不被刪除或重建(update、roles install、setup)"
+
+# 37.5 先預檢、後寫入:必要路徑會被拒寫 → 寫入前整個中止、不留半套、不印 done;懸空目錄 symlink 有一致診斷;setup 的 doctor 失敗不印成功
+newrepo "$TMP/ay5" >/dev/null; mkdir -p .claude && echo '{"mine":1}' > shared.json && ln -s ../shared.json .claude/settings.json
+b=$(snap); rc=0; out=$(node "$CLI" init 2>&1) || rc=$?
+[ "$rc" = 1 ] || fail "37.5 必要路徑被拒寫時 init 應非零(rc=$rc)"
+[ "$b" = "$(snap)" ] && [ ! -e .flightwake ] || fail "37.5 預檢失敗時不得留下半套安裝(got: $(ls -A | tr '\n' ' '))"
+echo "$out" | grep -q '✅' && fail "37.5 未完成不得印 ✅(got: $out)"
+echo "$out" | grep -q 'symlink' && echo "$out" | grep -qi 'nothing was written' || fail "37.5 應說明哪個路徑因 symlink 被拒、且什麼都沒寫(got: $out)"
+newrepo "$TMP/ay5b" >/dev/null; ln -s "$TMP/does-not-exist" .claude
+b=$(snap); rc=0; out=$(node "$CLI" init 2>&1) || rc=$?
+[ "$rc" = 1 ] && [ "$b" = "$(snap)" ] || fail "37.5 懸空的 .claude symlink:init 應非零且零寫入(rc=$rc: $out)"
+echo "$out" | grep -qE 'ENOENT|at .*\.mjs:[0-9]+' && fail "37.5 懸空 symlink 不得拋 ENOENT(got: $out)"
+echo "$out" | grep -q '\.claude' && echo "$out" | grep -qi 'symlink' || fail "37.5 懸空 symlink 應得到同樣的拒寫診斷(got: $out)"
+newrepo "$TMP/ay5c" >/dev/null; echo "# g" > GEMINI.md; mkdir -p .gemini && echo "{ bad" > .gemini/settings.json
+rc=0; out=$(node "$DRIVE" --orca=0 -- "" "" "" "" "" 2>&1) || rc=$?
+[ "$rc" = 1 ] || fail "37.5 setup 後 doctor 失敗時 setup 應非零(rc=$rc)"
+echo "$out" | grep -q '✅' && fail "37.5 doctor 失敗時 setup 不得印成功(got: $out)"
+echo "$out" | grep -qi 'doctor found' || fail "37.5 應說明 doctor 發現問題、安裝未完成(got: $out)"
+pass "37.5 預檢:必要路徑被拒即寫入前中止不留半套;懸空 symlink 一致診斷;doctor 失敗不印成功"
+
+# 37.6 symlink / 落點防護涵蓋各類路徑(延伸 36.3 的 hooks):skills 目錄、settings、指令檔、roles skill → update 拒寫、目標不變、零寫入
+sym_variant() { # $1 名稱 $2 在已安裝 repo 內做 symlink 的指令 $3 受保護的目標檔(相對 repo 或絕對)
+  local dir="$TMP/ay6-$(echo "$1" | tr -c 'a-zA-Z0-9\n' _)"; newrepo "$dir" >/dev/null
+  node "$CLI" init --agents=claude >/dev/null && node "$CLI" roles install >/dev/null
+  echo "# KEEP $1" >> .flightwake/STATE.md; echo "# KEEP $1" >> .flightwake/DECISIONS.md
+  eval "$2"; local tb; tb=$(shasum < "$3"); local b; b=$(snap)
+  local rc=0 out; out=$(node "$CLI" update 2>&1) || rc=$?
+  [ "$rc" = 1 ] || fail "37.6 $1:update 應非零(rc=$rc: $out)"
+  [ "$tb" = "$(shasum < "$3")" ] || fail "37.6 $1:受保護的目標 $3 不得被改"
+  [ "$b" = "$(snap)" ] || fail "37.6 $1:預檢失敗時 repo 內不得有任何寫入"
+  echo "$out" | grep -qE 'symlink|outside' || fail "37.6 $1:應說明拒寫原因(got: $out)"
+}
+mkdir -p "$TMP/ay6-out"
+sym_variant "skill 目錄" 'cp -R .claude/skills/fw-trap "$TMP/ay6-out/fw-trap" && rm -rf .claude/skills/fw-trap && ln -s "$TMP/ay6-out/fw-trap" .claude/skills/fw-trap' "$TMP/ay6-out/fw-trap/SKILL.md"
+sym_variant "settings.json" 'rm .claude/settings.json && ln -s ../.flightwake/STATE.md .claude/settings.json' .flightwake/STATE.md
+sym_variant "指令檔" 'rm CLAUDE.md && ln -s .flightwake/DECISIONS.md CLAUDE.md' .flightwake/DECISIONS.md
+sym_variant "roles skill 目錄" 'cp -R .claude/skills/fw-roles "$TMP/ay6-out/fw-roles" && rm -rf .claude/skills/fw-roles && ln -s "$TMP/ay6-out/fw-roles" .claude/skills/fw-roles' "$TMP/ay6-out/fw-roles/SKILL.md"
+sym_variant "hook 檔(36.3)" 'rm .flightwake/hooks/state-check.mjs && ln -s ../STATE.md .flightwake/hooks/state-check.mjs' .flightwake/STATE.md
+pass "37.6 symlink / 落點防護涵蓋 hooks、skills 目錄、settings、指令檔、roles skill(update 拒寫、目標不變、零寫入)"
 
 echo ""
 echo "✅ smoke 全過"

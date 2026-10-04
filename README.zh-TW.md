@@ -212,7 +212,7 @@ flightwake 不會把 workflow 寫進你的 repo——`.github/workflows/` 權限
 ## 安全性
 
 - **零依賴、無網路、無 install script**:安裝器只做檔案複製;hook 只用 `git`(無 shell)做唯讀查詢。
-- **寫入範圍固定**:`init` 只碰 `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`、agent 指令檔裡的標記區塊(含 Orca 區塊,僅在你選用時)、`~/.flightwake/registry.json`(init/update 會寫;uninstall 移除本 repo 的條目)、`.claude/skills/fw-roles` / `.agents/skills/fw-roles`(僅在你選用 roles 時),以及(偵測到 Codex / Gemini CLI 時)`.agents/skills/fw-*`、`.codex/hooks.json`、`.gemini/settings.json`;`--private` 時改碰 `.claude/settings.local.json`、`CLAUDE.local.md` 與 `.git/info/exclude` 裡的標記區塊(Codex/Gemini 那幾個檔只在未受追蹤時才寫,並加進 exclude)。`uninstall` 反向清除同一範圍。任何寫入都不經由 symlink、也不落在 repo 之外——遇到會拒寫並說明(以非零退出)。`doctor` 不寫入任何東西。「只複製檔案」唯一的例外是 `git init`:只在你於 `setup` 最後摘要確認後,或你傳了 `--git-init` 時才會執行。
+- **寫入範圍固定**:`init` 只碰 `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`、agent 指令檔裡的標記區塊(含 Orca 區塊,僅在你選用時)、`~/.flightwake/registry.json`(init/update 會寫;uninstall 移除本 repo 的條目)、`.claude/skills/fw-roles` / `.agents/skills/fw-roles`(僅在你選用 roles 時),以及(偵測到 Codex / Gemini CLI 時)`.agents/skills/fw-*`、`.codex/hooks.json`、`.gemini/settings.json`;`--private` 時改碰 `.claude/settings.local.json`、`CLAUDE.local.md` 與 `.git/info/exclude` 裡的標記區塊(Codex/Gemini 那幾個檔只在未受追蹤時才寫,並加進 exclude)。`uninstall` 反向清除同一範圍。任何寫入都不經由 symlink、也不落在 repo 之外:安裝前先預檢,有必要路徑會被拒寫就在寫入任何東西之前中止並點名該路徑(以非零退出)。`doctor` 不寫入任何東西。「只複製檔案」唯一的例外是 `git init`:只在你於 `setup` 最後摘要確認後,或你傳了 `--git-init` 時才會執行。
 - **hook 進 git**:`.flightwake/hooks/state-check.mjs` 是 repo 內的檔案,能 commit 的人就能改——與所有 repo-local 設定同級,Claude Code 載入時會要求確認。
 - 漏洞回報見 [SECURITY.md](SECURITY.md)。以 npm Trusted Publishing 發布(附 provenance),可用 `npm audit signatures` 驗證。
 

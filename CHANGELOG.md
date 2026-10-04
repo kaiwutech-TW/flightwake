@@ -48,14 +48,19 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ### Fixed
 - **Writes never go through a symlink or land outside the repo** (pre-existing): a framework file symlinked to
-  `../STATE.md` let `update` overwrite STATE. Such destinations are now refused and reported, and init/update exit 1;
-  `setup` marks them in its summary.
+  `../STATE.md` let `update` overwrite STATE. init / update / setup / `roles install` now preflight the whole install
+  (core and roles through one guarded writer): if any required path is a symlink, resolves outside the repo or goes through
+  a dangling symlink, they stop before writing anything, list the paths and exit 1. A run that still stops part-way never
+  prints ✅; setup doesn't claim success when doctor fails. A symlinked or broken `~/.flightwake/registry.json` stays a
+  notice (best-effort, exit 0).
+- Agent names (`--agents`, setup's tool question) only accept claude / codex / gemini — inherited names like
+  `constructor` or `__proto__` were accepted before.
 - `doctor`: under `--private`, the paths that must be ignored are derived from what is installed (deleting `.flightwake/`
   from the exclude block now fails); platforms are derived from installed hook files too (a deleted marker no longer hides a
   broken `.codex/hooks.json`); hooks must match event, `type: "command"` and command; malformed settings are reported item by
   item instead of crashing.
-- `--private --orca` no longer appends the Orca block to a git-tracked instruction file (Claude → `CLAUDE.local.md`;
-  Codex/Gemini → skipped with a warning).
+- `--private --orca` no longer appends the Orca block to a git-tracked instruction file (Claude → `CLAUDE.local.md`,
+  unless that is tracked too; Codex/Gemini → skipped with a warning).
 - The git check applies to `init` and `setup` only; `uninstall` works again on a repo whose git binary is missing.
 - `fw-coldstart`: after filling an uninitialized STATE, a repo with any history still goes through the normal takeover steps.
 

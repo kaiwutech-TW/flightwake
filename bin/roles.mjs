@@ -426,15 +426,14 @@ export function removeRoleArtifacts(target, log) {
 }
 function readdirSafe(d) { try { return readdirSync(d); } catch { return []; } }
 
-/** On update: refresh the fw-roles skill wherever it is already installed (never installs it). */
-export function refreshRolesSkill({ target, fwSrc, lang, noJunk, log }) {
+/** On update: refresh the fw-roles skill wherever it is already installed (never installs it). W = the installer's
+ *  guarded writer (install.mjs createWriter): no deleting or rebuilding through a symlink or outside the repo. */
+export function refreshRolesSkill({ target, fwSrc, lang, log, W }) {
   const src = join(fwSrc, 'addons', 'roles', ROLES_LANGS.includes(lang) ? lang : 'en', 'fw-roles');
   for (const base of SKILL_BASES) {
     const dst = join(target, ...base.split('/'), 'fw-roles');
     if (!existsSync(dst)) continue;
-    rmSync(dst, { recursive: true });
-    cpSync(src, dst, { recursive: true, filter: noJunk });
-    log(`  update ${base}/fw-roles`);
+    if (W.cp(src, dst, { replace: true })) log(`  update ${base}/fw-roles`);
   }
 }
 
@@ -472,25 +471,23 @@ export function assignSeat(text, { seatRepo, vendor, roleId, add, home }) {
 // ── CLI ────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Install the fw-roles skill into the given skill trees. Under a --private install the copies would show up in
- * git status, so they join the existing flightwake exclude block (addExcludes is a no-op when there is none).
+ * Install the fw-roles skill into the given skill trees, through the installer's guarded writer W (same symlink /
+ * outside-the-repo rules as the core install; a dry W is the preflight). Under a --private install the copies would
+ * show up in git status, so they join the existing flightwake exclude block (addExcludes is a no-op when there is none).
  */
-export function installRolesSkill({ target, fwSrc, lang, bases, noJunk, log, addExcludes }) {
+export function installRolesSkill({ target, fwSrc, lang, bases, log, addExcludes, W }) {
   const RL = ROLES_LANGS.includes(lang) ? lang : 'en';
   const src = join(fwSrc, 'addons', 'roles', RL, 'fw-roles');
   for (const base of bases) {
     const dst = join(target, ...base.split('/'), 'fw-roles');
     const existed = existsSync(dst);
-    if (existed) rmSync(dst, { recursive: true });
-    mkdirSync(dirname(dst), { recursive: true });
-    cpSync(src, dst, { recursive: true, filter: noJunk });
-    log(`  ${existed ? 'update' : 'add '} ${base}/fw-roles`);
+    if (W.cp(src, dst, { replace: true })) log(`  ${existed ? 'update' : 'add '} ${base}/fw-roles`);
   }
-  if (addExcludes?.(bases.map((b) => `${b}/fw-roles/`))) log('  edit .git/info/exclude ← fw-roles (private install)');
+  if (addExcludes?.(bases.map((b) => `${b}/fw-roles/`), W)) log('  edit .git/info/exclude ← fw-roles (private install)');
   if (RL !== lang) log(`  ℹ️  roles content ships in ${ROLES_LANGS.join(' / ')} for now — installed English`);
 }
 
-export function runRoles({ target, fwSrc, version, lang, args, log, M, noJunk, addExcludes }) {
+export function runRoles({ target, fwSrc, version, lang, args, log, M, noJunk, addExcludes, writer }) {
   const pos = args.filter((a) => !a.startsWith('-'));
   const sub = pos[1] ?? 'install';
   const RL = ROLES_LANGS.includes(lang) ? lang : 'en';
@@ -504,7 +501,13 @@ export function runRoles({ target, fwSrc, version, lang, args, log, M, noJunk, a
 
   if (sub === 'install') {
     const bases = ['.claude/skills', ...(['AGENTS.md', 'GEMINI.md'].some((f) => existsSync(join(target, f))) ? ['.agents/skills'] : [])];
-    installRolesSkill({ target, fwSrc, lang, bases, noJunk, log, addExcludes });
+    // Preflight with a dry writer: a refused destination stops everything before the first write
+    const pre = writer.make(true);
+    installRolesSkill({ target, fwSrc, lang, bases, log: () => {}, addExcludes, W: pre.W });
+    if (pre.refused.length) { log(writer.refusalReport(pre.refused)); return 1; }
+    const real = writer.make(false);
+    installRolesSkill({ target, fwSrc, lang, bases, log, addExcludes, W: real.W });
+    if (real.refused.length) { log(writer.incompleteReport(real.refused.map((r) => r.path).join(', '))); return 1; }
     log(M({
       en: '\n✅ fw-roles installed. Ask your agent to run fw-roles: it scans the project, recommends a team, lets you preview and customize, then runs `npx flightwake roles apply`.',
       'zh-TW': '\n✅ fw-roles 已安裝。請你的 agent 跑 fw-roles:它會掃專案、推薦一組角色、讓你預覽與客製,最後跑 `npx flightwake roles apply`。',

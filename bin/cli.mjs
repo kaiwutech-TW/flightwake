@@ -20,7 +20,7 @@ import { runRoles, removeRoleArtifacts } from './roles.mjs';
 import {
   LANGS, PROFILES, GROUPS, isAgentName, INSTRUCTION_CANDIDATES, ORCA_BLOCK_RE, noJunk, makeM, gitAvailable, repoState, excludePath,
   addPrivateExcludes, gitMissingMessage, monorepoMessage, notRepoMessage, detectInstall, resolveOptions, install,
-  printNext, unregisterRepo,
+  printNext, unregisterRepo, createWriter, refusalReport, incompleteReport,
 } from './install.mjs';
 import { runDoctor } from './doctor.mjs';
 import { runSetup, readlineIO, realContext } from './setup.mjs';
@@ -122,10 +122,9 @@ if (repo.kind === 'sub') {
 }
 if (repo.kind === 'none') {
   if (cmd !== 'init' || !flags.gitInit) { log(notRepoMessage(M, TARGET)); process.exit(1); }
-  // --git-init: the one write outside the copy-files scope, only when explicitly asked
-  execFileSync('git', ['init'], { cwd: TARGET, stdio: 'ignore' });
-  log(M({ en: `  git init ${TARGET}`, 'zh-TW': `  git init ${TARGET}`, 'zh-CN': `  git init ${TARGET}`, ja: `  git init ${TARGET}` }));
 }
+// --git-init: the one write outside the copy-files scope, only when explicitly asked — run after the preflight below
+const doGitInit = repo.kind === 'none';
 
 if (cmd === 'update' && !det.installed && !existsSync(join(TARGET, '.flightwake'))) {
   log(M({
@@ -139,7 +138,15 @@ if (cmd === 'update' && !det.installed && !existsSync(join(TARGET, '.flightwake'
 
 // ── roles: opt-in add-on (bin/roles.mjs) — never part of init ──
 if (cmd === 'roles') {
-  process.exit(runRoles({ target: TARGET, fwSrc: FW_SRC, version: VERSION, lang: LANG, args, log, M, noJunk, addExcludes: (e) => addPrivateExcludes(TARGET, e) }));
+  process.exit(runRoles({
+    target: TARGET, fwSrc: FW_SRC, version: VERSION, lang: LANG, args, log, M, noJunk,
+    addExcludes: (e, W) => addPrivateExcludes(TARGET, e, W),
+    writer: {
+      make: (dry) => createWriter({ target: TARGET, dry, log: dry ? () => {} : log, M }),
+      refusalReport: (r) => refusalReport(M, r),
+      incompleteReport: (d) => incompleteReport(M, d),
+    },
+  }));
 }
 
 // ── uninstall: reverse-remove init's fixed write set; .flightwake/ user data kept unless --purge ──
@@ -234,7 +241,24 @@ if (cmd === 'uninstall') {
 // ── init / update: one install path (install.mjs) ──
 const IS_UPDATE = cmd === 'update';
 const opts = resolveOptions({ update: IS_UPDATE, flags, det });
-const result = install({ ...opts, target: TARGET, fwSrc: FW_SRC, version: VERSION, marker: det.marker, log });
+const base = { ...opts, target: TARGET, fwSrc: FW_SRC, version: VERSION, marker: det.marker };
+// Preflight: the same install, dry. Any destination the guard refuses (symlink, outside the repo, dangling) stops
+// everything here — before the first write, so there is never a half install to explain.
+const pre = install({ ...base, dry: true, log });
+if (pre.refused.length) { log(refusalReport(M, pre.refused)); process.exit(1); }
+let result;
+try {
+  if (doGitInit) {
+    execFileSync('git', ['init'], { cwd: TARGET, stdio: 'ignore' });
+    log(`  git init ${TARGET}`);
+  }
+  result = install({ ...base, log });
+} catch (e) {
+  log(incompleteReport(M, e?.message ?? String(e)));
+  process.exit(1);
+}
+// Something the preflight could not foresee (the tree changed in between): not done, and the exit code says so
+if (result.refused.length) { log(incompleteReport(M, result.refused.map((r) => r.path).join(', '))); process.exit(1); }
 if (IS_UPDATE) {
   log(M({
     en: `\n✅ updated to v${VERSION}.`,
@@ -244,14 +268,4 @@ if (IS_UPDATE) {
   }));
 } else {
   printNext({ ...opts, langExplicit: !!langArg, marker: det.marker, log }, result);
-}
-// Refused writes (symlinks / outside the repo) were reported inline — surface them in the exit code too
-if (result.refused.length) {
-  log(M({
-    en: `\n⚠️  ${result.refused.length} path(s) were not written (symlink or outside the repo): ${result.refused.join(', ')}`,
-    'zh-TW': `\n⚠️  有 ${result.refused.length} 個路徑未寫入(symlink 或落點在 repo 外):${result.refused.join(', ')}`,
-    'zh-CN': `\n⚠️  有 ${result.refused.length} 个路径未写入(symlink 或落点在 repo 外):${result.refused.join(', ')}`,
-    ja: `\n⚠️  ${result.refused.length} 個のパスは書き込んでいない(symlink または repo 外):${result.refused.join(', ')}`,
-  }));
-  process.exit(1);
 }

@@ -5,7 +5,7 @@
  * before its final confirmation, instead of a hand-maintained copy that drifts from the code.
  * Zero dependencies: node built-ins + `git` (no shell).
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, statSync, lstatSync, realpathSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, statSync, lstatSync, realpathSync, rmSync } from 'node:fs';
 import { join, dirname, isAbsolute, relative, sep, delimiter } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
@@ -54,7 +54,7 @@ export const excludePath = (target) => {
 };
 const EXCLUDE_RE = /# flightwake:begin[^\n]*\n[\s\S]*?# flightwake:end\n?/;
 /** Append entries to an existing flightwake exclude block (add-ons installed after a --private init). true = written. */
-export function addPrivateExcludes(target, entries) {
+export function addPrivateExcludes(target, entries, W) {
   try {
     const ep = excludePath(target);
     if (!existsSync(ep)) return false;
@@ -65,8 +65,7 @@ export function addPrivateExcludes(target, entries) {
     const missing = entries.filter((e) => !lines.includes(e));
     if (!missing.length) return false;
     const endAt = m.index + m[0].lastIndexOf('# flightwake:end');
-    writeFileSync(ep, cur.slice(0, endAt) + missing.map((e) => `${e}\n`).join('') + cur.slice(endAt));
-    return true;
+    return W.write(ep, cur.slice(0, endAt) + missing.map((e) => `${e}\n`).join('') + cur.slice(endAt), false);
   } catch { return false; }
 }
 
@@ -216,6 +215,105 @@ export function unregisterRepo(target, log) {
   } catch {}
 }
 
+// ── Guarded writer ─────────────────────────────────────────────────────────────────────────────────────────
+// One write path for the core install, the add-ons and the roles skill, real or dry. Destination guard: never write
+// (or delete) *through* a symlink, never land outside the repo, and treat a dangling symlink on the way the same way —
+// a framework file symlinked to ../STATE.md would otherwise be overwritten with hook code, breaking "user data is never
+// overwritten". In a dry run nothing is written and refusals are only collected: callers use that as the preflight,
+// so a refused path stops the whole install before the first write.
+export function createWriter({ target, dry = false, log = () => {}, M = makeM('en') }) {
+  const writes = [];
+  const refused = []; // { path, why: 'symlink' | 'outside' | 'dangling' }
+  const relOf = (abs) => { const r = relative(target, abs); return (r.startsWith('..') || isAbsolute(r)) ? abs : r.split(sep).join('/'); };
+  const REAL = (() => { try { return realpathSync(target); } catch { return target; } })();
+  const isLink = (p) => { try { return lstatSync(p).isSymbolicLink(); } catch { return false; } };
+  const lexists = (p) => { try { lstatSync(p); return true; } catch { return false; } };
+  // Where would p really land? Walk up to the nearest path that exists (a dangling symlink counts as existing)
+  const placement = (p) => {
+    let d = p;
+    while (!lexists(d) && dirname(d) !== d) d = dirname(d);
+    let r;
+    try { r = realpathSync(d); } catch { return 'dangling'; }
+    return (r === REAL || r.startsWith(REAL + sep)) ? null : 'outside';
+  };
+  const linkInside = (dir) => { // any symlink inside an existing directory we are about to replace
+    try {
+      for (const f of readdirSync(dir)) {
+        const q = join(dir, f);
+        if (isLink(q)) return q;
+        if (statSync(q).isDirectory()) { const hit = linkInside(q); if (hit) return hit; }
+      }
+    } catch {}
+    return null;
+  };
+  const refuse = (p, why) => {
+    if (!refused.some((r) => r.path === relOf(p))) refused.push({ path: relOf(p), why });
+    log(`  ⚠️  ${relOf(p)}${refusalReason(M, why)}`);
+    return false;
+  };
+  // inRepo: false for paths that live outside the repo by design (git's exclude file)
+  const check = (p, inRepo = true) => {
+    if (isLink(p)) return refuse(p, existsSync(p) ? 'symlink' : 'dangling');
+    const where = inRepo ? placement(p) : null;
+    return where ? refuse(p, where) : true;
+  };
+  const W = {
+    check,
+    write: (p, data, inRepo = true) => { if (!check(p, inRepo)) return false; writes.push(relOf(p)); if (!dry) writeFileSync(p, data); return true; },
+    append: (p, data) => { if (!check(p)) return false; writes.push(relOf(p)); if (!dry) appendFileSync(p, data); return true; },
+    // replace: remove the existing directory first (stale files go), after checking nothing inside it is a symlink
+    cp: (src, dst, { replace = false } = {}) => {
+      if (!check(dst)) return false;
+      const inner = existsSync(dst) ? linkInside(dst) : null;
+      if (inner) return refuse(inner, 'symlink');
+      writes.push(`${relOf(dst)}/`);
+      if (!dry) {
+        if (replace && existsSync(dst)) rmSync(dst, { recursive: true });
+        mkdirSync(dirname(dst), { recursive: true });
+        cpSync(src, dst, { recursive: true, force: true, filter: noJunk });
+      }
+      return true;
+    },
+    mkdir: (p, listed, inRepo = true) => {
+      if (inRepo && (placement(p) || isLink(p) && !existsSync(p))) return false; // the write that needs it reports the refusal
+      if (listed && !existsSync(p)) writes.push(`${relOf(p)}/`);
+      if (!dry) mkdirSync(p, { recursive: true });
+      return true;
+    },
+  };
+  return { W, writes, refused, isLink, relOf };
+}
+const refusalReason = (M, why) => M(why === 'outside' ? {
+  en: ' resolves outside this repo — not written (flightwake only writes inside the repo; fix the symlink and rerun)',
+  'zh-TW': ' 的實際落點在 repo 之外 — 不寫入(flightwake 只寫 repo 內;修正 symlink 後重跑)',
+  'zh-CN': ' 的实际落点在 repo 之外 — 不写入(flightwake 只写 repo 内;修正 symlink 后重跑)',
+  ja: ' の実体が repo の外にある — 書き込まない(flightwake は repo 内にしか書かない。symlink を直して再実行)',
+} : why === 'dangling' ? {
+  en: ' goes through a dangling symlink (it points to something that does not exist) — not written; fix or remove the symlink and rerun',
+  'zh-TW': ' 經過一個懸空的 symlink(指向不存在的位置)— 不寫入;修正或移除該 symlink 後重跑',
+  'zh-CN': ' 经过一个悬空的 symlink(指向不存在的位置)— 不写入;修正或移除该 symlink 后重跑',
+  ja: ' は宙に浮いた symlink(存在しない場所を指す)を経由する — 書き込まない。symlink を直すか消して再実行',
+} : {
+  en: ' is a symlink — not written through it (it could overwrite whatever it points to, e.g. your STATE); replace it with a regular file and rerun',
+  'zh-TW': ' 是 symlink — 不經由它寫入(可能覆蓋它指向的檔,例如你的 STATE);改成一般檔案後重跑',
+  'zh-CN': ' 是 symlink — 不经由它写入(可能覆盖它指向的档,例如你的 STATE);改成一般文件后重跑',
+  ja: ' は symlink — それ越しには書き込まない(指す先、例えば STATE を上書きしうる)。通常のファイルに置き換えて再実行',
+});
+/** Preflight verdict: every refused path with its reason, and that nothing was written. */
+export const refusalReport = (M, refused) => `${M({
+  en: `\n✗ Stopped before writing anything: ${refused.length} path(s) cannot be written safely. Nothing was written.`,
+  'zh-TW': `\n✗ 寫入前就中止:有 ${refused.length} 個路徑無法安全寫入。什麼都沒寫(nothing was written)。`,
+  'zh-CN': `\n✗ 写入前就中止:有 ${refused.length} 个路径无法安全写入。什么都没写(nothing was written)。`,
+  ja: `\n✗ 書き込む前に中止:安全に書けないパスが ${refused.length} 個。何も書き込んでいない(nothing was written)。`,
+})}\n${refused.map((r) => `    ${r.path}${refusalReason(M, r.why)}`).join('\n')}`;
+/** A real run that still ended part-way (refusal that preflight could not foresee, or an I/O error). */
+export const incompleteReport = (M, detail) => M({
+  en: `\n✗ Install NOT complete — it stopped part-way: ${detail}\n  Fix the cause and rerun; files already written are framework files (your STATE/DECISIONS/TRAPS/records are never overwritten).`,
+  'zh-TW': `\n✗ 安裝未完成 — 中途停止:${detail}\n  排除原因後重跑;已寫入的都是框架檔(你的 STATE/DECISIONS/TRAPS/records 不會被覆蓋)。`,
+  'zh-CN': `\n✗ 安装未完成 — 中途停止:${detail}\n  排除原因后重跑;已写入的都是框架档(你的 STATE/DECISIONS/TRAPS/records 不会被覆盖)。`,
+  ja: `\n✗ インストールは未完了 — 途中で止まった:${detail}\n  原因を直して再実行。書き込み済みはフレームワークファイルのみ(STATE/DECISIONS/TRAPS/records は上書きしない)。`,
+});
+
 // ── install ────────────────────────────────────────────────────────────────────────────────────────────────
 /**
  * o: { target, fwSrc, version, lang, force, update, private, statusline, agents, profile, orca, marker, dry, log }
@@ -232,71 +330,8 @@ export function install(o) {
   const isTracked = (rel) => { try { return git('ls-files', '--', rel) !== ''; } catch { return false; } };
   const marker = o.marker ?? null;
 
-  // Write facade: one code path for real and dry runs
-  const writes = [];
-  const relOf = (abs) => { const r = relative(TARGET, abs); return (r.startsWith('..') || isAbsolute(r)) ? abs : r.split(sep).join('/'); };
-  // Destination guard (applies to every write, dry or real): never write *through* a symlink, and never land outside
-  // the repo — a framework file symlinked to ../STATE.md would otherwise be overwritten with hook code, breaking
-  // "user data is never overwritten". Refused paths are reported, skipped, and make init/update exit non-zero.
-  const refused = [];
-  const REAL = (() => { try { return realpathSync(TARGET); } catch { return TARGET; } })();
-  const isLink = (p) => { try { return lstatSync(p).isSymbolicLink(); } catch { return false; } };
-  const landsOutside = (p) => {
-    let d = p;
-    while (!existsSync(d) && dirname(d) !== d) d = dirname(d);
-    let r;
-    try { r = realpathSync(d); } catch { return true; }
-    return !(r === REAL || r.startsWith(REAL + sep));
-  };
-  const linkInside = (dir) => { // any symlink inside an existing directory we are about to copy over
-    try {
-      for (const f of readdirSync(dir)) {
-        const q = join(dir, f);
-        if (isLink(q)) return q;
-        if (statSync(q).isDirectory()) { const hit = linkInside(q); if (hit) return hit; }
-      }
-    } catch {}
-    return null;
-  };
-  const refuse = (p, why) => {
-    refused.push(relOf(p));
-    log(`  ⚠️  ${relOf(p)}${M(why === 'outside' ? {
-      en: ' resolves outside this repo — not written (flightwake only writes inside the repo; fix the symlink and rerun)',
-      'zh-TW': ' 的實際落點在 repo 之外 — 未寫入(flightwake 只寫 repo 內;修正 symlink 後重跑)',
-      'zh-CN': ' 的实际落点在 repo 之外 — 未写入(flightwake 只写 repo 内;修正 symlink 后重跑)',
-      ja: ' の実体が repo の外にある — 書き込まない(flightwake は repo 内にしか書かない。symlink を直して再実行)',
-    } : {
-      en: ' is a symlink — not written through it (it could overwrite whatever it points to, e.g. your STATE); replace it with a regular file and rerun',
-      'zh-TW': ' 是 symlink — 不經由它寫入(可能覆蓋它指向的檔,例如你的 STATE);改成一般檔案後重跑',
-      'zh-CN': ' 是 symlink — 不经由它写入(可能覆盖它指向的档,例如你的 STATE);改成一般文件后重跑',
-      ja: ' は symlink — それ越しには書き込まない(指す先、例えば STATE を上書きしうる)。通常のファイルに置き換えて再実行',
-    })}`);
-    return false;
-  };
-  // inRepo: false for paths that live outside the repo by design (git's exclude file, the cross-repo registry)
-  const guard = (p, inRepo = true) => {
-    if (isLink(p)) return refuse(p, 'symlink');
-    if (inRepo && landsOutside(p)) return refuse(p, 'outside');
-    return true;
-  };
-  const W = {
-    write: (p, data, inRepo = true) => { if (!guard(p, inRepo)) return false; writes.push(relOf(p)); if (!dry) writeFileSync(p, data); return true; },
-    append: (p, data) => { if (!guard(p)) return false; writes.push(relOf(p)); if (!dry) appendFileSync(p, data); return true; },
-    cp: (src, dst) => {
-      if (!guard(dst)) return false;
-      const inner = existsSync(dst) ? linkInside(dst) : null;
-      if (inner) return refuse(inner, 'symlink');
-      writes.push(`${relOf(dst)}/`);
-      if (!dry) cpSync(src, dst, { recursive: true, force: true, filter: noJunk });
-      return true;
-    },
-    mkdir: (p, listed, inRepo = true) => {
-      if (inRepo && landsOutside(p)) return false; // the write that needs it reports the refusal
-      if (listed && !existsSync(p)) writes.push(`${relOf(p)}/`);
-      if (!dry) mkdirSync(p, { recursive: true });
-      return true;
-    },
-  };
+  // Every write (core, add-ons, roles refresh) goes through one guarded writer — see createWriter
+  const { W, writes, refused, isLink } = createWriter({ target: TARGET, dry, log, M });
 
   // --private collects entries for .git/info/exclude (relative to repo root); null = not private
   const privateExcludes = PRIVATE ? ['.flightwake/'] : null;
@@ -395,10 +430,7 @@ export function install(o) {
   installSkills('.claude/skills');
   if (AGENTS_SKILLS) installSkills('.agents/skills');
   // roles add-on: refreshed on update only where the user already installed it (opt-in, never added here)
-  if (IS_UPDATE) {
-    if (dry) for (const b of ['.claude/skills', '.agents/skills']) { if (existsSync(join(TARGET, ...b.split('/'), 'fw-roles'))) writes.push(`${b}/fw-roles/`); }
-    else refreshRolesSkill({ target: TARGET, fwSrc: FW_SRC, lang: LANG, noJunk, log });
-  }
+  if (IS_UPDATE) refreshRolesSkill({ target: TARGET, fwSrc: FW_SRC, lang: LANG, log, W });
 
   // 4. Stop hook merged into .claude/settings.json (--private → settings.local.json, stays out of the repo)
   {
@@ -409,10 +441,13 @@ export function install(o) {
     // (Claude Code merges settings.json with local — a duplicate means the Stop reminder fires twice)
     const otherRel = PRIVATE ? '.claude/settings.json' : '.claude/settings.local.json';
     const otherPath = join(TARGET, ...otherRel.split('/'));
+    // A settings file is merged in place — check the destination before even reading it (a symlinked settings.json
+    // would otherwise be read and rewritten through the link, or silently skipped as "not valid JSON")
+    const settingsOk = W.check(settingsPath);
     const inOther = (() => { try { return existsSync(otherPath) && readFileSync(otherPath, 'utf8').includes('state-check.mjs'); } catch { return false; } })();
     let settings = {};
-    let parseOk = true;
-    if (existsSync(settingsPath)) {
+    let parseOk = settingsOk;
+    if (parseOk && existsSync(settingsPath)) {
       try { settings = JSON.parse(readFileSync(settingsPath, 'utf8')); }
       catch { parseOk = false; log(`  ⚠️  ${settingsRel} is not valid JSON — skipping hook install; add to hooks.Stop manually: ${HOOK_CMD}`); }
     }
@@ -480,6 +515,7 @@ export function install(o) {
   for (const [name, rel, event] of [['codex', '.codex/hooks.json', 'Stop'], ['gemini', '.gemini/settings.json', 'AfterAgent']]) {
     if (!ACTIVE.has(name)) continue;
     const p = join(TARGET, ...rel.split('/'));
+    if (!W.check(p)) continue;
     if (PRIVATE && existsSync(p) && isTracked(rel)) {
       log(`  ⚠️  --private: ${rel}${M({
         en: ` is git-tracked, writing would leave a trace — skipped; add the ${event} hook yourself: ${HOOK_CMD_GIT}`,

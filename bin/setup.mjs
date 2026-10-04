@@ -12,7 +12,7 @@ import { createInterface } from 'node:readline';
 import { execFileSync } from 'node:child_process';
 import {
   LANGS, GROUPS, isAgentName, makeM, gitAvailable, repoState, detectInstall, detectedAgents, detectOrca, resolveOptions, install,
-  printNext, noJunk, addPrivateExcludes, gitMissingMessage, monorepoMessage,
+  printNext, addPrivateExcludes, gitMissingMessage, monorepoMessage, createWriter, refusalReport, incompleteReport,
 } from './install.mjs';
 import { installRolesSkill } from './roles.mjs';
 import { runDoctor } from './doctor.mjs';
@@ -55,30 +55,55 @@ export function realContext({ target, fwSrc, version, log = (s) => console.log(s
     detect: () => detectInstall(target),
     detectedAgents: () => detectedAgents(target),
     orcaDetected: () => detectOrca(env),
+    // Preflight + summary: the real install and the roles add-on, both dry, through the same guarded writer.
+    // Returns the paths that would be written and any destination the guard refuses (setup then stops before writing).
     preview(plan) {
       const r = install({ ...plan.opts, target, fwSrc, version, marker: detectInstall(target).marker, dry: true });
-      const list = [...(plan.gitInit ? ['.git/  (git init)'] : []), ...r.writes];
-      // Paths the guard refuses (symlink / outside the repo) are shown, marked, so nothing surprises after confirming
-      for (const p of r.refused) list.push(`${p}  ✗ (symlink / outside the repo — will not be written)`);
+      const paths = [...(plan.gitInit ? ['.git/  (git init)'] : []), ...r.writes];
+      const refused = [...r.refused];
       if (plan.roles) {
-        for (const b of rolesBases(r)) list.push(`${b}/fw-roles/`);
-        if (plan.opts.private) list.push('.git/info/exclude');
+        const rw = createWriter({ target, dry: true });
+        installRolesSkill({ target, fwSrc, lang: plan.opts.lang, bases: rolesBases(r), log: () => {}, addExcludes: (e, W) => addPrivateExcludes(target, e, W), W: rw.W });
+        paths.push(...rw.writes);
+        refused.push(...rw.refused);
+        if (plan.opts.private) paths.push('.git/info/exclude');
       }
-      return [...new Set(list)];
+      return { paths: [...new Set(paths)], refused };
     },
     execute(plan) {
       const M = makeM(plan.opts.lang);
-      if (plan.gitInit) { execFileSync('git', ['init'], { cwd: target, stdio: 'ignore' }); log(`  git init ${target}`); }
-      const det = detectInstall(target);
-      const r = install({ ...plan.opts, target, fwSrc, version, marker: det.marker, log });
-      // Add-ons after the core
-      if (plan.roles) installRolesSkill({ target, fwSrc, lang: plan.opts.lang, bases: rolesBases(r), noJunk, log, addExcludes: (e) => addPrivateExcludes(target, e) });
+      let r;
+      const refused = [];
+      try {
+        if (plan.gitInit) { execFileSync('git', ['init'], { cwd: target, stdio: 'ignore' }); log(`  git init ${target}`); }
+        r = install({ ...plan.opts, target, fwSrc, version, marker: detectInstall(target).marker, log });
+        refused.push(...r.refused);
+        // Add-ons after the core, through the same guarded writer
+        if (plan.roles) {
+          const rw = createWriter({ target, log, M });
+          installRolesSkill({ target, fwSrc, lang: plan.opts.lang, bases: rolesBases(r), log, addExcludes: (e, W) => addPrivateExcludes(target, e, W), W: rw.W });
+          refused.push(...rw.refused);
+        }
+      } catch (e) {
+        log(incompleteReport(M, e?.message ?? String(e)));
+        return 1;
+      }
+      if (refused.length) { log(incompleteReport(M, refused.map((x) => x.path).join(', '))); return 1; }
       log('');
-      const code = Math.max(runDoctor({ target, fwSrc, version, lang: plan.opts.lang, log }), r.refused.length ? 1 : 0);
+      // Success is only claimed when doctor agrees
+      if (runDoctor({ target, fwSrc, version, lang: plan.opts.lang, log })) {
+        log(M({
+          en: '\n✗ Files were written, but doctor found problems (the ✗ lines above) — setup is NOT complete. Fix them and run `npx flightwake doctor` again.',
+          'zh-TW': '\n✗ 檔案已寫入,但 doctor found problems(見上方 ✗ 行)— setup 未完成。修正後再跑 `npx flightwake doctor`。',
+          'zh-CN': '\n✗ 文件已写入,但 doctor found problems(见上方 ✗ 行)— setup 未完成。修正后再跑 `npx flightwake doctor`。',
+          ja: '\n✗ ファイルは書き込んだが doctor found problems(上の ✗ 行)— setup は未完了。直してから `npx flightwake doctor` を再実行。',
+        }));
+        return 1;
+      }
       if (plan.mode === 'update') {
         log(M({ en: `\n✅ updated to v${version}.`, 'zh-TW': `\n✅ 已更新到 v${version}。`, 'zh-CN': `\n✅ 已更新到 v${version}。`, ja: `\n✅ v${version} に更新しました。` }));
       } else {
-        printNext({ ...plan.opts, langExplicit: true, marker: det.marker, log }, r);
+        printNext({ ...plan.opts, langExplicit: true, marker: detectInstall(target).marker, log }, r);
       }
       if (plan.roles) log(M({
         en: '   ℹ️  Roles: ask your agent to "run fw-roles" — it scans the project, recommends a team and previews it before anything is applied',
@@ -86,7 +111,7 @@ export function realContext({ target, fwSrc, version, log = (s) => console.log(s
         'zh-CN': '   ℹ️  角色:对 agent 说「跑 fw-roles」— 它会扫描项目、推荐角色组合,套用前先让你预览',
         ja: '   ℹ️  ロール:agent に「fw-roles を実行して」と頼む — プロジェクトを調べてチームを提案し、適用前にプレビューする',
       }));
-      return code;
+      return 0;
     },
   };
 }
@@ -267,7 +292,9 @@ export async function runSetup({ io, flags = {}, ctx }) {
 
   // 9–11. summary of every path the real install would write → confirm → install (same path as init) → doctor
   async function confirmAndRun(plan) {
-    const paths = ctx.preview(plan);
+    const { paths, refused } = ctx.preview(plan);
+    // Preflight failed: say which paths and why, and stop before asking — nothing has been written
+    if (refused.length) { say(refusalReport(makeM(lang), refused)); return 1; }
     say(M({ en: '\nThese paths will be written:', 'zh-TW': '\n將寫入以下路徑:', 'zh-CN': '\n将写入以下路径:', ja: '\n以下のパスに書き込みます:' }));
     for (const p of paths) say(`  ${p}`);
     // Default yes: the full list is right above it; n / EOF / Ctrl-C still cancel with zero writes
