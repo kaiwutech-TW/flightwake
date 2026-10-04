@@ -176,7 +176,7 @@ export async function runSetup({ io, flags = {}, ctx }) {
         ja: 'setup はこのオプションのままその場で更新できます(`npx flightwake update` と同じ)。オプションの変更はここでは扱いません — init のフラグと --force を使ってください。\n',
       }));
       const opts = resolveOptions({ update: true, flags, det });
-      return await confirmAndRun({ mode: 'update', gitInit: false, opts, roles: false });
+      return await confirmAndRun({ mode: 'update', gitInit, opts, roles: false });
     }
 
     // 4. language
