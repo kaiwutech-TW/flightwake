@@ -1,8 +1,8 @@
 ---
-updated: 2026-09-28
+updated: 2026-10-05
 updated_by: Claude(Opus 5.5)
 latest_record: records/260928-roles-v2.md
-health: green  # v0.14.0 已發佈並驗證(npm latest + provenance);Gemini hook 仍未真機
+health: yellow  # setup-wizard 分支實作中:既有 smoke 全過,新增 setup/doctor/profile/Orca 案例尚未寫完、未跑
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
 <!-- 規則:只寫「現在」與「下一步」;歷史去 records/,決策去 DECISIONS.md。 -->
@@ -22,6 +22,7 @@ flightwake **v0.14.0(2026-09-28 已發,npm latest;前版 v0.13.0 2026-09-02)**,*
 
 # 進行中(未完成勿刪)
 
+- **setup-wizard 分支(2026-10-05,未完成)**:依 `docs/plans/setup.md` 第 3 版實作 setup/doctor/--profile/Orca 協作/--git-init;核心已 commit(9c0b542、f9b7352,決策見 DECISIONS 2026-10-05)。待辦:smoke 新增案例、四語文件與 CHANGELOG、record。不 push、不 bump、不發版
 開源前缺口清單(優先序見 DECISIONS 2026-07-18):
 
 - [x] 1. 敏感資訊防護 ✅ ce4c563(檢查清單+grep 自查;掃描器評估結論:不內建,見 DECISIONS)
