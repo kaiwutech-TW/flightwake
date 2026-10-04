@@ -1353,11 +1353,20 @@ node "$CLI" init --agents=claude --force >/dev/null
 cmp -s "$MODSRC/hooks/register.ts" $MODREL/hooks/register.ts || fail "40.3 init --force 也應刷新既有的 mod"
 pass "40.3 update/--force 只刷新既有 mod、保留使用者加的檔;未安裝不新增"
 
-# 40.4 uninstall 移除 mod 資料夾(其餘使用者資料照舊保留)
-node "$CLI" uninstall >/dev/null || fail "40.4 uninstall 應成功"
-[ ! -e $MODREL ] || fail "40.4 uninstall 應移除 mod 資料夾"
+# 40.4 uninstall 只移除發行過的檔與因此變空的目錄;使用者(或引擎)自己加的檔保留並列出;--purge 也不刪它們
+[ -f $MODREL/MY-NOTES.md ] && [ -f $MODREL/.claude-plugin/types/x.d.ts ] || fail "40.4 測試前提:40.3 建立的自加檔應存在"
+rc=0; out=$(node "$CLI" uninstall 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "40.4 uninstall 應成功(rc=$rc: $out)"
+[ "$(cat $MODREL/MY-NOTES.md)" = mine ] && [ "$(cat $MODREL/.claude-plugin/types/x.d.ts)" = engine ] || fail "40.4 uninstall 不得刪除使用者在 mod 資料夾自己加的檔"
+for f in $(mod_ship_list); do [ ! -e "$MODREL/$f" ] || fail "40.4 uninstall 應移除發行檔 $f"; done
+[ ! -e $MODREL/hooks ] && [ ! -e $MODREL/types ] || fail "40.4 只剩發行檔的目錄在移除後變空,應一併移除"
+echo "$out" | grep -q 'MY-NOTES.md' && echo "$out" | grep -q '.claude-plugin/types/x.d.ts' || fail "40.4 uninstall 應列出留下了什麼(got: $out)"
 [ -f .flightwake/STATE.md ] || fail "40.4 uninstall 不得刪使用者資料"
-pass "40.4 uninstall 移除 mod 資料夾"
+node "$CLI" init --agents=claude --mod >/dev/null && node "$CLI" uninstall --purge >/dev/null || fail "40.4 重裝後 uninstall --purge 應成功"
+[ "$(cat $MODREL/MY-NOTES.md)" = mine ] && [ ! -e .flightwake ] || fail "40.4 --purge 只針對 .flightwake,不得刪 mod 資料夾裡的自加檔"
+newrepo "$TMP/md4b" >/dev/null; node "$CLI" init --agents=claude --mod >/dev/null && node "$CLI" uninstall >/dev/null
+[ ! -e $MODREL ] || fail "40.4 沒有自加檔時 uninstall 應移除整個 mod 資料夾"
+pass "40.4 uninstall 只移除發行檔與變空的目錄,自加檔保留並列出(--purge 亦然);沒有自加檔則整個資料夾移除"
 
 # 40.5 --private:mod 資料夾進排除清單;排除失敗(已受追蹤)= 拒寫;private 安裝後再 init --mod 也不留痕跡
 newrepo "$TMP/md5" >/dev/null; echo x > README; git add README; git commit -qm init
@@ -1445,7 +1454,22 @@ node "$CLI" update >/dev/null && cmp -s "$MODSRC/hooks/register.ts" $MODREL/hook
 [ "$(fmode $MODREL/hooks/register.ts)" = 600 ] || fail "40.8 mod 檔重寫後應維持 0600(got $(fmode $MODREL/hooks/register.ts))"
 [ "$(fmode $MODREL/hooks/hooks.json)" = 644 ] || fail "40.8 mod 新檔用預設 0644"
 )
-pass "40.8 symlink(資料夾在 repo 外、內部檔指向 STATE)、hardlink、權限的既有防護涵蓋 mod 路徑"
+# 預檢依實際發行檔逐一檢查目的地與祖先型別:mod 內、skill 內的發行檔位置是目錄 / 祖先是一般檔 → 第一個寫入前中止
+type_variant() { # $1 名稱 $2 準備指令 $3 安裝指令 $4 預期點名的路徑
+  newrepo "$TMP/md8t-$5" >/dev/null; node "$CLI" init --agents=claude --mod >/dev/null; eval "$2"
+  local b rc=0 out; b=$(fsnap); out=$(eval "$3" 2>&1) || rc=$?
+  [ "$rc" = 1 ] && [ "$b" = "$(fsnap)" ] || fail "40.8 $1:應在第一個寫入前中止、零寫入(rc=$rc: $out)"
+  echo "$out" | grep -q "$4" && echo "$out" | grep -qi 'nothing was written' || fail "40.8 $1:應點名 $4 並說明什麼都沒寫(got: $out)"
+  echo "$out" | grep -qE 'EISDIR|ENOTDIR|at .*\.mjs:[0-9]+' && fail "40.8 $1:不得以例外結束(got: $out)"
+  return 0
+}
+type_variant "mod 發行檔位置是目錄" "rm $MODREL/hooks/register.ts && mkdir $MODREL/hooks/register.ts" 'node "$CLI" init --agents=claude --mod --force' "$MODREL/hooks/register.ts" a
+type_variant "mod 發行檔的祖先是一般檔" "rm -rf $MODREL/hooks/lib && echo x > $MODREL/hooks/lib" 'node "$CLI" update' "$MODREL/hooks/lib" b
+type_variant "skill 檔位置是目錄" "rm .claude/skills/fw-record/SKILL.md && mkdir .claude/skills/fw-record/SKILL.md" 'node "$CLI" update' ".claude/skills/fw-record/SKILL.md" c
+newrepo "$TMP/md8t-roles" >/dev/null; node "$CLI" init --agents=claude >/dev/null && node "$CLI" roles install >/dev/null
+rm .claude/skills/fw-roles/SKILL.md && mkdir .claude/skills/fw-roles/SKILL.md && echo x > .claude/skills/fw-roles/SKILL.md/junk
+node "$CLI" update >/dev/null && [ -f .claude/skills/fw-roles/SKILL.md ] || fail "40.8 fw-roles 是整目錄替換,內部型別衝突應被替換掉而非中止"
+pass "40.8 symlink(資料夾在 repo 外、內部檔指向 STATE)、hardlink、權限、發行檔目的地與祖先型別(mod / skill;fw-roles 整目錄替換)的防護涵蓋 mod 路徑"
 
 # 40.9 doctor:未安裝 = 提醒以外的選配資訊;已安裝檢查 manifest / hooks 模組 / 版本;Claude Code 版本;印出看不到的兩件事
 NOCL="$TMP/nocl-bin"; mkdir -p "$NOCL"; ln -sf "$NODE_BIN" "$NOCL/node"; ln -sf "$(command -v git)" "$NOCL/git"
@@ -1486,14 +1510,14 @@ rc=0; out=$(docmod "$NOCL") || rc=$?
 [ "$rc" = 1 ] && echo "$out" | grep -q "✗.*--private.*flightwake-mod" || fail "40.9 private 下 mod 資料夾沒被忽略時 doctor 應失敗並點名(rc=$rc: $out)"
 pass "40.9 doctor:mod 未安裝/已安裝、manifest/hooks 模組/版本/內容、Claude Code 版本(ok/提醒/取不到)、private 排除、唯讀"
 
-# 41. 第二階段延後的三件事(文字檢查,四語;不驗證 agent 實際行為)
+# 41. 第二階段延後的三件事 — 只是關鍵字的文字檢查(四語),不驗證 agent 實際行為
 for l in en zh-TW zh-CN ja; do
   grep -q '/fw-log' "$SRC/skills/$l/fw-record/SKILL.md" && grep -q 'unknown' "$SRC/skills/$l/fw-record/SKILL.md" || fail "41 $l fw-record 應說明有 /fw-log 時先取用其輸出、unknown 要自己判斷"
   grep -q 'paths' "$SRC/skills/$l/fw-trap/SKILL.md" && grep -q 'commands' "$SRC/skills/$l/fw-trap/SKILL.md" || fail "41 $l fw-trap 應說明選填欄位 paths / commands"
   sed -n '/^---$/,/^---$/p' "$SRC/templates/$l/TRAPS.md" | grep -q '^paths: \[\]' && sed -n '/^---$/,/^---$/p' "$SRC/templates/$l/TRAPS.md" | grep -q '^commands: \[\]' || fail "41 $l TRAPS 範本條目應有空的 paths / commands 欄位"
 done
 node -e "const a=require('$SRC/mods/flightwake/.claude-plugin/plugin.json').author; if(!a||!a.name) process.exit(1)" || fail "41 mod manifest 應有 author"
-pass "41 fw-record 取用 /fw-log、fw-trap 與 TRAPS 範本的 paths/commands 欄位(四語)、manifest author"
+pass "41 文字檢查(關鍵字,不驗證 agent 行為):fw-record 提到 /fw-log 與 unknown、fw-trap 與 TRAPS 範本有 paths/commands(四語);manifest 有 author"
 
 echo ""
 echo "✅ smoke 全過"
