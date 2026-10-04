@@ -14,7 +14,7 @@
 
 | Stage | You do | You say |
 |---|---|---|
-| 0. First install | Do nothing — let the model write the first STATE | "initialize STATE with /fw-record" |
+| 0. First install | Do nothing — let the model write the first STATE | `/fw-coldstart` (it notices STATE is unfilled and writes it) |
 | 1. Opening / taking over | **Nothing.** Listen to the status report first | `/fw-coldstart` |
 | 2. Deciding what to build | Say **what** you want, never how | "Don't touch the code yet — give me 2-3 approaches and the trade-offs" |
 | 3. While it works | Hands off; answer only when asked to decide | (Interrupt only when the direction is wrong: "stop, because…") |
@@ -143,7 +143,7 @@ The other common case: STATE is stale (>7 days) while git log shows fresh commit
 <summary>⚙ Advanced</summary>
 
 - Health semantics: green = safe to build on; yellow = unverified changes exist; red = known broken. An honest color beats a pretty one — dashboards lie to their owners last.
-- Taking over a repo that never had flightwake? Install, then excavate: `npx flightwake init`, then "archaeologize this repo's current state into the first STATE with /fw-record".
+- Taking over a repo that never had flightwake? Install (`npx flightwake setup`; `npx flightwake init` is the non-interactive form), then excavate: run `/fw-coldstart` — it writes the first STATE from the repo — or ask for more depth: "archaeologize this repo's current state into the first STATE".
 </details>
 
 ---

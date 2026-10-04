@@ -17,12 +17,20 @@ An ultra-lightweight work-recording framework for strong AI coding agents (Claud
 
 ```bash
 cd your-repo
+npx flightwake setup                # guided install: a few questions, shows every path it will write, installs after you confirm
+```
+
+`setup` needs a terminal. It checks git first (offering `git init` if the directory isn't a repo — default No, run only after the final confirmation), then asks language, agents, optional add-ons (each default No: the bottom gauge, roles, Orca collaboration) and repo type (code / notes), lists every path it will write, and installs only after you confirm — Ctrl-C or declining writes nothing. If flightwake is already installed it only offers an in-place upgrade (`update`). It installs through the same path as `init`, then runs `doctor` and prints next steps. Flags you pass on the command line answer their question; `--private` is flag-only and is never asked.
+
+**Non-interactive form** — `npx flightwake init [flags]` (a bare `npx flightwake` does the same) never asks anything: use it for automation, agents, CI, and when you already know what you want:
+
+```bash
 npx flightwake init --statusline    # English (default) + the bottom gauge
 npx flightwake init --statusline --agents=claude,codex,gemini   # all three agents at once (Claude Code + Codex + Gemini CLI)
 npx flightwake update               # upgrade an existing install in place (keeps your options: lang/statusline/private)
 ```
 
-**Pick your language** — installed templates, skills, and all CLI/gauge output follow it. There is no
+**Pick your language** (non-interactive form; `setup` asks it for you) — installed templates, skills, and all CLI/gauge output follow it. There is no
 auto-detection: a terminal's `LANG` and the OS locale routinely disagree, and a confident wrong guess is
 worse than a stated default. Copy the line you want:
 
@@ -47,7 +55,7 @@ init creates `.flightwake/` (templates + Stop hook), copies 4 skills into `.clau
 
 ### Right after the first install
 
-1. Open a Claude Code session and say "**initialize STATE with /fw-record**" — the model writes the repo's current situation into the first STATE
+1. Open an agent session in the repo and run `/fw-coldstart` — it notices STATE is still the unfilled template and writes the first STATE from the repo itself (health is never guessed green: it is yellow until something was actually verified)
 2. `git add .flightwake .claude CLAUDE.md && git commit`
 3. Every session after that follows the daily loop below
 
@@ -144,6 +152,14 @@ The skills and hooks are convenience sugar per platform — the same four skills
 
 **`--private`** keeps records **local-only, out of git**: every write is registered in `.git/info/exclude` (purely local — no trace left in the repo), the hook goes into `.claude/settings.local.json`, and the obligation table goes into `CLAUDE.local.md` (git-tracked instruction files are never touched). The cost: records aren't shared with the repo, and a fresh clone needs `init --private` again — "in git, shared with the repo" is flightwake's default and reason to exist; `--private` is the escape hatch for personal use inside someone else's repo.
 
+**`doctor`** (`npx flightwake doctor`) is a read-only, no-network check of the install structure: git and git root, Node ≥18, `.flightwake/`, STATE (unfilled template fields are a warning), `latest_record`, marker blocks and their version/lang/profile consistency, skills, hook registration (valid JSON, exact command, correct event — Stop for Claude Code/Codex, AfterAgent for Gemini CLI — no duplicates, script exists), that `--private` excludes are actually in effect, and the status of optional add-ons. Each line is ok / warning / fail; exit code 1 on any failure. It verifies structure only, not that hooks fire at runtime (whether Codex trusts the hook path can't be checked — doctor prints a hint instead). Writes nothing.
+
+**`--profile=code|notes`** (default `code`) picks the obligation table. `notes` is for repos that aren't code (writing, research, notes): it drops "tests green + typecheck clean", "prod verification evidence", and the schema/prod wrap-up trigger, and keeps cold start, decisions, traps, handoff, the ≥3-commit wrap-up, confirming destructive operations, and an honest STATE at session end. The same files are installed. The profile is stored in the marker (`profile=notes`); `update` keeps it, and `update --profile=code` switches back.
+
+**`--orca`** (opt-in; also a `setup` question, offered only when Orca is detected) adds a marked block to each active platform's instruction file: use visible Orca tabs — not hidden background runs — for cross-agent discussion and review, plus a one-writer review protocol (the agent that was asked to review writes no record and doesn't touch STATE; the asker records the conclusions it adopts). `uninstall` removes it; `update` refreshes it only where installed.
+
+**`--git-init`** makes `init` create the git repo when the directory isn't one — explicit flag only; without it, init stops and tells you. Both `init` and `setup` check that git is installed first and print per-platform install hints if not.
+
 **`uninstall`** reverses init's fixed write scope: removes the skills and framework files, extracts flightwake's Stop hook from settings (your other hooks stay untouched), and strips the marker blocks from instruction files and `.git/info/exclude` (files created by flightwake are deleted once emptied). **`.flightwake/` is user data and is kept by default**; only `uninstall --purge` deletes it too.
 
 **Monorepo policy: one install per repo, at the git root.** Work is session-shaped — a session routinely spans multiple packages, and records follow the session; per-subdirectory installs would shred one stretch of work into fragmented records and turn "which STATE do I read?" into a new cold-start ambiguity. Running init in a subdirectory stops and points you to the root. Submodules have their own `.git` and count as independent repos. If a high-traffic multi-team monorepo sees false positives from the CI staleness check, tune `--threshold` first.
@@ -204,7 +220,7 @@ flightwake will not write a workflow into your repo — `.github/workflows/` is 
 ## Security
 
 - **Zero dependencies, no network, no install scripts**: the installer only copies files; the hook only uses `git` (no shell) for read-only queries.
-- **Fixed write scope**: `init` only touches `.flightwake/`, `.claude/skills/fw-*`, `.claude/settings.json`, the marker blocks inside agent instruction files, and — when Codex / Gemini CLI is detected — `.agents/skills/fw-*`, `.codex/hooks.json`, `.gemini/settings.json`; with `--private` it instead touches `.claude/settings.local.json`, `CLAUDE.local.md`, and the marker block in `.git/info/exclude` (the Codex/Gemini files are written only while untracked, and excluded). `uninstall` reverses the same scope.
+- **Fixed write scope**: `init` only touches `.flightwake/`, `.claude/skills/fw-*`, `.claude/settings.json`, the marker blocks inside agent instruction files (including the Orca block, only when you opted in), `~/.flightwake/registry.json` (init/update write it; uninstall removes this repo's entry), `.claude/skills/fw-roles` / `.agents/skills/fw-roles` (only when you opted into roles), and — when Codex / Gemini CLI is detected — `.agents/skills/fw-*`, `.codex/hooks.json`, `.gemini/settings.json`; with `--private` it instead touches `.claude/settings.local.json`, `CLAUDE.local.md`, and the marker block in `.git/info/exclude` (the Codex/Gemini files are written only while untracked, and excluded). `uninstall` reverses the same scope. `doctor` writes nothing. The one exception to "only copies files" is `git init`: it runs only after you confirm it in `setup`'s final summary, or when you pass `--git-init`.
 - **The hook lives in git**: `.flightwake/hooks/state-check.mjs` is a file in your repo — anyone who can commit can change it, same trust level as all repo-local config; Claude Code asks for confirmation when loading it, and Codex records a trust hash per hook definition and re-asks whenever it changes.
 - Vulnerability reports: see [SECURITY.md](SECURITY.md). Published to npm via Trusted Publishing (with provenance); verify with `npm audit signatures`.
 

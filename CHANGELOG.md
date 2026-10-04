@@ -8,6 +8,48 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ## [Unreleased]
 
+### Added
+- **`npx flightwake setup` — guided install.** Interactive (needs a terminal; without one it explains and exits 1).
+  Checks git is installed, then that the directory is a repo (offers `git init`, default No, run only after the final
+  confirmation). If flightwake is already installed it only offers an in-place upgrade (`update`) or leaving. Then asks
+  language, agents, optional add-ons (each default No: the bottom gauge — only if Claude Code is selected; roles — installs
+  only the `fw-roles` skill; Orca collaboration — only if Orca is detected) and repo type (code / notes), shows every path it
+  will write, and installs through the same path as `init` only after you confirm, then runs `doctor` and prints next steps.
+  Flags on the command line answer their question; `--private` is flag-only and never asked. Ctrl-C, EOF, or declining before
+  the final confirmation writes nothing. `npx flightwake` (no command) and `init` are unchanged and never ask questions —
+  the non-interactive form for automation, agents, CI and advanced users.
+- **`npx flightwake doctor` — read-only install check** (no network, writes nothing). Checks git and git root, Node ≥18,
+  `.flightwake/`, STATE (unfilled template fields are a warning), `latest_record`, marker blocks and their
+  version/lang/profile consistency, skills, hook registration (valid JSON, exact command, correct event — Stop for Claude
+  Code/Codex, AfterAgent for Gemini CLI — no duplicates, script exists), whether `--private` excludes are in effect, and
+  optional add-ons. Prints ok / warning / fail per line; exits 1 on any failure. It verifies install structure only, not
+  that hooks fire at runtime (Codex path trust can't be checked — printed as a hint).
+- **`--profile=code|notes`** (default `code`). `notes` is a trimmed obligation table for non-code repos: it drops "tests green
+  + typecheck clean", "prod verification evidence" and the schema/prod wrap-up trigger, and keeps cold start, decisions,
+  traps, handoff, the ≥3-commit wrap-up, confirming destructive operations, and an honest STATE at session end. Same files are
+  installed. Stored in the marker (`profile=notes`); `update` keeps it, `update --profile=code` switches back.
+- **`--orca` — opt-in Orca collaboration add-on** (also a `setup` question). A marked block in each active platform's
+  instruction file telling agents to use visible Orca tabs, not hidden background runs, for cross-agent discussion and review,
+  plus the one-writer review protocol. `uninstall` removes it; `update` refreshes it only where installed.
+- **`init --git-init`** creates the git repo when the directory isn't one (explicit flag only).
+
+### Changed
+- `init` and `setup` now check that git is installed first, with per-platform install hints — also when a `.git` directory exists.
+- `fw-coldstart` handles a never-filled STATE: it writes the first STATE from the repo, and health is never guessed green
+  (yellow unless something was verified this session). The READMEs and workflow docs now say to run `fw-coldstart` after
+  install instead of initializing STATE with `fw-record`.
+- `init` (and `setup`) now end by pointing at `fw-coldstart` for the first STATE, instead of hand-editing STATE.
+- `fw-record`'s description and the record template's trigger line read "≥3 commits / session wrap-up / (code repos)
+  schema or prod", so notes repos aren't told to wrap up on schema/prod changes.
+- `roles` (install) under a `--private` install now adds `fw-roles` to the exclude block, and `update` keeps it there —
+  before, the copied skill showed up in `git status`.
+
+### Documentation
+- READMEs (en / zh-TW / zh-CN / ja): `setup` is the primary install entry, `init` is documented as the non-interactive form;
+  new `doctor`, `--profile=notes`, Orca and `--git-init` sections; the Security "Fixed write scope" list now includes
+  `~/.flightwake/registry.json`, the opt-in Orca block and `fw-roles` skill, and names `git init` as the one exception to
+  "only copies files".
+
 ## [0.14.0] — 2026-09-28
 
 ### Added

@@ -17,12 +17,20 @@
 
 ```bash
 cd your-repo
+npx flightwake setup    # 引導式安裝:問幾個問題、列出將寫入的每個路徑,你確認後才安裝
+```
+
+`setup` 需要終端機。它先檢查 git(目錄不是 repo 時會問要不要 `git init`,預設 No,且只在最後確認後才執行),接著問語言、agent、選配附加項(每項預設 No:底部儀表、roles、Orca 協作)與 repo 類型(code / notes),列出將寫入的所有路徑,你確認後才動手——Ctrl-C 或拒絕都不會寫入任何東西。若已安裝 flightwake,只會提供就地升級(`update`)。它與 `init` 走同一條安裝路徑,裝完跑 `doctor` 並印出下一步。命令列上給的旗標會直接回答對應的問題;`--private` 只能用旗標,從不詢問。
+
+**非互動形式**——`npx flightwake init [旗標]`(直接打 `npx flightwake` 效果相同)從不提問:給自動化、agent、CI 與已經知道要什麼的進階使用者用:
+
+```bash
 npx flightwake init --lang=zh-TW --statusline   # 繁體中文 + 底部儀表
 npx flightwake init --lang=zh-TW --statusline --agents=claude,codex,gemini   # 三家一次裝齊(Claude Code + Codex + Gemini CLI)
 npx flightwake update                           # 就地升級,沿用你裝過的選項(lang/statusline/private)
 ```
 
-**選你的語言** — 安裝的模板、skill 與所有 CLI/儀表輸出都跟著它走。**刻意不做自動偵測**:終端的 `LANG` 與作業系統語系經常不一致(實測過:系統是 zh_TW,終端卻回報 `en_US.UTF-8`),猜錯又講得很有自信,比明講預設更糟。直接複製你要的那行:
+**選你的語言**(非互動形式;`setup` 會幫你問)— 安裝的模板、skill 與所有 CLI/儀表輸出都跟著它走。**刻意不做自動偵測**:終端的 `LANG` 與作業系統語系經常不一致(實測過:系統是 zh_TW,終端卻回報 `en_US.UTF-8`),猜錯又講得很有自信,比明講預設更糟。直接複製你要的那行:
 
 | 語言 | 全新安裝 | 已經裝成其他語言 |
 |---|---|---|
@@ -41,7 +49,7 @@ init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claud
 
 ### 第一次安裝後
 
-1. 開一個 Claude Code session,說「**用 /fw-record 初始化 STATE**」——讓模型把 repo 現況寫成第一份 STATE
+1. 在 repo 裡開一個 agent session,執行 `/fw-coldstart`——它會發現 STATE 還是未填的範本,並依 repo 現況寫出第一份 STATE(health 絕不亂猜成 green:沒有實際驗證前一律是 yellow)
 2. `git add .flightwake .claude CLAUDE.md && git commit`
 3. 之後每個 session 都是下面的日常循環
 
@@ -136,6 +144,14 @@ skill 與 hook 是各平台的便利糖衣——同一套四個 skill、同一�
 
 **`--private`** 讓紀錄**只留本機、不進 git**:所有寫入登進 `.git/info/exclude`(純本地,不在 repo 留痕跡),hook 改進 `.claude/settings.local.json`,義務表改寫 `CLAUDE.local.md`(受 git 追蹤的既有指令檔一律不碰)。代價:紀錄不隨 repo 共享、重新 clone 後要重跑 `init --private`——「進 git 隨 repo 共享」才是 flightwake 的預設與存在理由,`--private` 是給「在別人的 repo 裡私用」的逃生口。
 
+**`doctor`**(`npx flightwake doctor`)是唯讀、不連網的安裝結構檢查:git 與 git root、Node ≥18、`.flightwake/`、STATE(未填的範本欄位算警告)、`latest_record`、標記區塊及其 version/lang/profile 是否一致、skill、hook 註冊(JSON 合法、指令完全一致、事件正確——Claude Code/Codex 為 Stop,Gemini CLI 為 AfterAgent——無重複、腳本存在)、`--private` 的 exclude 是否真的生效,以及選配附加項狀態。每行輸出 ok / warning / fail;有任何 fail 即 exit 1。它只驗證安裝結構,不保證 hook 在執行期真的會觸發(Codex 是否信任 hook 路徑無法檢查,只會印出提示)。不寫入任何東西。
+
+**`--profile=code|notes`**(預設 `code`)選擇義務表。`notes` 給非程式碼的 repo(寫作、研究、筆記):拿掉「測試綠 + typecheck 乾淨」、「prod 驗證證據」與 schema/prod 收尾觸發,保留冷啟動、決策、坑、交接、≥3 commit 收尾、破壞性操作先確認、session 結束時 STATE 誠實。安裝的檔案相同。profile 記在標記裡(`profile=notes`);`update` 會沿用,`update --profile=code` 可切回。
+
+**`--orca`**(選配;`setup` 也會問,但只在偵測到 Orca 時)在每個啟用平台的指令檔加一個標記區塊:跨 agent 討論與審查要用看得見的 Orca 分頁,不要用藏在背景的執行;並附單一寫手審查協議(被請來審查的 agent 不寫 record、不碰 STATE;提問方把採納的結論寫進自己的 record)。`uninstall` 會移除;`update` 只在已安裝處刷新。
+
+**`--git-init`** 讓 `init` 在目錄不是 git repo 時先建立它——只有明確給旗標才會做;沒給就停下並告知。`init` 與 `setup` 都會先檢查 git 是否已安裝,沒有則依平台給出安裝提示。
+
 **`uninstall`** 反向清除 init 的固定寫入範圍:刪 skill 與框架檔、從 settings 摘除 flightwake 的 Stop hook(使用者其他 hook 原樣保留)、移除指令檔與 `.git/info/exclude` 的標記區塊(由 flightwake 建的檔案清空後刪除)。**`.flightwake/` 是使用者資料,預設保留**,`uninstall --purge` 才連同刪除。
 
 **monorepo 政策:單 repo 一份,裝在 git root。** 工作是 session 形狀的——一個 session 常橫跨多個 package,記錄跟著 session 走;拆到子目錄各裝會把同一段工作切碎成多份 record,也讓「該讀哪份 STATE」變成新的冷啟動歧義。子目錄執行 init 會擋下並指路 root。submodule 有自己的 `.git`,視為獨立 repo 各裝各的。多團隊高流量 monorepo 若覺得 CI 落後檢查誤報,先調 `--threshold`。
@@ -196,7 +212,7 @@ flightwake 不會把 workflow 寫進你的 repo——`.github/workflows/` 權限
 ## 安全性
 
 - **零依賴、無網路、無 install script**:安裝器只做檔案複製;hook 只用 `git`(無 shell)做唯讀查詢。
-- **寫入範圍固定**:`init` 只碰 `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`、agent 指令檔裡的標記區塊,以及(偵測到 Codex / Gemini CLI 時)`.agents/skills/fw-*`、`.codex/hooks.json`、`.gemini/settings.json`;`--private` 時改碰 `.claude/settings.local.json`、`CLAUDE.local.md` 與 `.git/info/exclude` 裡的標記區塊(Codex/Gemini 那幾個檔只在未受追蹤時才寫,並加進 exclude)。`uninstall` 反向清除同一範圍。
+- **寫入範圍固定**:`init` 只碰 `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`、agent 指令檔裡的標記區塊(含 Orca 區塊,僅在你選用時)、`~/.flightwake/registry.json`(init/update 會寫;uninstall 移除本 repo 的條目)、`.claude/skills/fw-roles` / `.agents/skills/fw-roles`(僅在你選用 roles 時),以及(偵測到 Codex / Gemini CLI 時)`.agents/skills/fw-*`、`.codex/hooks.json`、`.gemini/settings.json`;`--private` 時改碰 `.claude/settings.local.json`、`CLAUDE.local.md` 與 `.git/info/exclude` 裡的標記區塊(Codex/Gemini 那幾個檔只在未受追蹤時才寫,並加進 exclude)。`uninstall` 反向清除同一範圍。`doctor` 不寫入任何東西。「只複製檔案」唯一的例外是 `git init`:只在你於 `setup` 最後摘要確認後,或你傳了 `--git-init` 時才會執行。
 - **hook 進 git**:`.flightwake/hooks/state-check.mjs` 是 repo 內的檔案,能 commit 的人就能改——與所有 repo-local 設定同級,Claude Code 載入時會要求確認。
 - 漏洞回報見 [SECURITY.md](SECURITY.md)。以 npm Trusted Publishing 發布(附 provenance),可用 `npm audit signatures` 驗證。
 

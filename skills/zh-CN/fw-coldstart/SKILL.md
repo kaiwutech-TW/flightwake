@@ -10,6 +10,15 @@ description: flightwake 冷启动 — 接手一个 repo 前先恢复状态。Use
 ## 步骤
 
 1. 读 `.flightwake/STATE.md`(现在在哪、进行中、下一步入口、常备事实)
+   **还没初始化?** STATE 若仍留有模板自带的占位符——frontmatter 的 `updated: {{DATE}}`、`updated_by: {{SESSION_OR_PERSON}}`、
+   `latest_record: records/{{YYMMDD}}-{{slug}}.md`,或正文中与模板逐字相同的 `{{…}}` 行——这是第一次启用,不是接手。写出第一版 STATE,然后直接跳到第 5 步:
+   - 只有上述已知的模板行算未填。其他 `{{…}}` 是用户自己的内容(示例、自己的模板),原样保留;已填的内容也原样保留——只替换未填的行
+   - 依 repo 现状填:README/docs、`git log --oneline -20`、目录结构、明显的进行中工作。
+     `updated` = 今天,`updated_by` = 你(模型/session),`latest_record` = `.flightwake/records/` 里最新的档,没有就写 `none`
+   - `health`:模板预填的 `health: green` 视为未填。只有本 session 有验证证据(例如实际跑过测试且通过)才标 green;
+     否则标 yellow 并在注释写明原因(例如 `health: yellow  # 第一版 STATE,尚未验证任何东西`)
+   - 缺料时:没有 commit → 写「尚无历史」;没有 README → 依文件结构描述并注明;没有 record → `latest_record: none`。宁可写「不明」也不要猜
+   - 先把第一版 STATE 回报给用户(一段话,加上判断不出来的部分),再继续
 2. 读 STATE frontmatter 指向的 `latest_record`(上次收尾的完整脉络)
 3. 只在需要时才读:`DECISIONS.md`(要改既有方向前必读)、`TRAPS.md`(碰到怪症状时查;
    **另外——要做的事若碰得到某条 trap 的领域,动手前先查那条**,别等症状出现才查,那时已经踩下去了)
