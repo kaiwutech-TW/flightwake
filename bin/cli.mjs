@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { runRoles, removeRoleArtifacts } from './roles.mjs';
 import {
-  LANGS, PROFILES, GROUPS, INSTRUCTION_CANDIDATES, ORCA_BLOCK_RE, noJunk, makeM, gitAvailable, repoState, excludePath,
+  LANGS, PROFILES, GROUPS, isAgentName, INSTRUCTION_CANDIDATES, ORCA_BLOCK_RE, noJunk, makeM, gitAvailable, repoState, excludePath,
   addPrivateExcludes, gitMissingMessage, monorepoMessage, notRepoMessage, detectInstall, resolveOptions, install,
   printNext, unregisterRepo,
 } from './install.mjs';
@@ -70,7 +70,7 @@ if (profileArg && !PROFILES.includes(profileArg)) {
 const agentsArg = flagValue('agents');
 const wanted = agentsArg !== undefined ? agentsArg.split(',').map((s) => s.trim()).filter(Boolean) : null;
 if (wanted) {
-  const bad = wanted.filter((w) => !GROUPS[w]);
+  const bad = wanted.filter((w) => !isAgentName(w));
   if (bad.length) { log(`⚠️  --agents not recognized: ${bad.join(', ')} (available: ${Object.keys(GROUPS).join(', ')})`); process.exit(1); }
 }
 const flags = {

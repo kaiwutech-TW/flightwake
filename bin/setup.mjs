@@ -11,7 +11,7 @@
 import { createInterface } from 'node:readline';
 import { execFileSync } from 'node:child_process';
 import {
-  LANGS, GROUPS, makeM, gitAvailable, repoState, detectInstall, detectedAgents, detectOrca, resolveOptions, install,
+  LANGS, GROUPS, isAgentName, makeM, gitAvailable, repoState, detectInstall, detectedAgents, detectOrca, resolveOptions, install,
   printNext, noJunk, addPrivateExcludes, gitMissingMessage, monorepoMessage,
 } from './install.mjs';
 import { installRolesSkill } from './roles.mjs';
@@ -217,7 +217,7 @@ export async function runSetup({ io, flags = {}, ctx }) {
         const a = await ask(prompt);
         // Numbers map to the listed order; names pass through
         const list = (a ? a.split(/[\s,]+/).filter(Boolean) : detected).map((x) => (/^\d+$/.test(x) ? NAMES[Number(x) - 1] ?? x : x));
-        const bad = list.filter((x) => !GROUPS[x]);
+        const bad = list.filter((x) => !isAgentName(x));
         if (list.length && !bad.length) { agents = [...new Set(list)]; break; }
         say(bad.length
           ? M({ en: `  Not recognized: ${bad.join(', ')}`, 'zh-TW': `  無法辨識:${bad.join(', ')}`, 'zh-CN': `  无法识别:${bad.join(', ')}`, ja: `  認識できない:${bad.join(', ')}` })

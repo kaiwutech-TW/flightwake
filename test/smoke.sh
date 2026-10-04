@@ -1098,5 +1098,39 @@ summary_vs_writes "非 repo:git init + 安裝" --orca=0 -- y "" 1 y "" "" ""
 [ -d .git ] || fail "36.7 測試前提:應已 git init"
 pass "36.7 setup 摘要與實際寫入的路徑集合一致(新裝全選項/全預設/升級/含 git init)"
 
+# 37. Astra 複審(docs/plans/setup.diff-review-astra-2.md)的回歸測試
+# 37.1 工具名稱只接受明確集合:constructor / toString / __proto__ 一律無法辨識(setup 複選題與 init --agents)
+for bad in constructor toString __proto__ hasOwnProperty; do
+  newrepo "$TMP/ay1-$bad" >/dev/null
+  rc=0; out=$(node "$CLI" init --agents=$bad 2>&1) || rc=$?
+  [ "$rc" = 1 ] && echo "$out" | grep -q 'not recognized' || fail "37.1 init --agents=$bad 應被拒(rc=$rc: $out)"
+  [ ! -e .flightwake ] || fail "37.1 init --agents=$bad 不得寫入"
+  out=$(node "$DRIVE" --orca=0 -- "" "$bad" 2 "" "" "" 2>&1) || fail "37.1 setup 答 $bad 後重選應成功(out: $out)"
+  echo "$out" | grep -q "Not recognized: $bad" || fail "37.1 setup 應把 $bad 當成無法辨識(got: $out)"
+  node "$CLI" doctor >/dev/null 2>&1 || fail "37.1 重選 codex 後 doctor 應 0"
+done
+pass "37.1 工具名稱白名單:constructor/toString/__proto__ 等在 setup 與 init --agents 都被拒"
+
+# 37.2 --private 的 Orca 改寫到 CLAUDE.local.md 時,新目的地受追蹤 → 跳過並警告,不寫入
+newrepo "$TMP/ay2" >/dev/null
+node "$CLI" init --agents=claude >/dev/null && echo "# 本地筆記" > CLAUDE.local.md && git add -A && git commit -qm shared
+rc=0; out=$(node "$CLI" init --private --orca --agents=claude 2>&1) || rc=$?
+git diff --quiet -- CLAUDE.md CLAUDE.local.md || fail "37.2 受追蹤的 CLAUDE.md / CLAUDE.local.md 都不得被改(diff: $(git diff --stat | tr '\n' ' '))"
+echo "$out" | grep -q -- '--private: CLAUDE.local.md' || fail "37.2 CLAUDE.local.md 受追蹤時應跳過並警告(got: $out)"
+pass "37.2 --private 的 Orca 新目的地(CLAUDE.local.md)受追蹤也跳過並警告"
+
+# 37.3 registry 維持 best-effort:registry.json 是 symlink → 安裝照常成功(exit 0,與 main 一致)、只提醒、不經由 symlink 寫入
+newrepo "$TMP/ay3" >/dev/null
+RH="$TMP/ay3-home"; mkdir -p "$RH" && echo '{"version":1,"repos":{}}' > "$TMP/ay3-real-registry.json" && ln -s "$TMP/ay3-real-registry.json" "$RH/registry.json"
+rb=$(shasum < "$TMP/ay3-real-registry.json")
+rc=0; out=$(FLIGHTWAKE_HOME="$RH" node "$CLI" init 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "37.3 registry 是 symlink 時安裝仍應 exit 0(rc=$rc: $out)"
+echo "$out" | grep -q 'registry' || fail "37.3 應提醒 registry 未更新"
+echo "$out" | grep -q '✅ done' || fail "37.3 registry 問題不影響安裝完成訊息"
+[ "$rb" = "$(shasum < "$TMP/ay3-real-registry.json")" ] && [ -L "$RH/registry.json" ] || fail "37.3 不得經由 symlink 寫 registry,也不得動那個 symlink"
+rc=0; FLIGHTWAKE_HOME="$RH" node "$CLI" update >/dev/null 2>&1 || rc=$?
+[ "$rc" = 0 ] || fail "37.3 registry 是 symlink 時 update 也應 exit 0"
+pass "37.3 registry 是 symlink:只提醒、不寫入、安裝與 update 照常 exit 0"
+
 echo ""
 echo "✅ smoke 全過"

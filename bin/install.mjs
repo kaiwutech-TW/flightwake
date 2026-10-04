@@ -23,6 +23,8 @@ export const GROUPS = {
   codex: ['AGENTS.md'],
   gemini: ['GEMINI.md'],
 };
+// Own-property check: a plain `GROUPS[x]` lookup accepts inherited names like constructor / toString / __proto__
+export const isAgentName = (x) => Object.hasOwn(GROUPS, x);
 export const HOOK_CMD = 'node "$CLAUDE_PROJECT_DIR/.flightwake/hooks/state-check.mjs"';
 export const HOOK_CMD_GIT = 'node "$(git rev-parse --show-toplevel)/.flightwake/hooks/state-check.mjs"';
 export const SL_CMD = 'node "$CLAUDE_PROJECT_DIR/.flightwake/hooks/statusline.mjs"';
@@ -602,19 +604,18 @@ export function install(o) {
       if (!f) continue;
       // --private: same rule as every other private write — a git-tracked file would carry the trace.
       // claude has a local twin (CLAUDE.local.md); other platforms have none → skip and say so.
+      // The redirect target is checked again: a tracked CLAUDE.local.md is just as visible as a tracked CLAUDE.md.
+      if (PRIVATE && name === 'claude' && isTracked(f.rel)) f = { rel: 'CLAUDE.local.md', path: join(TARGET, 'CLAUDE.local.md') };
       if (PRIVATE && isTracked(f.rel)) {
-        if (name !== 'claude') {
-          if (o.orca || readFileSync(f.path, 'utf8').includes(ORCA_BEGIN)) log(`  ⚠️  --private: ${f.rel}${M({
-            en: ' is git-tracked, writing would leave a trace — Orca collaboration block skipped',
-            'zh-TW': ' 受 git 追蹤,寫入會留下痕跡 — 跳過 Orca 協作區塊',
-            'zh-CN': ' 受 git 追踪,写入会留下痕迹 — 跳过 Orca 协作区块',
-            ja: ' は git 管理下のため、書き込むと痕跡が残る — Orca 連携ブロックはスキップ',
-          })}`);
-          continue;
-        }
-        f = { rel: 'CLAUDE.local.md', path: join(TARGET, 'CLAUDE.local.md') };
-        privateExcludes?.push(f.rel);
+        if (o.orca || readFileSync(f.path, 'utf8').includes(ORCA_BEGIN)) log(`  ⚠️  --private: ${f.rel}${M({
+          en: ' is git-tracked, writing would leave a trace — Orca collaboration block skipped',
+          'zh-TW': ' 受 git 追蹤,寫入會留下痕跡 — 跳過 Orca 協作區塊',
+          'zh-CN': ' 受 git 追踪,写入会留下痕迹 — 跳过 Orca 协作区块',
+          ja: ' は git 管理下のため、書き込むと痕跡が残る — Orca 連携ブロックはスキップ',
+        })}`);
+        continue;
       }
+      if (PRIVATE && f.rel === 'CLAUDE.local.md') privateExcludes?.push(f.rel);
       const cur = existsSync(f.path) ? readFileSync(f.path, 'utf8') : '';
       if (cur.includes(ORCA_BEGIN)) {
         if (!FORCE) continue;
@@ -676,6 +677,9 @@ export function install(o) {
   {
     const REGISTRY = registryPath();
     try {
+      // Best-effort contract: a registry problem (here, a symlinked registry.json) is a notice, never an install failure,
+      // and never a reason to write through the symlink
+      if (isLink(REGISTRY)) throw new Error('symlink');
       const reg = readRegistry();
       const today = new Date().toISOString().slice(0, 10);
       reg.repos[TARGET] = { ...(reg.repos[TARGET] ?? { registered: today }), fw_version: VERSION };
