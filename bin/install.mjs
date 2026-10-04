@@ -957,28 +957,38 @@ export function printModNotes({ lang, gauge, log }) {
   log(M({
     en: `   ℹ️  Claude Code mod installed in ${MOD_REL}/ — it needs Claude Code ${MOD_MIN_CLAUDE} or later.
        Start Claude Code from the repo root; the first time, it asks you to trust this folder — the mod loads only after you accept.
+       To check it loaded and what each feature is doing, run /fw-mod in Claude Code.
        Role guard (off by default): the installer cannot switch it on, because plugin options are not read from project settings.
        Turn it on yourself in Claude Code's /config, or in your user settings (~/.claude/settings.json):
          ${key}
        It is not a security boundary: it only stops the main session's Edit/Write into the deny-write paths of your role; Bash and aliases of a path still get through.`,
     'zh-TW': `   ℹ️  Claude Code mod 已安裝在 ${MOD_REL}/ — 需要 Claude Code ${MOD_MIN_CLAUDE} 以上。
        請從 repo 根目錄啟動 Claude Code;第一次會問你是否信任這個資料夾 — 接受之後 mod 才會載入。
+       要確認有載入、各功能在做什麼,在 Claude Code 裡跑 /fw-mod。
        角色守門(預設關閉):安裝器無法替你開啟,因為外掛選項不會從專案設定讀取。
        請自己在 Claude Code 的 /config 開啟,或寫進你的使用者設定(~/.claude/settings.json):
          ${key}
        它不是安全邊界:只擋主 session 用 Edit/Write 寫入你角色的 deny-write 路徑;Bash 與同一路徑的別名仍然寫得進去。`,
     'zh-CN': `   ℹ️  Claude Code mod 已安装在 ${MOD_REL}/ — 需要 Claude Code ${MOD_MIN_CLAUDE} 以上。
        请从 repo 根目录启动 Claude Code;第一次会问你是否信任这个文件夹 — 接受之后 mod 才会加载。
+       要确认有加载、各功能在做什么,在 Claude Code 里跑 /fw-mod。
        角色守门(默认关闭):安装器无法替你开启,因为插件选项不会从项目设置读取。
        请自己在 Claude Code 的 /config 开启,或写进你的用户设置(~/.claude/settings.json):
          ${key}
        它不是安全边界:只挡主 session 用 Edit/Write 写入你角色的 deny-write 路径;Bash 与同一路径的别名仍然写得进去。`,
     ja: `   ℹ️  Claude Code mod を ${MOD_REL}/ にインストールしました — Claude Code ${MOD_MIN_CLAUDE} 以上が必要です。
        Claude Code は repo のルートから起動してください。初回はこのフォルダを信頼するか聞かれます — 承認して初めて mod が読み込まれます。
+       読み込まれたか、各機能が何をしているかは Claude Code で /fw-mod を実行すると分かります。
        ロールガード(既定はオフ):プラグインのオプションはプロジェクト設定から読まれないため、インストーラーではオンにできません。
        Claude Code の /config か、ユーザー設定(~/.claude/settings.json)でご自分でオンに:
          ${key}
        これはセキュリティ境界ではありません:メインセッションの Edit/Write によるロールの deny-write パスへの書き込みを止めるだけで、Bash や同じパスの別名からは書けてしまいます。`,
+  }));
+  if (!gauge) log(M({
+    en: '   ℹ️  No bottom gauge: the mod\'s band above the prompt is always shown, with health / STATE lag / context use — it stands in for the gauge.',
+    'zh-TW': '   ℹ️  沒有底部儀表:mod 在輸入框上方的橫條會一直顯示 health/STATE 落後/context 用量,代替儀表。',
+    'zh-CN': '   ℹ️  没有底部仪表:mod 在输入框上方的横条会一直显示 health/STATE 落后/context 用量,代替仪表。',
+    ja: '   ℹ️  下部ゲージなし:mod の入力欄の上の帯が health / STATE の遅れ / context 使用量を常に表示し、ゲージの代わりになる。',
   }));
   if (gauge) log(M({
     en: '   ℹ️  Bottom gauge and mod together: the bottom gauge shows health / STATE lag / context use; the mod\'s band above the prompt hides those same fields while the gauge is on, so it stays quiet and only toasts once when context runs hot.',

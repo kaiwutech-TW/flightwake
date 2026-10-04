@@ -12,7 +12,8 @@ description: flightwake 收尾記錄 — 寫飛行紀錄並更新 STATE。Use wh
 1. 盤點本段工作:`git log --oneline "$(git log -1 --format=%H -- .flightwake/STATE.md)"..HEAD`
    列出自上次收尾以來的 commits(STATE 從未 commit 時直接 `git log --oneline -20`);回想關鍵發現/決策/驗證
    — 本 session 有 `/fw-log`(Claude Code mod)時先跑它,以它的輸出作為 record 的 `tests:` 證據與變更清單的依據。標成「未知」(unknown)
-     的項目是它無法證明的——自己判斷(重跑,或照實寫成未證實),不可算成通過;「通過」(pass)的意義以它輸出結尾的說明為準
+     的項目是它無法證明的——自己判斷(重跑,或照實寫成未證實),不可算成通過;「通過」(pass)的意義以它輸出結尾的說明為準。和其他指令串在一起跑的測試(`echo … && npm test; echo exit=$?`)
+     只看得到整串的退出碼,不能當成通過的證據——需要留證據時,請把測試指令單獨執行一次
 2. 依 `.flightwake/TEMPLATE-record.md` 寫 `.flightwake/records/YYMMDD-slug.md`:
    - TL;DR 兩三句(起點問題 → 終點狀態)
    - 關鍵發現按重要性排序;夠格的**同步登進 TRAPS**(用 /fw-trap 格式)**與 DECISIONS**

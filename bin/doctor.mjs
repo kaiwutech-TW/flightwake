@@ -315,10 +315,10 @@ function checkMod({ fwSrc, at, readJson, ok, warn, fail, info, M }) {
   else if (atLeast(cc, MOD_MIN_CLAUDE)) ok(M({ en: `Claude Code ${cc} (the mod needs ${MOD_MIN_CLAUDE}+)`, 'zh-TW': `Claude Code ${cc}(mod 需要 ${MOD_MIN_CLAUDE} 以上)`, 'zh-CN': `Claude Code ${cc}(mod 需要 ${MOD_MIN_CLAUDE} 以上)`, ja: `Claude Code ${cc}(mod には ${MOD_MIN_CLAUDE} 以上が必要)` }));
   else warn(M({ en: `Claude Code ${cc} is older than ${MOD_MIN_CLAUDE} — the mod will not load until Claude Code is updated`, 'zh-TW': `Claude Code ${cc} 低於 ${MOD_MIN_CLAUDE} — 更新 Claude Code 之前 mod 不會載入`, 'zh-CN': `Claude Code ${cc} 低于 ${MOD_MIN_CLAUDE} — 更新 Claude Code 之前 mod 不会加载`, ja: `Claude Code ${cc} は ${MOD_MIN_CLAUDE} より古い — Claude Code を更新するまで mod は読み込まれない` }));
   info(M({
-    en: 'Claude Code mod: doctor cannot see whether Claude Code trusts this folder, or whether sessions start at the repo root — the mod loads only in a trusted folder opened at the repo root. Check in Claude Code that it loaded: /fw-log should be available.',
-    'zh-TW': 'Claude Code mod:doctor 看不到 Claude Code 是否已信任(trust)這個資料夾,也看不到 session 是否從 repo 根目錄(repo root)啟動 — mod 只在受信任、從根目錄開啟時載入。請在 Claude Code 裡實際確認有載入:應該能用 /fw-log。',
-    'zh-CN': 'Claude Code mod:doctor 看不到 Claude Code 是否已信任(trust)这个文件夹,也看不到 session 是否从 repo 根目录(repo root)启动 — mod 只在受信任、从根目录打开时加载。请在 Claude Code 里实际确认有加载:应该能用 /fw-log。',
-    ja: 'Claude Code mod:Claude Code がこのフォルダを信頼(trust)済みか、セッションが repo のルート(repo root)から始まったかは doctor から見えない — mod は信頼済みのフォルダをルートから開いたときだけ読み込まれる。Claude Code で実際に確認を:/fw-log が使えるはず。',
+    en: 'Claude Code mod: doctor cannot see whether Claude Code trusts this folder, or whether sessions start at the repo root — the mod loads only in a trusted folder opened at the repo root. Check in Claude Code that it loaded: /fw-mod shows each feature\'s state.',
+    'zh-TW': 'Claude Code mod:doctor 看不到 Claude Code 是否已信任(trust)這個資料夾,也看不到 session 是否從 repo 根目錄(repo root)啟動 — mod 只在受信任、從根目錄開啟時載入。請在 Claude Code 裡實際確認有載入:跑 /fw-mod 會列出各功能的狀態。',
+    'zh-CN': 'Claude Code mod:doctor 看不到 Claude Code 是否已信任(trust)这个文件夹,也看不到 session 是否从 repo 根目录(repo root)启动 — mod 只在受信任、从根目录打开时加载。请在 Claude Code 里实际确认有加载:跑 /fw-mod 会列出各功能的状态。',
+    ja: 'Claude Code mod:Claude Code がこのフォルダを信頼(trust)済みか、セッションが repo のルート(repo root)から始まったかは doctor から見えない — mod は信頼済みのフォルダをルートから開いたときだけ読み込まれる。Claude Code で実際に確認を:/fw-mod で各機能の状態が出る。',
   }));
 }
 

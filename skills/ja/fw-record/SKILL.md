@@ -13,7 +13,8 @@ description: flightwake 締めの記録 — 飛行記録を書いて STATE を�
    で前回の締め以降のコミットを列挙(STATE が未コミットなら `git log --oneline -20`)。重要な発見/決定/検証を思い出す
    — この session に `/fw-log`(Claude Code mod)があれば先に実行し、その出力を record の `tests:` の証拠と変更一覧の土台にする。
      「不明」(unknown)の項目はそれが証明できなかったもの——自分で判断し(再実行するか、未証明とそのまま書く)、合格に数えない。
-     「合格」(pass)の意味は出力の末尾の説明に従う
+     「合格」(pass)の意味は出力の末尾の説明に従う。他のコマンドとつなげて実行したテスト(`echo … && npm test; echo exit=$?`)は
+     全体の終了コードしか見えず、成功の証拠にならない——証拠が必要なときはテストコマンドを単独で一度実行する
 2. `.flightwake/TEMPLATE-record.md` に従って `.flightwake/records/YYMMDD-slug.md` を書く:
    - TL;DR を 2〜3 文(出発点の問題 → 到達した状態)
    - 重要な発見を重要度順に。条件を満たすものは **TRAPS にも**(/fw-trap の形式で)**DECISIONS にも**登録

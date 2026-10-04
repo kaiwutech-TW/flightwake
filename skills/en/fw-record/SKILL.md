@@ -13,7 +13,9 @@ Purpose: turn this stretch of work into a durable artifact "a stranger three mon
    lists commits since the last wrap-up (if STATE was never committed, use `git log --oneline -20`); recall key findings/decisions/verifications
    — if `/fw-log` exists in this session (the Claude Code mod), run it first and base the record's `tests:` evidence and change list on
      its output. Entries marked `unknown` are ones it could not prove — judge them yourself (rerun, or record them as not proven), never count
-     them as passed; what `pass` means is stated at the end of its output
+     them as passed; what `pass` means is stated at the end of its output. A test run chained with other commands
+     (`echo … && npm test; echo exit=$?`) shows only the chain's exit code and cannot count as passing evidence — when you
+     need evidence, run the test command on its own once
 2. Write `.flightwake/records/YYMMDD-slug.md` following `.flightwake/TEMPLATE-record.md`:
    - TL;DR in two or three sentences (starting problem → ending state)
    - Key findings ordered by importance; ones that qualify **also go into TRAPS** (in /fw-trap format) **and DECISIONS**

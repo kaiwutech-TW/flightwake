@@ -1584,5 +1584,24 @@ else
   echo "  skip: 沒有 python3,略過 43.1(pty)"
 fi
 
+# 43.2 mod 狀態指令與橫條新規則在安裝器/doctor/skill 的文字(四語 skill 部分是關鍵字檢查)
+cv=$(sed -n "s/^export const MOD_VERSION = '\(.*\)'$/\1/p" "$SRC/mods/flightwake/hooks/lib/core.ts")
+[ "$cv" = "$MODV" ] || fail "43.2 mod 的 MOD_VERSION($cv)應與 plugin.json 的 version($MODV)一致"
+newrepo "$TMP/fm1" >/dev/null
+out=$(node "$CLI" init --agents=claude --mod 2>&1) || fail "43.2 init --mod 應成功"
+echo "$out" | grep -q '/fw-mod' || fail "43.2 安裝結尾應指向 /fw-mod 確認 mod 有載入(got: $out)"
+echo "$out" | grep -qi 'band above the prompt is always shown' || fail "43.2 沒裝底部儀表時,結尾應說明橫條一律顯示並帶 context(got: $out)"
+out=$(node "$CLI" doctor 2>&1)
+echo "$out" | grep -E '^  ·' | grep -q '/fw-mod' || fail "43.2 doctor 應指向 /fw-mod 確認載入(got: $out)"
+newrepo "$TMP/fm2" >/dev/null
+out=$(node "$CLI" init --agents=claude --mod --statusline 2>&1)
+echo "$out" | grep -qi 'band above the prompt is always shown' && fail "43.2 有底部儀表時不應說橫條一律顯示"
+echo "$out" | grep -qi 'bottom gauge and mod together' || fail "43.2 有底部儀表時應印並存說明"
+for l in en zh-TW zh-CN ja; do
+  case $l in en) k='chained';; zh-TW|zh-CN) k='串在一起';; ja) k='つなげて';; esac
+  grep -q "$k" "$SRC/skills/$l/fw-record/SKILL.md" || fail "43.2 $l fw-record 應說明與其他指令串在一起跑的測試不能當通過證據(關鍵字 $k)"
+done
+pass "43.2 MOD_VERSION 與 plugin.json 一致;安裝結尾與 doctor 指向 /fw-mod;無儀表時說明橫條一律顯示;fw-record 四語提到串接的測試(關鍵字檢查)"
+
 echo ""
 echo "✅ smoke 全過"
