@@ -160,6 +160,7 @@ apply 只会改写或删除仍与它当初生成的内容一致、或已经等�
 
 如果你使用 `flightwake-mod` 这个 Claude Code mod,它的**角色守门**开关(`roleGuard`,默认关闭)可以把一条机器可读的规则变成拦截。上面「角色是指引,不是权限」那条对其他一切仍然成立。
 
+- **怎么打开。** 在 Claude Code 的 `/config`(mod 的选项会列在那里),或写进*用户*设置(`~/.claude/settings.json`):`"pluginConfigs": { "flightwake-mod@skills-dir": { "options": { "roleGuard": true } } }`。插件选项不读项目设置,所以这是每个人自己的选择。
 - **写在哪里。** 写在 `ROLES.md` 里该角色正文中自成一行:`deny-write: ["src/**", "lib/**"]`(repo 相对的 glob;不含 `/` 的样式会匹配任意深度的该文件名)。`roles apply` 与 `roles card` 会原文带过去,所以这一行会跟着进座位区块与派活卡。
 - **mod 强制什么。** 开关打开时,*主* Claude Code session 对这些路径的 `Edit`、`Write`、`NotebookEdit` 会被拦下,提示会说明是哪个角色的哪条规则、该怎么做(派给负责的角色,或请用户放行)。
 - **仍然只是指引的部分。** 其他一切:Bash 与所有其他工具、MCP、子 agent,以及自然语言的「禁止」项——它们不会被转成规则。

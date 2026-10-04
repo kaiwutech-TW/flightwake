@@ -167,6 +167,7 @@ cleaned up through the manifest. Edit ROLES.md, never the generated output.
 
 If you use the `flightwake-mod` Claude Code mod, its **role guard** switch (`roleGuard`, off by default) can turn one machine-readable rule into a block. "Roles are guidance, not permissions" above still holds for everything else.
 
+- **Turning it on.** In Claude Code's `/config` (the mod's options are rows there), or in your *user* settings (`~/.claude/settings.json`): `"pluginConfigs": { "flightwake-mod@skills-dir": { "options": { "roleGuard": true } } }`. Project settings are not read for plugin options, so this is a per-person choice.
 - **Where to write it.** A line of its own in the role's body in `ROLES.md`: `deny-write: ["src/**", "lib/**"]` (repo-relative globs; a pattern without `/` matches that file name at any depth). `roles apply` and `roles card` copy the body verbatim, so the line travels into the seat block and into the dispatch card.
 - **What the mod enforces.** With the switch on, the *main* Claude Code session's `Edit`, `Write` and `NotebookEdit` into those paths are refused, with a message that names the role, the rule and what to do instead (hand the work to the role that owns it, or ask the person to release it).
 - **What stays guidance.** Everything else: Bash and every other tool, MCP, subagents, and the natural-language "Never" items — they are never turned into rules.

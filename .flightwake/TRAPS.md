@@ -5,6 +5,50 @@
 # 坑 Registry
 
 ---
+name: mod-options-not-read-from-project-settings
+type: gotcha
+status: active
+tags: [claude-code, mods, plugin, config, installer]
+discovered: 2026-10-05
+confidence: confirmed
+paths: ["mods/**"]
+---
+
+**症狀**:暫存 repo 的 `.claude/settings.json` 寫了 `pluginConfigs["flightwake-mod"].options.roleGuard = true`,角色守門卻沒開;換成 `--settings` 檔、鍵寫 `flightwake-mod` 也沒開(從 `.claude/skills/` 載入時)。
+**根因**:Claude Code 2.1.289 只從 user / `--settings` / managed 設定讀外掛選項,**不讀專案設定**(debug log 原文:`no pluginConfigs["flightwake-mod@skills-dir"].options in user, --settings or managed settings (project settings are not read)`);且鍵依載入方式而異:`.claude/skills/` 載入是 `<name>@skills-dir`,`--plugin-dir` 是 `<name>` 或 `<name>@inline`。
+**解法/繞法**:文件教使用者在 `/config` 或 `~/.claude/settings.json` 用 `flightwake-mod@skills-dir` 鍵設定;安裝器(後續)不能靠寫專案 settings 幫使用者開 F5——這是每人一份的選擇。
+**佐證**:records/261005-flightwake-mod.md「真機載入」;兩次 debug log 對照(鍵 `flightwake-mod` 不生效、`flightwake-mod@skills-dir` 生效並實際擋下寫入)
+
+---
+name: project-skills-dir-mod-needs-trust
+type: gotcha
+status: active
+tags: [claude-code, mods, plugin, trust, headless]
+discovered: 2026-10-05
+confidence: probable
+---
+
+**症狀**:mod 放在暫存 repo 的 `.claude/skills/flightwake-mod/`,`claude -p` 跑起來完全沒載入(沒有系統提示區段、沒有 /fw-log,debug log 也沒提到它);同一資料夾以互動模式接受工作區信任後,立刻以 `flightwake-mod@skills-dir` 載入。
+**根因**:推測專案 skills 目錄的外掛只在資料夾**已受信任**時採用;`-p` 跳過信任對話框但不等於授予信任(與 Astra 審查的警告一致)。只觀察一組對照(同資料夾、信任前 -p 不載、信任後互動載入),信任後的 `-p` 未再測。
+**解法/繞法**:驗收真機載入要用互動 session 並接受信任(或改 `--plugin-dir` 驗功能,但那驗不到 skills-dir 路徑);文件與安裝器要說明「首次需信任此資料夾」。
+**佐證**:records/261005-flightwake-mod.md「真機載入」(load-debug.log vs load-debug4.log)
+
+---
+name: smoke-needs-python-311
+type: gotcha
+status: active
+tags: [smoke, python, macos, test]
+discovered: 2026-10-05
+confidence: confirmed
+commands: ["bash test/smoke.sh"]
+---
+
+**症狀**:`bash test/smoke.sh` 在 roles v2 節失敗:`ModuleNotFoundError: No module named 'tomllib'` → `❌ FAIL: TOML 應可解析且 escape 正確`。
+**根因**:smoke 用 `python3 -c "import tomllib"` 驗 TOML;macOS 內建 `/usr/bin/python3` 是 3.9,tomllib 3.11 才有。CI 的 runner 是新版 Python,所以只在本機咬人。
+**解法/繞法**:把 3.11+ 的 python3 放到 PATH 前面再跑(例:`uv python find '>=3.11'` 取路徑,建一個 `python3` 連結的目錄加到 PATH 前面);smoke 本身未改(本分支不動測試基礎設施)。
+**佐證**:同一 commit,PATH 換成 Python 3.13 後 smoke 全過(records/261005-flightwake-mod.md)
+
+---
 name: mod-dollar-cannot-cross-import
 type: constraint
 status: active

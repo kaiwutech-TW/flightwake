@@ -6,6 +6,7 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
+| 2026-10-05 | mod 的開關維持 `userConfig`,但**不由專案設定預設**:F5 文件教使用者自己在 `/config` 或使用者設定開;安裝器整合(後續)不得以寫專案 settings 的方式替人開 F5,也不該依賴專案 settings 調整 F1–F4 | 真機實測外掛選項只讀 user/`--settings`/managed(TRAPS `mod-options-not-read-from-project-settings`),寫專案 settings 不會生效;且 F5 是會擋動作的選配,本來就該是每個人自己的選擇 | Claude Code 開放專案層外掛選項時重評 |
 | 2026-10-05 | mod(`mods/flightwake/`,外掛名 `flightwake-mod`)的**共用模組只放純函式**,世界存取經 `Io` 閉包注入:每個功能檔各自保留一份 `ioOf($)`(約 15 行重複),不做共用 io 模組 | 引擎載入器拒絕 `$` 跨 import 傳遞(TRAPS `mod-dollar-cannot-cross-import`),只剩「各檔自建閉包」與「每個功能各寫一份讀檔/git 邏輯」兩條路;前者把重複壓在一個固定樣板,解析與落後量語意仍只有一份 | 引擎放寬此限制,或提供跨檔共享 `$` 的正式寫法 |
 | 2026-10-05 | mod 讀取範圍明列為:`.flightwake/`、git 狀態、CLAUDE.md / `.claude/CLAUDE.md` / CLAUDE.local.md 的 flightwake 與 roles marker、package.json 的 scripts、有效設定裡的 statusLine;不讀 AGENTS.md / GEMINI.md(語言偵測因此只看 Claude 的指令檔)。採設計者依 Astra 審查的修訂 | 原稿「只讀 .flightwake 與 git」與「讀 package scripts、CLAUDE.md、舊儀表、安裝語言」自相矛盾;明列可審、可測(測試夾具記錄所有讀取路徑) | 新功能需要額外來源時,先改此清單再實作 |
 | 2026-10-05 | F1 STATE 注入:**每 session 取一次快照**(以 session id 為鍵;模組 reload 沿用、/clear 重取),不每回合重讀;超過 6000 字元時改注入 frontmatter + 「進行中」+「下一步入口」兩節(依標題位置判定,四語通用)+ 原檔路徑與壓實提示,而不是截前 N 字 | 系統提示區段變動會讓其後前綴的提示快取失效;本 repo STATE 10.6K 字元且第 13 行即長篇歷史,截前 N 字正好丟掉未完事項。6000 字元約為範本填滿後的 3 倍,超過就是 STATE 該壓實的訊號 | 實測快取命中率或 token 成本顯示快照仍不划算 |

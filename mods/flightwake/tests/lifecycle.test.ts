@@ -121,7 +121,7 @@ describe('lifecycle: all features side by side', () => {
     await start($, w)
     const first = await compose($)
     await bash($, 'bash test/smoke.sh')
-    await $.command.run({ command: 'fw-role-release', args: 'all' })
+    await ($ as any).command.run({ command: 'fw-role-release', args: 'all' })
     w.files['.flightwake/STATE.md'] = STATE_FILLED.replace('migrate', 'CHANGED')
     await start($, w) // a module reload fires session.start again with the same id
     expect(await compose($)).toBe(first) // stable: no mid-session rewrite of the system prompt
