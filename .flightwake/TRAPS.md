@@ -5,6 +5,21 @@
 # 坑 Registry
 
 ---
+name: claude-code-loads-agents-md-when-no-claude-md
+type: gotcha
+status: active
+tags: [claude-code, agents-md, roles, seats, mods, instruction-files]
+discovered: 2026-10-05
+confidence: confirmed
+paths: ["bin/roles.mjs", "docs/roles*.md", "mods/flightwake/hooks/features/role-guard.ts"]
+---
+
+**症狀**:`docs/roles.md` 寫「Claude Code 不讀 AGENTS.md(已在 2.1 驗證)」,座位設計靠這點把 Codex 的座位寫進 AGENTS.md、Claude 的寫進 CLAUDE.md;但在 Claude Code 2.1.289,只有 AGENTS.md 的資料夾裡,`claude -p` 逐字答出只寫在 AGENTS.md 的暗號,debug log:`[cc-plugin-agents-md] $.ui.log (to debug): no CLAUDE.md found; AGENTS.md loaded: …/only-agents/AGENTS.md`。
+**根因**:內建外掛 `cc-plugin-agents-md`(`agents-md@builtin`,事件 session.start/prompt.context/agent.spawn/tool.call)在祖先目錄(實測掃 8 層)找 `CLAUDE.md`、`.claude/CLAUDE.md`、`CLAUDE.local.md`;**一個都沒有時**才找 `AGENTS.md`、`.claude/AGENTS.md` 並載入。只要有任何 CLAUDE 指令檔(含 private 安裝的 CLAUDE.local.md),AGENTS.md 就不載入。它有外掛選項(`pluginConfigs["agents-md@builtin"]`),內容未查。
+**解法/繞法**:有 Claude 座位的 repo 一律有 CLAUDE.md(roles apply 會寫),座位假設成立;**只有 AGENTS.md 的 repo**(只裝給 Codex、或只有 Codex 座位)裡開 Claude Code,會讀到 Codex 座位的角色與 `$fw-` 方言的義務表。mod 的角色守門只讀 Claude 的 marker,不受影響。要不要改 roles 設計留給 Kai(integration 任務項目 7 只查證不改)。
+**佐證**:2.1.289,scratchpad 三組暫存 repo(只有 AGENTS.md / 兩者都有 / 都沒有),讀檔工具全關,各 3 次:只有 AGENTS.md → 3/3 答出 AGENTS 暗號;兩者都有 → 3/3 只有 CLAUDE 暗號、AGENTS 暗號「no」;都沒有 → NONE。debug log 兩種情況的 ancestors 掃描行。record 261005-integration「項目 7」
+
+---
 name: unquoted-heredoc-runs-backticks
 type: gotcha
 status: active
