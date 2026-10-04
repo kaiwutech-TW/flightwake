@@ -1270,5 +1270,33 @@ for plat in codex gemini; do
 done
 pass "38.5 --private 下受追蹤而被跳過的 symlink 設定檔不觸發拒寫(codex / gemini,exit 0)"
 
+# 39. Astra 第四輪:rename 取代既有檔時保留原權限(暫存檔不比原檔寬鬆);目的地不存在才用預設
+fmode() { node -e "console.log((require('fs').statSync(process.argv[1]).mode & 0o7777).toString(8))" "$1"; }
+(
+umask 022
+newrepo "$TMP/aw1" >/dev/null; node "$CLI" init --agents=claude >/dev/null
+chmod 600 .claude/settings.json; chmod 640 CLAUDE.md; chmod 700 .flightwake/hooks/state-check.mjs; chmod 600 .claude/skills/fw-record/SKILL.md
+jedit .claude/settings.json "delete j.hooks"   # 讓 update 必須重寫 settings.json
+sed -i.bak 's/flightwake:begin v[0-9.]*/flightwake:begin v0.0.1/' CLAUDE.md && rm -f CLAUDE.md.bak && chmod 640 CLAUDE.md
+node "$CLI" update >/dev/null || fail "39 update 應成功"
+grep -q 'state-check.mjs' .claude/settings.json && grep -q "flightwake:begin v$FWV" CLAUDE.md || fail "39 測試前提:settings.json 與 CLAUDE.md 應已被重寫"
+[ "$(fmode .claude/settings.json)" = 600 ] || fail "39 settings.json 應維持 0600(got $(fmode .claude/settings.json))"
+[ "$(fmode CLAUDE.md)" = 640 ] || fail "39 指令檔應維持 0640(got $(fmode CLAUDE.md))"
+[ "$(fmode .flightwake/hooks/state-check.mjs)" = 700 ] || fail "39 hook 檔應維持 0700(got $(fmode .flightwake/hooks/state-check.mjs))"
+[ "$(fmode .claude/skills/fw-record/SKILL.md)" = 600 ] || fail "39 skill 檔應維持 0600(got $(fmode .claude/skills/fw-record/SKILL.md))"
+[ "$(fmode .flightwake/TEMPLATE-record.md)" = 644 ] || fail "39 未改權限的檔維持預設 0644(got $(fmode .flightwake/TEMPLATE-record.md))"
+# 附加路徑:沒有 marker 的指令檔 0600 → init 附加義務表後仍 0600
+newrepo "$TMP/aw2" >/dev/null; echo "# 我的" > CLAUDE.md; chmod 600 CLAUDE.md
+node "$CLI" init --agents=claude >/dev/null
+grep -q 'flightwake:begin' CLAUDE.md && [ "$(fmode CLAUDE.md)" = 600 ] || fail "39 附加後指令檔應維持 0600(got $(fmode CLAUDE.md))"
+[ "$(fmode .flightwake/STATE.md)" = 644 ] || fail "39 新建的檔用預設權限 0644(got $(fmode .flightwake/STATE.md))"
+# private:含使用者設定的 settings.local.json 0600 → init --private 後仍 0600
+newrepo "$TMP/aw3" >/dev/null; mkdir -p .claude && echo '{"env":{"TOKEN":"secret"}}' > .claude/settings.local.json && chmod 600 .claude/settings.local.json
+node "$CLI" init --private --agents=claude >/dev/null || fail "39 init --private 應成功"
+grep -q 'state-check.mjs' .claude/settings.local.json && grep -q 'secret' .claude/settings.local.json || fail "39 測試前提:settings.local.json 應合併寫入且保留使用者設定"
+[ "$(fmode .claude/settings.local.json)" = 600 ] || fail "39 settings.local.json 應維持 0600(got $(fmode .claude/settings.local.json))"
+)
+pass "39 rename 取代保留既有權限:settings.json / settings.local.json / 指令檔(取代與附加)/ hook / skill;新檔用預設"
+
 echo ""
 echo "✅ smoke 全過"

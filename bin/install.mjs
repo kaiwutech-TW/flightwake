@@ -5,7 +5,7 @@
  * before its final confirmation, instead of a hand-maintained copy that drifts from the code.
  * Zero dependencies: node built-ins + `git` (no shell).
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, lstatSync, realpathSync, rmSync, renameSync, copyFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, lstatSync, realpathSync, rmSync, renameSync, openSync, writeSync, fchmodSync, closeSync } from 'node:fs';
 import { join, dirname, basename, isAbsolute, relative, sep, delimiter } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
@@ -273,11 +273,19 @@ export function createWriter({ target, dry = false, log = () => {}, M = makeM('e
     if (lexists(p) && kind === 'dir' && !isDir(p)) return refuse(p, 'notdir');
     return true;
   };
-  // Atomic replace: temp file in the same directory, then rename over the destination (never an in-place overwrite)
-  const replaceFile = (p, writeTmp) => {
+  // Atomic replace: temp file in the same directory, then rename over the destination (never an in-place overwrite).
+  // The destination's existing mode carries over, and the temp file is never looser than it at any moment: it is
+  // created with that mode (umask can only tighten it), then set exactly before rename. No destination → default mode.
+  const replaceFile = (p, data) => {
+    let mode = null;
+    try { mode = statSync(p).mode & 0o7777; } catch {}
     const tmp = join(dirname(p), `.${basename(p)}.fw-${process.pid}-${Date.now()}.tmp`);
-    try { writeTmp(tmp); renameSync(tmp, p); }
-    catch (e) { try { rmSync(tmp, { force: true }); } catch {} throw e; }
+    try {
+      const fd = openSync(tmp, 'wx', mode ?? 0o666);
+      try { writeSync(fd, data); if (mode !== null) fchmodSync(fd, mode); }
+      finally { closeSync(fd); }
+      renameSync(tmp, p);
+    } catch (e) { try { rmSync(tmp, { force: true }); } catch {} throw e; }
   };
   const copyTree = (src, dst) => {
     mkdirSync(dst, { recursive: true });
@@ -286,7 +294,7 @@ export function createWriter({ target, dry = false, log = () => {}, M = makeM('e
       const s2 = join(src, f);
       const d2 = join(dst, f);
       if (statSync(s2).isDirectory()) copyTree(s2, d2);
-      else replaceFile(d2, (tmp) => copyFileSync(s2, tmp));
+      else replaceFile(d2, readFileSync(s2));
     }
   };
   const W = {
@@ -295,13 +303,13 @@ export function createWriter({ target, dry = false, log = () => {}, M = makeM('e
     write: (p, data, inRepo = true) => {
       if (!check(p, inRepo)) return false;
       writes.push(relOf(p));
-      if (!dry) { mkdirSync(dirname(p), { recursive: true }); replaceFile(p, (tmp) => writeFileSync(tmp, data)); }
+      if (!dry) { mkdirSync(dirname(p), { recursive: true }); replaceFile(p, data); }
       return true;
     },
     append: (p, data) => {
       if (!check(p)) return false;
       writes.push(relOf(p));
-      if (!dry) { const cur = existsSync(p) ? readFileSync(p, 'utf8') : ''; replaceFile(p, (tmp) => writeFileSync(tmp, cur + data)); }
+      if (!dry) { const cur = existsSync(p) ? readFileSync(p, 'utf8') : ''; replaceFile(p, cur + data); }
       return true;
     },
     // Copy a directory tree file by file (each file replaced atomically; files the user added are kept).
