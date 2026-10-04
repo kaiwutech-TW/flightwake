@@ -11,6 +11,9 @@ Purpose: turn this stretch of work into a durable artifact "a stranger three mon
 
 1. Inventory this stretch: `git log --oneline "$(git log -1 --format=%H -- .flightwake/STATE.md)"..HEAD`
    lists commits since the last wrap-up (if STATE was never committed, use `git log --oneline -20`); recall key findings/decisions/verifications
+   — if `/fw-log` exists in this session (the Claude Code mod), run it first and base the record's `tests:` evidence and change list on
+     its output. Entries marked `unknown` are ones it could not prove — judge them yourself (rerun, or record them as not proven), never count
+     them as passed; what `pass` means is stated at the end of its output
 2. Write `.flightwake/records/YYMMDD-slug.md` following `.flightwake/TEMPLATE-record.md`:
    - TL;DR in two or three sentences (starting problem → ending state)
    - Key findings ordered by importance; ones that qualify **also go into TRAPS** (in /fw-trap format) **and DECISIONS**

@@ -18,6 +18,9 @@ confidence: suspected  # confirmed(受控實驗坐實:改變因 → 症狀跟著
                        # 未標此欄 = unknown(舊條目),讀的人比照 suspected 對待
 tags: [{{標籤}}]
 discovered: {{YYYY-MM-DD}}
+paths: []          # 選填:這個坑相關的檔案,repo 相對路徑的 glob — 例如 ["src/db/**", "*.sql"]
+commands: []       # 選填:這個坑相關的指令前綴 — 例如 ["npm run migrate"]。留空即可;
+                   #   裝了 Claude Code mod 時,碰到相符的檔案或指令會把這條提示給 agent(每 session 一次)
 ---
 
 **症狀**:{{看到什麼(錯誤訊息/怪行為)——這欄永遠是事實,錯誤訊息照貼}}

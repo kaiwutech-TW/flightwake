@@ -1486,5 +1486,14 @@ rc=0; out=$(docmod "$NOCL") || rc=$?
 [ "$rc" = 1 ] && echo "$out" | grep -q "✗.*--private.*flightwake-mod" || fail "40.9 private 下 mod 資料夾沒被忽略時 doctor 應失敗並點名(rc=$rc: $out)"
 pass "40.9 doctor:mod 未安裝/已安裝、manifest/hooks 模組/版本/內容、Claude Code 版本(ok/提醒/取不到)、private 排除、唯讀"
 
+# 41. 第二階段延後的三件事(文字檢查,四語;不驗證 agent 實際行為)
+for l in en zh-TW zh-CN ja; do
+  grep -q '/fw-log' "$SRC/skills/$l/fw-record/SKILL.md" && grep -q 'unknown' "$SRC/skills/$l/fw-record/SKILL.md" || fail "41 $l fw-record 應說明有 /fw-log 時先取用其輸出、unknown 要自己判斷"
+  grep -q 'paths' "$SRC/skills/$l/fw-trap/SKILL.md" && grep -q 'commands' "$SRC/skills/$l/fw-trap/SKILL.md" || fail "41 $l fw-trap 應說明選填欄位 paths / commands"
+  sed -n '/^---$/,/^---$/p' "$SRC/templates/$l/TRAPS.md" | grep -q '^paths: \[\]' && sed -n '/^---$/,/^---$/p' "$SRC/templates/$l/TRAPS.md" | grep -q '^commands: \[\]' || fail "41 $l TRAPS 範本條目應有空的 paths / commands 欄位"
+done
+node -e "const a=require('$SRC/mods/flightwake/.claude-plugin/plugin.json').author; if(!a||!a.name) process.exit(1)" || fail "41 mod manifest 應有 author"
+pass "41 fw-record 取用 /fw-log、fw-trap 與 TRAPS 範本的 paths/commands 欄位(四語)、manifest author"
+
 echo ""
 echo "✅ smoke 全過"

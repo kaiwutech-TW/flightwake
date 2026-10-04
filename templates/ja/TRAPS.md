@@ -18,6 +18,9 @@ confidence: suspected  # confirmed(統制実験で確定:原因を切り替え�
                        # 欄が無い = unknown(旧項目)。読む側は suspected として扱う
 tags: [{{タグ}}]
 discovered: {{YYYY-MM-DD}}
+paths: []          # 任意:この落とし穴に関わるファイル。repo 相対の glob — 例 ["src/db/**", "*.sql"]
+commands: []       # 任意:この落とし穴に関わるコマンドの前方一致 — 例 ["npm run migrate"]。空でよい。
+                   #   Claude Code mod があれば、一致する編集やコマンドでこの項目を agent に示す(session ごとに 1 回)
 ---
 
 **症状**:{{何が見えたか(エラーメッセージ/おかしな挙動)——この欄は常に事実。エラーは原文のまま貼る}}

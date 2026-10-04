@@ -1,6 +1,7 @@
 {
   "name": "flightwake-mod",
   "version": "0.1.0",
+  "author": { "name": "kaiwutech-TW", "url": "https://github.com/kaiwutech-TW/flightwake" },
   "description": "flightwake's Claude Code layer: STATE in the system prompt, a quiet status band, a session flight log, trap tripwires and an opt-in role guard. Reads .flightwake/ and git only; never writes your records.",
   "types": "./types/index.d.ts",
   "userConfig": {
