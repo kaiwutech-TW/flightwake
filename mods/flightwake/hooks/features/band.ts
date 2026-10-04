@@ -87,6 +87,7 @@ function viewOf(lang: Lang, f: {
     contextPercent: f.contextPercent,
     hint,
     isQuiet: f.isLegacyGaugeActive || !isWorthShowing,
+    lang,
   }
 }
 
@@ -157,22 +158,14 @@ function lagText(lang: Lang, v: FwBandView): string {
   }
 }
 
-/** The install language, read at draw time from the instruction-file marker (file reads only; no git). */
-async function langOf($: EngineInterface): Promise<Lang> {
-  try {
-    const c = await fwContext(ioOf($))
-    return c === null ? 'en' : c.lang
-  } catch { return 'en' }
-}
-
 export function registerBand(on: On): void {
-  on('session.start', async ($, e, next) => {
+  on('session.start', {}, async ($, e, next) => {
     const r = await next(e)
     await refresh($)
     return r
   })
 
-  on('turn.complete', async ($, e, next) => {
+  on('turn.complete', {}, async ($, e, next) => {
     const r = await next(e)
     await refresh($)
     return r
@@ -194,7 +187,7 @@ export function registerBand(on: On): void {
       if (e.props.hasSurvey) return next(e)
       const v = await read($, bandView)
       if (!v || v.isQuiet) return next(e)
-      const lang = await langOf($)
+      const lang = v.lang
       const { Box, Text } = $.ui.resolve(e)
       const color = v.health === 'green' ? 'green' : v.health === 'yellow' ? 'yellow' : v.health === 'red' ? 'red' : undefined
       const lag = lagText(lang, v)

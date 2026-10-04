@@ -172,7 +172,7 @@ async function runRelease($: EngineInterface, io: Io, args: string): Promise<str
 }
 
 export function registerRoleGuard(on: On): void {
-  on('session.start', async ($, e, next) => {
+  on('session.start', {}, async ($, e, next) => {
     try {
       const io = ioOf($)
       const root = await io.root()
@@ -199,7 +199,7 @@ export function registerRoleGuard(on: On): void {
     return next(e)
   })
 
-  on('prompt.submit', async ($, e, next) => {
+  on('prompt.submit', {}, async ($, e, next) => {
     try {
       if (e.origin?.kind !== 'plugin') {
         const card = parseCard(e.text)
@@ -219,7 +219,7 @@ export function registerRoleGuard(on: On): void {
     return next(e)
   })
 
-  on('tool.call', async ($, e, next) => {
+  on('tool.call', {}, async ($, e, next) => {
     try {
       // Main loop only: a subagent (incl. a spawned on-call role) is an explicit assignment that overrides the seat.
       if (e.agentId !== undefined) return next(e)

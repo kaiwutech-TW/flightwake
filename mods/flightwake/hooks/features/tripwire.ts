@@ -148,7 +148,7 @@ async function hintFor($: EngineInterface, e: Record<string, unknown>): Promise<
 }
 
 export function registerTripwire(on: On): void {
-  on('tool.call', async ($, e, next) => {
+  on('tool.call', {}, async ($, e, next) => {
     const r = await next(e)
     if (r.deny !== undefined) return r
     try {

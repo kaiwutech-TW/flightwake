@@ -65,7 +65,9 @@ export function parseCommand(command: string): ParsedCommand {
     if (c === '`' || (c === '$' && command[i + 1] === '(') || c === '(' || c === ')' || (c === '<' && command[i + 1] === '<')) {
       isComplex = true
     }
-    const op = OPS.find((o) => command.startsWith(o, i))
+    // `&` inside a redirection (`2>&1`, `>&2`, `<&3`, `&>file`, `&>>file`) is part of the word, not an operator
+    const isRedirAmp = c === '&' && (command[i - 1] === '>' || command[i - 1] === '<' || command[i + 1] === '>')
+    const op = isRedirAmp ? undefined : OPS.find((o) => command.startsWith(o, i))
     if (op) {
       endSegment(op === '|&' ? '|' : op === ';;' ? ';' : op)
       i += op.length - 1

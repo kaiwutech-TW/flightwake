@@ -134,20 +134,20 @@ async function ensureSnapshot($: EngineInterface): Promise<Snap | null> {
 }
 
 export function registerStateInject(on: On): void {
-  on('session.start', async ($, e, next) => {
+  on('session.start', {}, async ($, e, next) => {
     const r = await next(e)
     try { await ensureSnapshot($) } catch {}
     return r
   })
 
-  on('session.end', async ($, e, next) => {
+  on('session.end', {}, async ($, e, next) => {
     if (e.reason === 'clear') {
       try { await update($, snapshotRef, () => null) } catch {}
     }
     return next(e)
   })
 
-  on('prompt.compose', async ($, e, next) => {
+  on('prompt.compose', {}, async ($, e, next) => {
     const r = await next(e)
     if (e.traits.includes('bare')) return r
     try {

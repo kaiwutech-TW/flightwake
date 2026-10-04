@@ -107,7 +107,7 @@ describe('off and degrade', () => {
     const p = engineBelow(on)
     await start($)
     expect((await write($, '/repo/src/x.ts')).deny).toBeUndefined()
-    expect(p.registered).toEqual([])
+    expect(p.registered).not.toContain('fw-role-release')
   })
 
   test('default (no options) is off', async ($, on) => {

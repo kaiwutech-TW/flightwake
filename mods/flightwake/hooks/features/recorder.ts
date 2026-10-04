@@ -62,7 +62,9 @@ export function redact(text: string, cap = CAP_COMMAND): string {
     .replace(RE_BEARER, 'Bearer ***')
     .replace(RE_KEY_VALUE, '$1***')
     .replace(RE_FLAG_VALUE, '$1***')
-    .replace(RE_LONG_RUN, '***')
+    // A long opaque run with a digit is a likely token; paths (leading / . ~) and plain words are kept, or the
+    // evidence itself (e.g. an absolute test path) would be erased.
+    .replace(RE_LONG_RUN, (m) => (/^[./~]/.test(m) || !/\d/.test(m) || !/[A-Za-z]/.test(m) ? m : '***'))
   return out.length > cap ? `${out.slice(0, cap - 1)}…` : out
 }
 
@@ -79,12 +81,12 @@ type Candidate =
 const SCRIPT_NAME_RE = /^(test|check|verify|typecheck|lint)([:._-].*)?$/
 const WORKSPACE_FLAGS = new Set(['--prefix', '--workspace', '-w', '--workspaces', '--filter', '-F', '-C', '--cwd', '--dir', '--recursive', '-r', '--if-present-in'])
 
-/** Tokens without trailing/inline redirections (`> f`, `2>/dev/null`, `< in`): they are tokens, not segments. */
+/** Tokens without redirections (`> f`, `2>/dev/null`, `2>&1`, `&>f`, `< in`): lib/shell keeps them as words. */
 function stripRedirects(tokens: readonly string[]): string[] {
   const out: string[] = []
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i] as string
-    const m = /^\d*(>>?|<)(.*)$/.exec(t)
+    const m = /^(?:\d*|&)(>>?|<)(.*)$/.exec(t)
     if (m) {
       if ((m[2] ?? '') === '') i++ // the target is the next word
       continue
@@ -92,11 +94,6 @@ function stripRedirects(tokens: readonly string[]): string[] {
     out.push(t)
   }
   return out
-}
-
-/** `2>&1` / `>&2` / `&>`: the shell reader would cut at the `&`; fold them into plain redirections first. */
-function foldFdRedirects(command: string): string {
-  return command.replace(/(^|\s)\d*>&(\d+|-)(?=\s|$)/g, '$1').replace(/(^|\s)&>>?(?=\s)/g, '$1>')
 }
 
 /** Strips `npx [flags]`, `pnpm exec`, `pnpm dlx`-free forms and `bunx`; null when the command is not wrapped. */
@@ -204,7 +201,7 @@ type Plan = {
 const isCdPrefix = (s: Segment): boolean => s.tokens[0] === 'cd' && s.tokens.length === 2 && s.op === '&&' && s.env.length === 0
 
 async function planBash(io: Io, root: string, cwd0: string, command: string): Promise<Plan | null> {
-  const parsed = parseCommand(foldFdRedirects(command.trim()))
+  const parsed = parseCommand(command.trim())
   let segs = parsed.segments
   let cwdAbs = cwd0 || root
   // Leading `cd <dir> &&` segments only move the cwd.
@@ -427,7 +424,7 @@ async function ensureCommand($: EngineInterface): Promise<void> {
 
 
 export function registerRecorder(on: On): void {
-  on('session.start', async ($, e, next) => {
+  on('session.start', {}, async ($, e, next) => {
     await ensureCommand($)
     return next(e)
   })
@@ -447,7 +444,7 @@ export function registerRecorder(on: On): void {
     }
   })
 
-  on('tool.call', async ($, e, next) => {
+  on('tool.call', {}, async ($, e, next) => {
     const tool = e.tool
     if (tool === 'Edit' || tool === 'Write' || tool === 'NotebookEdit') {
       const res = await next(e)

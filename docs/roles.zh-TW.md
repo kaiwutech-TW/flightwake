@@ -158,7 +158,7 @@ apply 只會改寫或移除仍與它當初產生的內容一致、或已經等�
 
 ### 選配:Claude Code mod 的角色守門
 
-如果你使用 `flightwake-mod` 這個 Claude Code mod,它的**角色守門**開關(`roleGuard`,預設關閉)可以把一條機器可讀的規則變成攔截。上面那條對其他一切仍然成立。
+如果你使用 `flightwake-mod` 這個 Claude Code mod,它的**角色守門**開關(`roleGuard`,預設關閉)可以把一條機器可讀的規則變成攔截。上面「角色是指引,不是權限」那條對其他一切仍然成立。
 
 - **寫在哪裡。** 寫在 `ROLES.md` 裡該角色本文中自成一行:`deny-write: ["src/**", "lib/**"]`(repo 相對的 glob;不含 `/` 的樣式會比對任何深度的該檔名)。`roles apply` 與 `roles card` 會原文帶過去,所以這一行會跟著進座位區塊與派工卡。
 - **mod 強制什麼。** 開關打開時,*主* Claude Code session 對這些路徑的 `Edit`、`Write`、`NotebookEdit` 會被擋下,訊息會說明是哪個角色的哪條規則、改怎麼做(派給負責的角色,或請使用者放行)。

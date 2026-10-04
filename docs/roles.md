@@ -165,7 +165,7 @@ cleaned up through the manifest. Edit ROLES.md, never the generated output.
 
 ### Optional: the Claude Code mod's role guard
 
-If you use the `flightwake-mod` Claude Code mod, its **role guard** switch (`roleGuard`, off by default) can turn one machine-readable rule into a block. The bullet above still holds for everything else.
+If you use the `flightwake-mod` Claude Code mod, its **role guard** switch (`roleGuard`, off by default) can turn one machine-readable rule into a block. "Roles are guidance, not permissions" above still holds for everything else.
 
 - **Where to write it.** A line of its own in the role's body in `ROLES.md`: `deny-write: ["src/**", "lib/**"]` (repo-relative globs; a pattern without `/` matches that file name at any depth). `roles apply` and `roles card` copy the body verbatim, so the line travels into the seat block and into the dispatch card.
 - **What the mod enforces.** With the switch on, the *main* Claude Code session's `Edit`, `Write` and `NotebookEdit` into those paths are refused, with a message that names the role, the rule and what to do instead (hand the work to the role that owns it, or ask the person to release it).

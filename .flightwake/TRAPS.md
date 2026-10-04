@@ -14,10 +14,10 @@ confidence: confirmed
 paths: ["mods/**"]
 ---
 
-**症狀**:`claude plugin validate` / `claude plugin test` 拒載模組:`$ is passed to "fwContext", imported from "../lib/core": $ is followed only into a function declared in this same file, never across an import`;另一個變體:`"on" is passed to something other than a function named at the top of this file or imported from one of the module's own files`(把 `on` 放進表格再迴圈呼叫)。
-**根因**:Claude Code 2.1.289 的載入器靜態追蹤 `$` 與 `on`:`$` 只能在同檔宣告的函式間傳遞且一律寫成 `$.noun.event(...)`;`on` 只能直接傳給頂層具名或 import 的函式。違反者整個 hooks 模組不載入(不是只跳過那個 hook)。
-**解法/繞法**:共用模組只放純函式;需要世界存取時,在功能檔內寫 `function ioOf($)` 回傳閉包物件(`{ read: (p) => $.fs.read(p), … }`)再傳給 import 的函式——閉包跨 import 可通過(validate 會顯示 `$.fs.read (via ioOf)`)。`register` 對每個功能逐行呼叫,不用表格迴圈。
-**佐證**:本分支 scratchpad 探針(同一模組改兩種寫法,validate 一拒一過,plugin test 一敗一過);DECISIONS 2026-10-05 首條
+**症狀**:`claude plugin validate` / `claude plugin test` 拒載模組:`$ is passed to "fwContext", imported from "../lib/core": $ is followed only into a function declared in this same file, never across an import`;變體二:`"on" is passed to something other than a function named at the top of this file or imported from one of the module's own files`(把 `on` 放進表格再迴圈呼叫);變體三:`on("session.start") is registered twice without a matcher`(兩個功能模組各自 `on('session.start', hook)`——每個功能單獨測都過,合併後整個外掛不載入)。
+**根因**:Claude Code 2.1.289 的載入器靜態追蹤 `$` 與 `on`:`$` 只能在同檔宣告的函式間傳遞且一律寫成 `$.noun.event(...)`;`on` 只能直接傳給頂層具名或 import 的函式;同一外掛對同一事件**最多一個無 matcher 的註冊**(有 matcher 的不限,連重複的 matcher 也可以)。違反者整個 hooks 模組不載入(不是只跳過那個 hook)。
+**解法/繞法**:共用模組只放純函式;需要世界存取時,在功能檔內寫 `function ioOf($)` 回傳閉包物件(`{ read: (p) => $.fs.read(p), … }`)再傳給 import 的函式——閉包跨 import 可通過(validate 會顯示 `$.fs.read (via ioOf)`)。`register` 對每個功能逐行呼叫,不用表格迴圈。多個模組要掛同一事件時一律帶 matcher;要「全部都接」就寫空 matcher `on('session.start', {}, hook)`——實測 validate 通過、執行期每次都觸發。
+**佐證**:本分支 scratchpad 探針(同一模組改兩種寫法,validate 一拒一過,plugin test 一敗一過;重複註冊另以 5 種組合探針:無 matcher×2 拒、其餘皆過,空 matcher 兩個 hook 執行期都觸發);DECISIONS 2026-10-05 首條
 
 ---
 name: codex-project-trust-exact-path

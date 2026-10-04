@@ -171,6 +171,11 @@ describe('shell', () => {
     expect(parseCommand('echo $(git rev-parse HEAD)').isComplex).toBe(true)
     expect(parseCommand("echo 'unterminated").isComplex).toBe(true)
     expect(parseCommand('git push origin main').segments).toHaveLength(1)
+    // fd redirections are words, not the background operator
+    expect(parseCommand('npm test 2>&1').segments.map((s) => s.tokens)).toEqual([['npm', 'test', '2>&1']])
+    expect(parseCommand('npm test &>out.log').segments).toHaveLength(1)
+    expect(parseCommand('echo hi >&2').segments).toHaveLength(1)
+    expect(parseCommand('sleep 1 & npm test').segments.map((s) => s.op)).toEqual(['&', ''])
   })
   test('token prefixes', () => {
     expect(startsWithTokens(['git', 'push', 'origin'], 'git push')).toBe(true)

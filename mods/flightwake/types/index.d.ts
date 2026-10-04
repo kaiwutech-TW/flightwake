@@ -21,6 +21,8 @@ export type FwBandView = {
   hint: string | null
   /** True when there is nothing worth showing (the band stays silent). */
   isQuiet: boolean
+  /** Install language, so drawing needs no file reads. */
+  lang: FwLang
 }
 
 /** F3 — one observed test/typecheck command completion. */

@@ -21,11 +21,19 @@ function boot(on: On, init: Partial<World> = {}, answer: (e: any) => any = () =>
   const clock = mock.clock(on, { now: T0 })
   const registered: string[] = []
   held = { value: undefined, version: 0 }
-  on('state.get', () => ({ value: { value: held.value, version: held.version } }))
+  // Only the recorder's own key is held here; the other features' keys (the whole plugin loads) get their own cells.
+  const others = new Map<string, Held>()
+  on('state.get', (_$, e) => {
+    const h = e.key === 'flightLog' ? held : (others.get(e.key) ?? { value: undefined, version: 0 })
+    return { value: { value: h.value, version: h.version } }
+  })
   on('state.set', (_$, e) => {
-    if (e.ifVersion !== undefined && e.ifVersion !== held.version) return { value: { isSet: false as const, version: held.version } }
-    held = { value: e.value, version: held.version + 1 }
-    return { value: { isSet: true as const, version: held.version } }
+    const h = e.key === 'flightLog' ? held : (others.get(e.key) ?? { value: undefined, version: 0 })
+    if (e.ifVersion !== undefined && e.ifVersion !== h.version) return { value: { isSet: false as const, version: h.version } }
+    const next = { value: e.value, version: h.version + 1 }
+    if (e.key === 'flightLog') held = next
+    else others.set(e.key, next)
+    return { value: { isSet: true as const, version: next.version } }
   })
   on('session.start', () => ({ cwd: w.root }))
   on('command.register', (_$, e) => {
@@ -210,6 +218,9 @@ describe('recorder: tests', () => {
     expect(redact(`x ${'a1'.repeat(20)} y`)).toBe('x *** y')
     expect(redact('a b '.repeat(100)).length).toBe(300)
     expect(redact('vitest run --reporter dot')).toBe('vitest run --reporter dot')
+    // absolute paths and long plain words are evidence, not secrets
+    expect(redact('claude plugin test /Users/someone/orca/workspaces/flightwake/mods/mods/flightwake')).toBe('claude plugin test /Users/someone/orca/workspaces/flightwake/mods/mods/flightwake')
+    expect(redact('pytest tests/integration/test_very_long_module_name_here')).toBe('pytest tests/integration/test_very_long_module_name_here')
   })
 
   test('pure helpers: masksExit, declaredCommands', () => {
