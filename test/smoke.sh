@@ -603,5 +603,351 @@ ls .claude/agents/fw-* 2>/dev/null | grep -q . && fail "roles remove 應清掉�
 grep -q 'flightwake-roles' CLAUDE.md AGENTS.md && fail "roles remove 應清掉區塊"
 pass "roles v2(座位表/待命原生定義/card/assign/manifest 清理/衝突/escape/空白路徑)"
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 23+. setup / doctor / profile / Orca / git 前置檢查(docs/plans/setup.md「測試」)
+# ═══════════════════════════════════════════════════════════════════════════
+DRIVE="$SRC/test/setup-drive.mjs"
+PTYRUN="$SRC/test/pty-run.py"
+NODE_BIN="$(command -v node)"
+HAVE_PY=1; command -v python3 >/dev/null 2>&1 || HAVE_PY=0
+newrepo() { mkdir -p "$1" && cd "$1" && git init -q && git config user.email t@t.t && git config user.name t; }
+# 整個目錄(含 .git)的檔案清單 + 內容雜湊 + 跨 repo registry — 用來證明「零寫入」
+snap() { { find . | sort; find . -type f -exec shasum {} + | sort -k2; if [ -f "$FLIGHTWAKE_HOME/registry.json" ]; then echo REGISTRY; shasum < "$FLIGHTWAKE_HOME/registry.json"; else echo NO-REGISTRY; fi; } | shasum; }
+# 取出 JSON 設定檔、用 node 就地改(argv: file, js-body 操作變數 j)
+jedit() { node -e "const fs=require('fs');const f=process.argv[1];const j=JSON.parse(fs.readFileSync(f,'utf8'));$2;fs.writeFileSync(f,JSON.stringify(j,null,2))" "$1"; }
+
+# 23. setup 在非 TTY(stdin 不是終端機)→ 非零 + 指引改用 init
+newrepo "$TMP/s-nontty" >/dev/null
+rc=0; out=$(node "$CLI" setup </dev/null 2>&1) || rc=$?
+[ "$rc" -ne 0 ] || fail "非 TTY 的 setup 應退出非零"
+echo "$out" | grep -q 'init' || fail "非 TTY 的 setup 應指引改用 init(got: $out)"
+[ ! -e .flightwake ] || fail "非 TTY 的 setup 不得寫任何東西"
+rc=0; out=$(echo y | node "$CLI" setup 2>&1) || rc=$?
+[ "$rc" -ne 0 ] || fail "stdin 為管道的 setup 應退出非零"
+pass "setup 非 TTY 擋下並指引 init"
+
+# 24. git 不在 PATH:專屬訊息,不與「不是 repo」混用(init 無 .git / init 有 .git / setup)
+NOGIT="$TMP/nogit-bin"; mkdir -p "$NOGIT"; ln -s "$NODE_BIN" "$NOGIT/node"
+if PATH="$NOGIT" "$NODE_BIN" -e "require('child_process').execFileSync('git',['--version'],{stdio:'ignore'})" 2>/dev/null; then
+  fail "測試前提錯誤:受限 PATH 下仍找得到 git"
+fi
+mkdir -p "$TMP/ng-nogit" && cd "$TMP/ng-nogit"
+rc=0; out=$(PATH="$NOGIT" "$NODE_BIN" "$CLI" init 2>&1) || rc=$?
+[ "$rc" -ne 0 ] && echo "$out" | grep -q 'git is not installed' || fail "無 git + 無 .git 的 init 應印「git is not installed」並非零(rc=$rc: $out)"
+echo "$out" | grep -qi 'not a git repo' && fail "無 git 時不應用「不是 repo」訊息"
+[ -z "$(ls -A)" ] || fail "無 git 時 init 不得寫任何東西"
+rc=0; out=$(PATH="$NOGIT" "$NODE_BIN" "$CLI" init --git-init 2>&1) || rc=$?
+[ "$rc" -ne 0 ] && echo "$out" | grep -q 'git is not installed' || fail "無 git 時 init --git-init 也應擋下"
+[ -z "$(ls -A)" ] || fail "無 git 時 init --git-init 不得建任何東西"
+newrepo "$TMP/ng-hasgit" >/dev/null
+rc=0; out=$(PATH="$NOGIT" "$NODE_BIN" "$CLI" init 2>&1) || rc=$?
+[ "$rc" -ne 0 ] && echo "$out" | grep -q 'git is not installed' || fail "有 .git 但無 git 的 init 應印專屬訊息並非零(rc=$rc: $out)"
+[ ! -e .flightwake ] || fail "有 .git 但無 git 時 init 不得寫 .flightwake"
+rc=0; out=$(PATH="$NOGIT" "$NODE_BIN" "$DRIVE" -- y y y 2>&1) || rc=$?
+[ "$rc" -ne 0 ] && echo "$out" | grep -q 'git is not installed' || fail "無 git 時 setup 應印專屬訊息並非零(rc=$rc: $out)"
+[ ! -e .flightwake ] || fail "無 git 時 setup 不得寫 .flightwake"
+pass "git 不在 PATH:init(無/有 .git)與 setup 皆印專屬訊息"
+
+# 25. 非 repo 目錄:init 無旗標 → 擋下且零寫入;--git-init → 建 .git 並完整安裝
+mkdir -p "$TMP/nr1" && cd "$TMP/nr1"
+rc=0; out=$(node "$CLI" init 2>&1) || rc=$?
+[ "$rc" -ne 0 ] || fail "非 repo 的 init 應非零"
+echo "$out" | grep -q -- '--git-init' || fail "非 repo 訊息應提示 --git-init"
+[ -z "$(ls -A)" ] || fail "非 repo 的 init 擋下時不得建任何東西(got: $(ls -A | tr '\n' ' '))"
+node "$CLI" init --git-init >/dev/null || fail "init --git-init 應成功"
+[ -d .git ] && [ -d .flightwake ] && [ -f .claude/skills/fw-record/SKILL.md ] || fail "--git-init 後 .git 與安裝應齊全"
+grep -q 'flightwake:begin' AGENTS.md || fail "--git-init 後應有義務表"
+[ "$(git rev-parse --show-toplevel)" = "$TMP/nr1" ] || fail "--git-init 應在目前目錄建 repo"
+pass "非 repo:init 擋下零寫入;--git-init 建 repo 並完整安裝"
+
+# 26. 無指令 == init(不提問):repo 內直接安裝;TTY 下也要自己跑完
+newrepo "$TMP/nocmd" >/dev/null
+node "$CLI" >/dev/null </dev/null || fail "無指令應等同 init 並成功"
+[ -f .flightwake/STATE.md ] && grep -q 'flightwake:begin' AGENTS.md || fail "無指令應完成安裝"
+if [ "$HAVE_PY" = 1 ]; then
+  newrepo "$TMP/nocmd-tty" >/dev/null
+  rc=0; python3 "$PTYRUN" 60 "" node "$CLI" >/dev/null || rc=$?
+  [ "$rc" = 0 ] || fail "TTY 下無指令應直接跑完(exit 0,不得卡住問問題);rc=$rc(124=逾時)"
+  [ -f .flightwake/STATE.md ] && grep -q 'flightwake:begin' AGENTS.md || fail "TTY 下無指令應完成安裝"
+  # pty-run 本身:逾時回 124;Ctrl-C 轉義會送達
+  rc=0; python3 "$PTYRUN" 1 "" sleep 5 >/dev/null || rc=$?
+  [ "$rc" = 124 ] || fail "pty-run 逾時應回 124(got $rc)"
+  rc=0; python3 "$PTYRUN" 10 '\x03' cat >/dev/null || rc=$?
+  [ "$rc" = 130 ] || fail "pty-run 的 \\x03 應中斷子程序(got $rc)"
+  # setup 在 TTY 下會真的提問:Ctrl-C 於第一題 → 非零,零寫入
+  newrepo "$TMP/setup-tty" >/dev/null; b=$(snap)
+  rc=0; python3 "$PTYRUN" 30 '\x03' node "$CLI" setup >/dev/null || rc=$?
+  [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ] || fail "TTY 下 setup 收到 Ctrl-C 應非零退出且不卡住(rc=$rc)"
+  [ "$b" = "$(snap)" ] || fail "TTY 下 setup 被 Ctrl-C 後不得有任何寫入"
+else
+  echo "  skip: 沒有 python3,略過 TTY(pty)案例"
+fi
+pass "無指令 == init(含 TTY 下不提問);pty-run 逾時/Ctrl-C 行為"
+
+# 27. setup 問答流程(driver 注入答案):全預設只裝核心
+newrepo "$TMP/sd-default" >/dev/null
+out=$(node "$DRIVE" --orca=0 -- "" "" "" "" y 2>&1) || fail "全預設 setup 應成功(out: $out)"
+echo "$out" | grep -q 'Orca collaboration (' && fail "--orca=0 時不得出現 Orca 題目"
+[ -f .flightwake/STATE.md ] && [ -f .claude/skills/fw-record/SKILL.md ] || fail "全預設應裝核心"
+grep -q 'statusLine' .claude/settings.json && fail "全預設不得裝 statusLine"
+[ -e .claude/skills/fw-roles ] || [ -e .agents/skills/fw-roles ] && fail "全預設不得裝 fw-roles"
+grep -rq 'flightwake-orca' --include='*.md' . 2>/dev/null && fail "全預設不得有 Orca 區塊"
+grep -q '<!-- flightwake:begin v[0-9.]* lang=en -->' AGENTS.md || fail "全預設的 marker 應為英文且無 profile=(got: $(grep 'flightwake:begin' AGENTS.md))"
+grep -q 'profile=' AGENTS.md && fail "全預設(程式專案)marker 不得帶 profile="
+# 各附加元件單獨回 y(其餘預設)
+newrepo "$TMP/sd-sl" >/dev/null; echo "# 我的" > CLAUDE.md
+node "$DRIVE" --orca=0 -- "" "" y "" "" y >/dev/null || fail "statusline 單選 setup 應成功"
+grep -q 'statusLine' .claude/settings.json || fail "statusline 答 y 應寫入 statusLine"
+[ -e .claude/skills/fw-roles ] && fail "只答 statusline 不得裝 roles"
+grep -q 'flightwake-orca' CLAUDE.md && fail "只答 statusline 不得有 Orca 區塊"
+newrepo "$TMP/sd-roles" >/dev/null
+node "$DRIVE" --orca=0 -- "" "" y "" y >/dev/null || fail "roles 單選 setup 應成功"
+[ -f .claude/skills/fw-roles/SKILL.md ] || [ -f .agents/skills/fw-roles/SKILL.md ] || fail "roles 答 y 應裝 fw-roles"
+grep -q 'statusLine' .claude/settings.json && fail "只答 roles 不得裝 statusLine"
+grep -rq 'flightwake-orca' --include='*.md' . && fail "只答 roles 不得有 Orca 區塊"
+newrepo "$TMP/sd-orca" >/dev/null
+out=$(node "$DRIVE" --orca=1 -- "" "" "" y "" y 2>&1) || fail "Orca 單選 setup 應成功(out: $out)"
+echo "$out" | grep -q 'Orca collaboration (' || fail "--orca=1 時應出現 Orca 題目"
+grep -q 'flightwake-orca:begin' AGENTS.md || fail "Orca 答 y 應寫入 Orca 區塊"
+[ -e .claude/skills/fw-roles ] || [ -e .agents/skills/fw-roles ] && fail "只答 Orca 不得裝 roles"
+grep -q 'statusLine' .claude/settings.json && fail "只答 Orca 不得裝 statusLine"
+# Orca 題答 n(預設)→ 不寫區塊
+newrepo "$TMP/sd-orca-n" >/dev/null
+node "$DRIVE" --orca=1 -- "" "" "" "" "" y >/dev/null || fail "Orca 預設否 setup 應成功"
+grep -q 'flightwake-orca' AGENTS.md && fail "Orca 題預設否,不得寫區塊"
+# repo 類型選 2 → notes
+newrepo "$TMP/sd-notes" >/dev/null
+node "$DRIVE" --orca=0 -- "" "" "" 2 y >/dev/null || fail "筆記型 setup 應成功"
+grep -q 'flightwake:begin v[0-9.]* lang=en profile=notes' AGENTS.md || fail "選筆記型 marker 應帶 profile=notes"
+# 旗標視為該題答案(不再提問)
+newrepo "$TMP/sd-flags" >/dev/null
+out=$(node "$DRIVE" --orca=0 --flags='{"lang":"en","agents":["codex"],"profile":"notes"}' -- "" y 2>&1) || fail "帶旗標 setup 應成功(out: $out)"
+echo "$out" | grep -q 'Language' && fail "給了 lang 旗標就不該再問語言"
+echo "$out" | grep -q 'What kind of repo' && fail "給了 profile 旗標就不該再問 repo 類型"
+grep -q 'profile=notes' AGENTS.md || fail "旗標 profile=notes 應生效"
+pass "setup 流程:全預設只裝核心;statusline/roles/Orca 各自單選;旗標跳題"
+
+# 28. setup:拒絕 git init → 退出 1 且目錄仍空;同意 → 最終確認後才建
+mkdir -p "$TMP/sd-nogit" && cd "$TMP/sd-nogit"
+rc=0; node "$DRIVE" --orca=0 -- n >/dev/null || rc=$?
+[ "$rc" = 1 ] || fail "拒絕 git init 應退出 1(got $rc)"
+[ -z "$(ls -A)" ] || fail "拒絕 git init 後目錄應仍為空(got: $(ls -A | tr '\n' ' '))"
+rc=0; node "$DRIVE" --orca=0 -- "" >/dev/null || rc=$?
+[ "$rc" = 1 ] && [ -z "$(ls -A)" ] || fail "git init 題直接 Enter(預設否)應退出 1 且零寫入"
+node "$DRIVE" --orca=0 -- y "" "" "" "" y >/dev/null || fail "同意 git init 並確認應成功"
+[ -d .git ] && [ -d .flightwake ] || fail "同意後應建 .git 並安裝"
+# 已有安裝:告知現況;y → 更新(0);n → 1 且沒有檔案被改
+newrepo "$TMP/sd-exist" >/dev/null
+node "$CLI" init >/dev/null
+b=$(snap)
+rc=0; out=$(node "$DRIVE" -- n 2>&1) || rc=$?
+[ "$rc" = 1 ] || fail "已安裝時確認答 n 應退出 1(got $rc)"
+echo "$out" | grep -qi 'already installed' || fail "已安裝時應告知「already installed」(got: $out)"
+[ "$b" = "$(snap)" ] || fail "已安裝時確認答 n 不得改任何檔案"
+rc=0; out=$(node "$DRIVE" -- "" 2>&1) || rc=$?
+[ "$rc" = 1 ] && [ "$b" = "$(snap)" ] || fail "已安裝時確認 Enter(預設否)應退出 1 且零寫入"
+echo "$out" | grep -q 'Language' && fail "已安裝時不應再問語言等題(只有最終確認)"
+sed -i.bak 's/flightwake:begin v[0-9.]*/flightwake:begin v0.0.1/' AGENTS.md && rm -f AGENTS.md.bak
+rc=0; out=$(node "$DRIVE" -- y 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "已安裝時確認答 y 應成功更新(got $rc: $out)"
+grep -q "flightwake:begin v$FWV lang=en" AGENTS.md || fail "setup 更新應沿用既有語言並升到目前版本(got: $(grep 'flightwake:begin' AGENTS.md))"
+pass "setup:拒絕 git init 零寫入;已安裝 y 更新 / n 不動"
+
+# 29. Orca 協作 add-on:init 預設不加;--orca 每個啟用的指令檔都加;uninstall 清掉且保留使用者行;update 只刷新既有
+newrepo "$TMP/or1" >/dev/null
+echo "# 我的規則 KEEP-CLAUDE" > CLAUDE.md; echo "# 我的規則 KEEP-AGENTS" > AGENTS.md
+node "$CLI" init --agents=claude,codex >/dev/null
+grep -q 'flightwake-orca' CLAUDE.md AGENTS.md && fail "init 未給 --orca 不得加 Orca 區塊"
+newrepo "$TMP/or2" >/dev/null
+echo "# 我的規則 KEEP-CLAUDE" > CLAUDE.md; echo "# 我的規則 KEEP-AGENTS" > AGENTS.md
+node "$CLI" init --agents=claude,codex --orca >/dev/null
+for f in CLAUDE.md AGENTS.md; do
+  [ "$(grep -c 'flightwake-orca:begin' $f)" = 1 ] && [ "$(grep -c 'flightwake-orca:end' $f)" = 1 ] || fail "--orca 應在 $f 加一個 Orca 區塊"
+done
+grep -q "flightwake-orca:begin v$FWV lang=en -->" CLAUDE.md || fail "Orca 區塊應帶版本與語言"
+node "$CLI" init --agents=claude,codex --orca --force >/dev/null
+[ "$(grep -c 'flightwake-orca:begin' CLAUDE.md)" = 1 ] || fail "--orca --force 重跑不得重複區塊"
+# update 刷新既有區塊
+sed -i.bak 's/flightwake-orca:begin v[0-9.]*/flightwake-orca:begin v0.0.1/' CLAUDE.md && rm -f CLAUDE.md.bak
+node "$CLI" update >/dev/null
+grep -q "flightwake-orca:begin v$FWV" CLAUDE.md || fail "update 應刷新既有 Orca 區塊版本"
+# update 不在沒有區塊的檔案新增
+node -e "const fs=require('fs');fs.writeFileSync('AGENTS.md',fs.readFileSync('AGENTS.md','utf8').replace(/\n?<!-- flightwake-orca:begin[\s\S]*?<!-- flightwake-orca:end -->\n?/,'\n'))"
+grep -q 'flightwake-orca' AGENTS.md && fail "測試前提:應已移除 AGENTS.md 的 Orca 區塊"
+node "$CLI" update >/dev/null
+grep -q 'flightwake-orca' AGENTS.md && fail "update 不得在沒有 Orca 區塊的檔案新增"
+grep -q 'flightwake-orca:begin' CLAUDE.md || fail "update 不得移除 CLAUDE.md 既有的 Orca 區塊"
+# uninstall:區塊清掉、使用者的行保留
+node "$CLI" uninstall >/dev/null
+grep -q 'flightwake-orca' CLAUDE.md AGENTS.md && fail "uninstall 應清掉 Orca 區塊"
+grep -q 'flightwake:begin' CLAUDE.md AGENTS.md && fail "uninstall 應清掉義務表"
+grep -q 'KEEP-CLAUDE' CLAUDE.md && grep -q 'KEEP-AGENTS' AGENTS.md || fail "uninstall 不得動使用者自己的行"
+# detectOrca(明確 env,不依賴本機真實 Orca)
+EMPTYBIN="$TMP/empty-bin"; mkdir -p "$EMPTYBIN"
+ORCABIN="$TMP/orca-bin"; mkdir -p "$ORCABIN"; printf '#!/bin/sh\nexit 0\n' > "$ORCABIN/orca"; chmod +x "$ORCABIN/orca"
+dorca() { node --input-type=module -e "import {detectOrca} from '$SRC/bin/install.mjs'; console.log(detectOrca($1))"; }
+[ "$(dorca "{PATH:'$EMPTYBIN'}")" = false ] || fail "detectOrca:空 PATH 且無 ORCA_* 應為 false"
+[ "$(dorca "{}")" = false ] || fail "detectOrca:{} 應為 false"
+[ "$(dorca "{ORCA_APP_VERSION:'1'}")" = true ] || fail "detectOrca:ORCA_APP_VERSION 應為 true"
+[ "$(dorca "{ORCA_TERMINAL_HANDLE:'h'}")" = true ] || fail "detectOrca:ORCA_TERMINAL_HANDLE 應為 true"
+[ "$(dorca "{PATH:'$EMPTYBIN:$ORCABIN'}")" = true ] || fail "detectOrca:PATH 含 orca 執行檔應為 true"
+pass "Orca add-on:預設不加、--orca 全檔、update 只刷新既有、uninstall 保留使用者行、detectOrca"
+
+# 30. 中斷:最終確認答 n、^D、^C → 零寫入(含非 repo 且 git init 答 y 的情況)
+chk_zero() { # $1 描述;其餘 = driver 答案;在目前目錄執行並比對快照
+  local desc="$1"; shift; local b rc=0; b=$(snap)
+  node "$DRIVE" --orca=0 -- "$@" >/dev/null 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || fail "$desc:應非零退出"
+  [ "$b" = "$(snap)" ] || fail "$desc:不得有任何寫入"
+}
+newrepo "$TMP/int-repo" >/dev/null
+chk_zero "最終確認 n" "" "" "" "" n
+chk_zero "最終確認 Enter(預設否)" "" "" "" "" ""
+chk_zero "語言題 ^D" ^D
+chk_zero "agent 題 ^D" "" ^D
+chk_zero "最終確認 ^D" "" "" "" "" ^D
+chk_zero "答案用完(隱含 EOF)" "" ""
+chk_zero "語言題 ^C" ^C
+chk_zero "roles 題 ^C(中間題)" "" "" ^C
+chk_zero "repo 類型題 ^C" "" "" "" ^C
+chk_zero "最終確認 ^C" "" "" "" "" ^C
+mkdir -p "$TMP/int-nonrepo" && cd "$TMP/int-nonrepo"
+chk_zero "非 repo:git init 題 ^D" ^D
+chk_zero "非 repo:git init 答 y 後最終確認 n" y "" "" "" "" n
+chk_zero "非 repo:git init 答 y 後 ^D" y "" "" "" ^D
+chk_zero "非 repo:git init 答 y 後 ^C" y "" "" ^C
+[ ! -e .git ] || fail "非 repo 中斷後不得有 .git"
+# 帶旗標 gitInit 的非 repo 取消:也不得先建 .git
+b=$(snap); rc=0; node "$DRIVE" --orca=0 --flags='{"gitInit":true}' -- "" "" "" "" n >/dev/null 2>&1 || rc=$?
+[ "$rc" -ne 0 ] && [ "$b" = "$(snap)" ] && [ ! -e .git ] || fail "旗標 gitInit 但最終確認 n:不得建 .git"
+# 已安裝再中斷
+newrepo "$TMP/int-exist" >/dev/null; node "$CLI" init >/dev/null
+chk_zero "已安裝:^D" ^D
+chk_zero "已安裝:^C" ^C
+pass "中斷(n/^D/^C/答案用完)一律零寫入非零退出,含非 repo 的 git init"
+
+# 31. worktree / submodule / 一般子目錄
+newrepo "$TMP/wt-main" >/dev/null
+echo x > README; git add README; git commit -qm init
+git worktree add -q "$TMP/wt-tree" -b wt-branch
+cd "$TMP/wt-tree"
+node "$CLI" init >/dev/null || fail "worktree 根目錄 init 應成功"
+[ -f .flightwake/STATE.md ] || fail "worktree 內應裝好"
+rc=0; out=$(node "$CLI" doctor 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "worktree 內 doctor 應退出 0(rc=$rc: $out)"
+# submodule 算獨立 repo
+newrepo "$TMP/sm-lib" >/dev/null; echo y > f; git add f; git commit -qm lib
+newrepo "$TMP/sm-host" >/dev/null; echo x > README; git add README; git commit -qm init
+git -c protocol.file.allow=always submodule add -q "$TMP/sm-lib" libsub >/dev/null 2>&1
+cd libsub
+node "$CLI" init >/dev/null || fail "submodule 內 init 應成功(自成一個 repo)"
+[ -f .flightwake/STATE.md ] || fail "submodule 內應裝好"
+# 一般子目錄 → monorepo 訊息
+cd "$TMP/sm-host"; mkdir -p pkg/a && cd pkg/a
+rc=0; out=$(node "$CLI" init 2>&1) || rc=$?
+[ "$rc" -ne 0 ] && echo "$out" | grep -q 'one install per repo' || fail "子目錄 init 應非零並印 monorepo 訊息(rc=$rc: $out)"
+[ -z "$(ls -A)" ] || fail "子目錄 init 擋下時不得寫東西"
+rc=0; out=$(node "$DRIVE" -- y y y 2>&1) || rc=$?
+[ "$rc" -ne 0 ] && echo "$out" | grep -q 'one install per repo' || fail "子目錄 setup 應非零並印 monorepo 訊息(rc=$rc: $out)"
+[ -z "$(ls -A)" ] || fail "子目錄 setup 擋下時不得寫東西"
+pass "worktree 可裝且 doctor 0;submodule 自成 repo;子目錄擋下(init 與 setup)"
+
+# 32. doctor:新裝 → 0(STATE 未填只是提醒);各種破壞 → 1
+newrepo "$TMP/doc-base" >/dev/null
+node "$CLI" init --agents=claude >/dev/null
+rc=0; out=$(node "$CLI" doctor 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "新裝後 doctor 應退出 0(rc=$rc: $out)"
+echo "$out" | grep -qi 'unfilled' || fail "新裝後 doctor 應提醒 STATE 未填(提醒不影響退出碼)"
+doc_variant() { # $1 名稱 $2 在副本內執行的破壞指令(shell);預期 doctor 退出 1
+  local name="$1" dir="$TMP/doc-v-$(echo "$1" | tr -c 'a-zA-Z0-9\n' _)"
+  cp -R "$TMP/doc-base" "$dir"; ( cd "$dir" && eval "$2" )
+  local rc=0 out; out=$(cd "$dir" && node "$CLI" doctor 2>&1) || rc=$?
+  [ "$rc" = 1 ] || fail "doctor:$name 應退出 1(rc=$rc: $out)"
+}
+doc_variant "缺 skill 目錄" 'rm -rf .claude/skills/fw-record'
+doc_variant "移除 Stop hook" 'jedit .claude/settings.json "delete j.hooks.Stop"'
+doc_variant "改 hook command" 'jedit .claude/settings.json "j.hooks.Stop[0].hooks[0].command+=\" --extra\""'
+doc_variant "JSON 損毀" 'echo "{ not json" > .claude/settings.json'
+doc_variant "hook 重複登記" 'jedit .claude/settings.json "j.hooks.Stop.push(JSON.parse(JSON.stringify(j.hooks.Stop[0])))"'
+doc_variant "缺 hook 腳本" 'rm .flightwake/hooks/state-check.mjs'
+doc_variant "缺 .flightwake" 'rm -rf .flightwake'
+newrepo "$TMP/doc-gem" >/dev/null
+node "$CLI" init --agents=gemini >/dev/null
+rc=0; node "$CLI" doctor >/dev/null 2>&1 || rc=$?
+[ "$rc" = 0 ] || fail "gemini 新裝 doctor 應退出 0(rc=$rc)"
+jedit .gemini/settings.json 'j.hooks.Stop=j.hooks.AfterAgent; delete j.hooks.AfterAgent'
+rc=0; out=$(node "$CLI" doctor 2>&1) || rc=$?
+[ "$rc" = 1 ] || fail "Gemini hook 登記在 Stop(應為 AfterAgent)doctor 應退出 1(rc=$rc: $out)"
+echo "$out" | grep -q 'AfterAgent' || fail "doctor 應指出 Gemini 應為 AfterAgent"
+# 唯讀證明:--private 安裝(有被 git 忽略的檔)+ 全 agent + statusline + roles,doctor 前後逐檔雜湊 + .git/info/exclude + registry 完全相同
+newrepo "$TMP/doc-ro" >/dev/null
+echo x > README; git add README; git commit -qm init
+node "$CLI" init --private --statusline --agents=claude,codex,gemini --orca >/dev/null
+node "$CLI" roles install >/dev/null
+git status --short --ignored | grep -q '^!!' || fail "測試前提:--private 應產生被忽略的檔"
+b=$(snap); ex=$(shasum < .git/info/exclude)
+node "$CLI" doctor >/dev/null 2>&1 || fail "--private 全選項安裝 doctor 應退出 0"
+[ "$b" = "$(snap)" ] && [ "$ex" = "$(shasum < .git/info/exclude)" ] || fail "doctor 必須唯讀(檔案/內容/exclude/registry 都不得變)"
+# 對壞掉的安裝也唯讀
+rm -rf .claude/skills/fw-record; b=$(snap)
+node "$CLI" doctor >/dev/null 2>&1 && fail "壞掉的安裝 doctor 應非零"
+[ "$b" = "$(snap)" ] || fail "doctor 對壞掉的安裝也必須唯讀"
+pass "doctor:新裝 0、各種破壞 1、唯讀(含被忽略檔/exclude/registry)"
+
+# 33. --profile=notes:marker、義務表、update 保留、舊 marker 視為 code、雙向切換、私有安裝全受追蹤仍記住
+newrepo "$TMP/pf-code" >/dev/null
+node "$CLI" init --agents=claude >/dev/null
+grep -qi 'typecheck' CLAUDE.md && grep -qi 'schema' CLAUDE.md || fail "測試前提:程式專案義務表應含 typecheck 與 schema"
+grep -q 'profile=' CLAUDE.md && fail "程式專案 marker 不得帶 profile="
+node "$CLI" update >/dev/null
+grep -q 'profile=' CLAUDE.md && fail "舊式 marker(無 profile)update 後應視為 code,不得出現 profile 屬性"
+grep -qi 'typecheck' CLAUDE.md || fail "舊式 marker update 後仍應是 code 義務表"
+newrepo "$TMP/pf-notes" >/dev/null
+node "$CLI" init --agents=claude,codex --profile=notes >/dev/null
+for f in CLAUDE.md AGENTS.md; do
+  grep -q "flightwake:begin v$FWV lang=en profile=notes -->" $f || fail "$f marker 應帶 profile=notes(got: $(grep 'flightwake:begin' $f))"
+  grep -qi 'typecheck' $f && fail "$f notes 義務表不得有 typecheck"
+  grep -qi 'schema' $f && fail "$f notes 義務表不得有 schema"
+done
+node "$CLI" update >/dev/null
+grep -q 'profile=notes' CLAUDE.md AGENTS.md || fail "update 應保留 notes"
+grep -qi 'typecheck' CLAUDE.md && fail "update 後 notes 義務表仍不得有 typecheck"
+rc=0; node "$CLI" doctor >/dev/null 2>&1 || rc=$?; [ "$rc" = 0 ] || fail "notes 安裝 doctor 應 0"
+# 雙向切換
+node "$CLI" update --profile=code >/dev/null
+grep -q 'profile=' CLAUDE.md AGENTS.md && fail "update --profile=code 應回到 code(不留 profile 屬性)"
+grep -qi 'typecheck' CLAUDE.md || fail "切回 code 後義務表應有 typecheck"
+node "$CLI" update --profile=notes >/dev/null
+grep -q 'profile=notes' CLAUDE.md AGENTS.md && ! grep -qi 'typecheck' CLAUDE.md || fail "update --profile=notes 應切成 notes"
+node "$CLI" update >/dev/null
+grep -q 'profile=notes' CLAUDE.md || fail "切到 notes 後無旗標 update 應保留"
+node "$CLI" update --profile=code >/dev/null
+grep -q 'profile=' CLAUDE.md && fail "再切回 code 應成功"
+# private 且所有指令檔都受追蹤 → 沒有 marker,profile 記在 exclude 標頭,update 保留
+newrepo "$TMP/pf-priv" >/dev/null
+echo "# a" > AGENTS.md; echo "# g" > GEMINI.md; git add -A; git commit -qm base
+node "$CLI" init --private --profile=notes --agents=codex,gemini >/dev/null
+grep -q 'flightwake:begin' AGENTS.md GEMINI.md && fail "測試前提:受追蹤的指令檔不得被寫 marker"
+grep -q '^# flightwake:begin v[0-9.]* profile=notes' .git/info/exclude || fail "exclude 標頭應記 profile=notes(got: $(grep 'flightwake:begin' .git/info/exclude))"
+node "$CLI" update >/dev/null
+grep -q '^# flightwake:begin v[0-9.]* profile=notes' .git/info/exclude || fail "update 後 exclude 標頭應仍記 profile=notes"
+node "$CLI" doctor 2>&1 | grep -q 'profile: notes' || fail "doctor 應回報 profile: notes"
+[ -z "$(git status --porcelain)" ] || fail "全受追蹤的 private notes 安裝後 git status 應乾淨"
+node "$CLI" update --profile=code >/dev/null
+grep -q '^# flightwake:begin v[0-9.]* profile=notes' .git/info/exclude && fail "update --profile=code 後 exclude 標頭不應再有 profile=notes"
+pass "--profile=notes:marker/義務表/update 保留/舊 marker=code/雙向切換/private 無 marker 仍記住"
+
+# 34. --private + roles:roles install 後 git status 仍乾淨;update 後仍乾淨
+newrepo "$TMP/pr-roles" >/dev/null
+echo x > README; git add README; git commit -qm init
+node "$CLI" init --private >/dev/null
+[ -z "$(git status --porcelain)" ] || fail "測試前提:--private 後 git status 應乾淨"
+node "$CLI" roles install >/dev/null
+ls .claude/skills/fw-roles/SKILL.md >/dev/null 2>&1 || ls .agents/skills/fw-roles/SKILL.md >/dev/null 2>&1 || fail "roles install 應裝 fw-roles"
+[ -z "$(git status --porcelain)" ] || fail "--private 後 roles install 不得讓檔案出現在 git status(got: $(git status --porcelain | tr '\n' ' '))"
+node "$CLI" update >/dev/null
+[ -z "$(git status --porcelain)" ] || fail "--private + roles 後 update,git status 仍應乾淨(got: $(git status --porcelain | tr '\n' ' '))"
+pass "--private + roles:install 與 update 後 git status 皆乾淨"
+
 echo ""
 echo "✅ smoke 全過"
