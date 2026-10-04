@@ -1,6 +1,7 @@
 /**
  * flightwake doctor — read-only check of the install structure. Writes nothing, never touches the network, runs
- * only read-only git plumbing (rev-parse / ls-files / check-ignore; not `git status`, which may refresh the index).
+ * only read-only git plumbing (rev-parse / ls-files / check-ignore; not `git status`, which may refresh the index),
+ * plus `claude --version` when the Claude Code mod is installed (to compare with the version the mod needs).
  * It can say "the install is structurally right"; it cannot say a hook actually fires at runtime — Codex in
  * particular only loads project hooks for exactly-trusted paths, which no file inspection can confirm
  * (TRAPS codex-project-trust-exact-path), so that is printed as a hint, neither pass nor fail.
@@ -10,8 +11,8 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import {
-  LANGS, GROUPS, INSTRUCTION_CANDIDATES, HOOK_CMD, HOOK_CMD_GIT, SL_CMD, makeM, gitIn, gitAvailable, repoState, readMarkers,
-  detectInstall,
+  LANGS, GROUPS, INSTRUCTION_CANDIDATES, HOOK_CMD, HOOK_CMD_GIT, SL_CMD, MOD_REL, MOD_MIN_CLAUDE, makeM, gitIn, gitAvailable,
+  repoState, readMarkers, detectInstall, modShipList, modSrc,
 } from './install.mjs';
 
 /** Placeholder lines of the shipped STATE templates (every language). Only these count as "unfilled" — user
@@ -213,6 +214,7 @@ export function runDoctor({ target, fwSrc, version, lang, log }) {
     for (const base of ['.claude/skills', '.agents/skills']) {
       for (const d of (existsSync(at(base)) ? readdirSync(at(base)) : [])) if (d.startsWith('fw-')) groups.push([`${base}/${d}/`, walk(`${base}/${d}`)]);
     }
+    if (existsSync(at(MOD_REL))) groups.push([`${MOD_REL}/`, walk(MOD_REL)]);
     for (const rel of ['.claude/settings.json', '.claude/settings.local.json', '.codex/hooks.json', '.gemini/settings.json']) {
       if (has(rel, 'state-check.mjs') || has(rel, 'statusline.mjs')) groups.push([rel, [rel]]);
     }
@@ -238,8 +240,73 @@ export function runDoctor({ target, fwSrc, version, lang, log }) {
   else ok(M({ en: 'statusline: installed', 'zh-TW': '儀表:已安裝', 'zh-CN': '仪表:已安装', ja: 'ゲージ:インストール済' }));
   info(det.roles ? M({ en: 'roles: fw-roles installed', 'zh-TW': '角色:fw-roles 已安裝', 'zh-CN': '角色:fw-roles 已安装', ja: 'ロール:fw-roles インストール済' }) : M({ en: 'roles: not installed (optional)', 'zh-TW': '角色:未安裝(選配)', 'zh-CN': '角色:未安装(选配)', ja: 'ロール:未インストール(オプション)' }));
   info(det.orca ? M({ en: 'Orca collaboration: installed', 'zh-TW': 'Orca 協作:已安裝', 'zh-CN': 'Orca 协作:已安装', ja: 'Orca 連携:インストール済' }) : M({ en: 'Orca collaboration: not installed (optional)', 'zh-TW': 'Orca 協作:未安裝(選配)', 'zh-CN': 'Orca 协作:未安装(选配)', ja: 'Orca 連携:未インストール(オプション)' }));
+  checkMod({ fwSrc, at, readJson, ok, warn, fail, info, M });
   info(`profile: ${det.profile}`);
   return report(rows, log, M);
+}
+
+/** a.b.c ≥ x.y.z, numerically */
+const atLeast = (v, min) => {
+  const a = v.split('.').map(Number);
+  const b = min.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  return true;
+};
+
+// ── Claude Code mod (optional): structure, version against this package, Claude Code's version when readable, and
+//    the two things that decide whether it loads that no file can show (folder trust, starting at the repo root).
+function checkMod({ fwSrc, at, readJson, ok, warn, fail, info, M }) {
+  if (!existsSync(at(MOD_REL))) {
+    info(M({ en: 'Claude Code mod: not installed (optional)', 'zh-TW': 'Claude Code mod:未安裝(選配)', 'zh-CN': 'Claude Code mod:未安装(选配)', ja: 'Claude Code mod:未インストール(オプション)' }));
+    return;
+  }
+  const L = 'flightwake-mod';
+  const ship = modShipList(fwSrc);
+  const missing = ship.filter((f) => !existsSync(at(`${MOD_REL}/${f}`)));
+  if (missing.length) fail(M({ en: `${L}: missing ${missing.join(', ')} — npx flightwake update`, 'zh-TW': `${L}:缺 ${missing.join(', ')} — npx flightwake update`, 'zh-CN': `${L}:缺 ${missing.join(', ')} — npx flightwake update`, ja: `${L}:${missing.join(', ')} がない — npx flightwake update` }));
+  const bad = (f) => fail(M({ en: `${L}: ${f} is not valid JSON — npx flightwake update`, 'zh-TW': `${L}:${f} 不是合法 JSON — npx flightwake update`, 'zh-CN': `${L}:${f} 不是合法 JSON — npx flightwake update`, ja: `${L}:${f} は不正な JSON — npx flightwake update` }));
+  const isObj = (j) => j.ok && j.value && typeof j.value === 'object' && !Array.isArray(j.value);
+  // the manifest and the hooks module list the loader starts from
+  let manifest = null;
+  if (existsSync(at(`${MOD_REL}/.claude-plugin/plugin.json`))) {
+    const j = readJson(`${MOD_REL}/.claude-plugin/plugin.json`);
+    if (isObj(j)) manifest = j.value; else bad('.claude-plugin/plugin.json');
+  }
+  if (existsSync(at(`${MOD_REL}/hooks/hooks.json`))) {
+    const j = readJson(`${MOD_REL}/hooks/hooks.json`);
+    if (!isObj(j) || !Array.isArray(j.value.modules)) bad('hooks/hooks.json');
+    else {
+      const gone = j.value.modules.filter((m) => typeof m !== 'string' || !existsSync(at(`${MOD_REL}/hooks/${m}`)));
+      if (gone.length) fail(M({ en: `${L}: hooks module ${gone.join(', ')} (named in hooks/hooks.json) missing — npx flightwake update`, 'zh-TW': `${L}:hooks/hooks.json 指名的模組 ${gone.join(', ')} 不存在 — npx flightwake update`, 'zh-CN': `${L}:hooks/hooks.json 指名的模块 ${gone.join(', ')} 不存在 — npx flightwake update`, ja: `${L}:hooks/hooks.json の指すモジュール ${gone.join(', ')} がない — npx flightwake update` }));
+    }
+  }
+  // installed version vs the one this package ships; at the same version, shipped files that differ
+  let shipped = null;
+  try { shipped = JSON.parse(readFileSync(join(modSrc(fwSrc), '.claude-plugin', 'plugin.json'), 'utf8')).version; } catch {}
+  if (manifest) {
+    const v = String(manifest.version ?? '?');
+    if (shipped && v !== shipped) {
+      warn(M({ en: `${L}: installed v${v}, this package ships v${shipped} — npx flightwake update`, 'zh-TW': `${L}:已安裝 v${v},目前套件是 v${shipped} — npx flightwake update`, 'zh-CN': `${L}:已安装 v${v},当前套件是 v${shipped} — npx flightwake update`, ja: `${L}:インストール済 v${v}、このパッケージは v${shipped} — npx flightwake update` }));
+    } else {
+      const differ = ship.filter((f) => {
+        try { return existsSync(at(`${MOD_REL}/${f}`)) && !readFileSync(at(`${MOD_REL}/${f}`)).equals(readFileSync(join(modSrc(fwSrc), ...f.split('/')))); } catch { return true; }
+      });
+      if (differ.length) warn(M({ en: `${L}: ${differ.join(', ')} differ from this package (edited by hand?) — npx flightwake update restores them`, 'zh-TW': `${L}:${differ.join(', ')} 與套件內容不同(手動改過?)— npx flightwake update 可還原`, 'zh-CN': `${L}:${differ.join(', ')} 与套件内容不同(手动改过?)— npx flightwake update 可还原`, ja: `${L}:${differ.join(', ')} がパッケージと異なる(手で編集した?)— npx flightwake update で戻る` }));
+      else if (!missing.length) ok(`${L} v${v} (${MOD_REL})`);
+    }
+  }
+  // Claude Code's version, read-only and only when the binary answers; anything else is a hint, never a failure
+  let cc = null;
+  try { cc = /(\d+\.\d+\.\d+)/.exec(execFileSync('claude', ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }))?.[1] ?? null; } catch {}
+  if (!cc) info(M({ en: `could not read the Claude Code version (claude --version) — the mod needs ${MOD_MIN_CLAUDE} or later`, 'zh-TW': `讀不到 Claude Code 版本(claude --version)— mod 需要 ${MOD_MIN_CLAUDE} 以上`, 'zh-CN': `读不到 Claude Code 版本(claude --version)— mod 需要 ${MOD_MIN_CLAUDE} 以上`, ja: `Claude Code のバージョンを読めない(claude --version)— mod には ${MOD_MIN_CLAUDE} 以上が必要` }));
+  else if (atLeast(cc, MOD_MIN_CLAUDE)) ok(M({ en: `Claude Code ${cc} (the mod needs ${MOD_MIN_CLAUDE}+)`, 'zh-TW': `Claude Code ${cc}(mod 需要 ${MOD_MIN_CLAUDE} 以上)`, 'zh-CN': `Claude Code ${cc}(mod 需要 ${MOD_MIN_CLAUDE} 以上)`, ja: `Claude Code ${cc}(mod には ${MOD_MIN_CLAUDE} 以上が必要)` }));
+  else warn(M({ en: `Claude Code ${cc} is older than ${MOD_MIN_CLAUDE} — the mod will not load until Claude Code is updated`, 'zh-TW': `Claude Code ${cc} 低於 ${MOD_MIN_CLAUDE} — 更新 Claude Code 之前 mod 不會載入`, 'zh-CN': `Claude Code ${cc} 低于 ${MOD_MIN_CLAUDE} — 更新 Claude Code 之前 mod 不会加载`, ja: `Claude Code ${cc} は ${MOD_MIN_CLAUDE} より古い — Claude Code を更新するまで mod は読み込まれない` }));
+  info(M({
+    en: 'Claude Code mod: doctor cannot see whether Claude Code trusts this folder, or whether sessions start at the repo root — the mod loads only in a trusted folder opened at the repo root. Check in Claude Code that it loaded: /fw-log should be available.',
+    'zh-TW': 'Claude Code mod:doctor 看不到 Claude Code 是否已信任(trust)這個資料夾,也看不到 session 是否從 repo 根目錄(repo root)啟動 — mod 只在受信任、從根目錄開啟時載入。請在 Claude Code 裡實際確認有載入:應該能用 /fw-log。',
+    'zh-CN': 'Claude Code mod:doctor 看不到 Claude Code 是否已信任(trust)这个文件夹,也看不到 session 是否从 repo 根目录(repo root)启动 — mod 只在受信任、从根目录打开时加载。请在 Claude Code 里实际确认有加载:应该能用 /fw-log。',
+    ja: 'Claude Code mod:Claude Code がこのフォルダを信頼(trust)済みか、セッションが repo のルート(repo root)から始まったかは doctor から見えない — mod は信頼済みのフォルダをルートから開いたときだけ読み込まれる。Claude Code で実際に確認を:/fw-log が使えるはず。',
+  }));
 }
 
 function report(rows, log, M) {

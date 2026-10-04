@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { runRoles, removeRoleArtifacts } from './roles.mjs';
 import {
-  LANGS, PROFILES, GROUPS, isAgentName, INSTRUCTION_CANDIDATES, ORCA_BLOCK_RE, noJunk, makeM, gitAvailable, repoState, excludePath,
+  LANGS, PROFILES, GROUPS, isAgentName, INSTRUCTION_CANDIDATES, ORCA_BLOCK_RE, MOD_REL, noJunk, makeM, gitAvailable, repoState, excludePath,
   addPrivateExcludes, gitMissingMessage, monorepoMessage, notRepoMessage, detectInstall, resolveOptions, install,
   printNext, unregisterRepo, createWriter, refusalReport, incompleteReport,
 } from './install.mjs';
@@ -46,9 +46,11 @@ if (!COMMANDS.includes(cmd) || args.includes('--help') || args.includes('-h')) {
               --statusline installs the bottom gauge (health / STATE lag / context usage; never overwrites an existing statusline);
               --agents=claude,codex,gemini picks which platform instruction files get the obligation table (auto-detected by default);
               --profile=code|notes picks the obligation table (notes drops the tests/typecheck and schema/prod duties; default code);
-              --orca adds the Orca collaboration block (opt-in add-on); --git-init creates the git repo first when there is none
-  update      re-install with the options detected from the existing install (lang / statusline / private / profile) — the in-place upgrade
-  doctor      read-only check of the install structure (git, STATE, markers, skills, hooks, private excludes); exit 1 on any failure
+              --orca adds the Orca collaboration block (opt-in add-on); --git-init creates the git repo first when there is none;
+              --mod installs the Claude Code mod into .claude/skills/flightwake-mod (opt-in; needs Claude Code 2.1.287+; skipped without claude)
+  update      re-install with the options detected from the existing install (lang / statusline / private / profile) — the in-place upgrade;
+              add-ons (roles, Orca, the mod) are refreshed only where already installed
+  doctor      read-only check of the install structure (git, STATE, markers, skills, hooks, private excludes, add-ons); exit 1 on any failure
   uninstall   reverse-remove framework files and marker blocks; keeps .flightwake/ user data unless --purge
   roles       opt-in add-on: install the fw-roles skill; apply renders .flightwake/ROLES.md — seats into CLAUDE.md/AGENTS.md/GEMINI.md,
               on-call (unseated) roles into native agents (.claude/agents, .codex/agents); card prints a dispatch card; assign changes a seat;
@@ -78,6 +80,7 @@ const flags = {
   private: args.includes('--private'),
   statusline: args.includes('--statusline'),
   orca: args.includes('--orca'),
+  mod: args.includes('--mod'),
   gitInit: args.includes('--git-init'),
   lang: langArg,
   profile: profileArg,
@@ -176,6 +179,8 @@ if (cmd === 'uninstall') {
       rm(`.agents/skills/${sk}`);
     }
     rm('.flightwake/TEMPLATE-record.md');
+    // Claude Code mod add-on: the whole plugin folder (flightwake-written; files added in it go with it)
+    rm(MOD_REL);
     // roles add-on: its skill and role blocks are framework-written too (ROLES.md is user data, kept like STATE)
     removeRoleArtifacts(TARGET, out, W);
     rm('.flightwake/hooks/state-check.mjs');

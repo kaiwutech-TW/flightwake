@@ -1307,7 +1307,7 @@ MODV=$(node -e "console.log(require('$MODSRC/.claude-plugin/plugin.json').versio
 # 套件內「發行內容」的檔案清單(manifest、hooks、types;不含 tests/ 與 scripts/)
 mod_ship_list() { (cd "$MODSRC" && { echo .claude-plugin/plugin.json; find hooks types -type f; } | sort); }
 # mod 自己讀語言的方式:直接 import mod 的 core.ts(MARKER_FILES 順序 + markerLang),不在測試裡另抄一份 regex
-modlang() { node --input-type=module -e "
+modlang() { node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --input-type=module -e "
   import fs from 'node:fs';
   import { MARKER_FILES, markerLang } from '$MODSRC/hooks/lib/core.ts';
   let l = 'en';
@@ -1365,7 +1365,8 @@ node "$CLI" init --private --mod --agents=claude >/dev/null || fail "40.5 init -
 [ -f $MODREL/hooks/register.ts ] || fail "40.5 測試前提:mod 應已安裝"
 grep -qx "$MODREL/" .git/info/exclude || fail "40.5 exclude 應含 $MODREL/(got: $(cat .git/info/exclude))"
 [ -z "$(git status --porcelain)" ] || fail "40.5 --private + mod 後 git status 應乾淨(got: $(git status --porcelain | tr '\n' ' '))"
-node "$CLI" update >/dev/null; [ -z "$(git status --porcelain)" ] || fail "40.5 update 後 git status 仍應乾淨"
+node "$CLI" update >/dev/null; [ -z "$(git status --porcelain)" ] || fail "40.5 update 後 git status 仍應乾淨(got: $(git status --porcelain | tr '\n' ' '))"
+[ ! -e AGENTS.md ] && [ ! -e .agents ] || fail "40.5 private 的 claude 安裝(marker 在 CLAUDE.local.md)update 後不得改裝成 codex(main 既有錯誤)"
 node "$CLI" doctor >/dev/null 2>&1 || fail "40.5 private + mod 的 doctor 應 0"
 newrepo "$TMP/md5b" >/dev/null; echo x > README; git add README; git commit -qm init
 node "$CLI" init --private --agents=claude >/dev/null && node "$CLI" init --mod --agents=claude >/dev/null || fail "40.5 private 安裝後 init --mod 應成功"
@@ -1401,11 +1402,11 @@ pass "40.6 安裝語言經 marker 傳給 mod:setup zh-TW、notes ja、CLAUDE.loc
 # 40.7 setup:mod 題只在選了 Claude Code 時問、預設否;摘要含 mod 路徑;兩者都選時一句話說明橫條與儀表
 newrepo "$TMP/md7a" >/dev/null
 out=$(node "$DRIVE" --orca=0 -- "" 2 "" "" "" 2>&1) || fail "40.7 只選 codex 的 setup 應成功(out: $out)"
-echo "$out" | grep -q 'Claude Code mod' && fail "40.7 沒選 Claude Code 不得問 mod"
+echo "$out" | grep -q 'Install the Claude Code mod' && fail "40.7 沒選 Claude Code 不得問 mod"
 newrepo "$TMP/md7b" >/dev/null; echo "# 我的" > CLAUDE.md
 out=$(node "$DRIVE" --orca=0 -- "" "" "" "" "" "" "" 2>&1) || fail "40.7 mod 題預設否的 setup 應成功(out: $out)"
-echo "$out" | grep -q 'Claude Code mod' || fail "40.7 選了 Claude Code 應問 mod"
-echo "$out" | grep -A3 'Claude Code mod' | grep -q '2.1.287' && echo "$out" | grep -A3 'Claude Code mod' | grep -qi 'trust' || fail "40.7 mod 題應提到 2.1.287 與第一次的資料夾信任(got: $out)"
+echo "$out" | grep -q 'Install the Claude Code mod' || fail "40.7 選了 Claude Code 應問 mod"
+echo "$out" | grep -A3 'Claude Code mod —' | grep -q '2.1.287' && echo "$out" | grep -A3 'Claude Code mod —' | grep -qi 'trust' || fail "40.7 mod 題應提到 2.1.287 與第一次的資料夾信任(got: $out)"
 [ -e $MODREL ] && fail "40.7 mod 題預設否,不得安裝"
 newrepo "$TMP/md7c" >/dev/null; echo "# 我的" > CLAUDE.md
 out=$(node "$DRIVE" --orca=0 -- "" "" y y "" "" "" 2>&1) || fail "40.7 儀表 + mod 的 setup 應成功(out: $out)"
@@ -1465,7 +1466,7 @@ rc=0; out=$(docmod "$NOCL") || rc=$?
 [ "$rc" = 0 ] && echo "$out" | grep -E '^  ·' | grep -q 'claude --version' || fail "40.9 取不到 Claude Code 版本只印提示、不算失敗(rc=$rc: $out)"
 b=$(fsnap); docmod "$(fakeclaude 2.1.290):$NOCL" >/dev/null; [ "$b" = "$(fsnap)" ] || fail "40.9 doctor(含 mod 檢查)必須唯讀"
 mod_doc_variant() { # $1 名稱 $2 破壞指令 $3 預期等級(✗ 或 !)$4 預期文字(grep -E)$5 預期退出碼
-  local dir="$TMP/md9-$(echo "$1" | tr -c 'a-zA-Z0-9\n' _)"; cp -R "$TMP/md9" "$dir"; ( cd "$dir" && eval "$2" )
+  MDV=$((${MDV:-0} + 1)); local dir="$TMP/md9-v$MDV"; cp -R "$TMP/md9" "$dir"; ( cd "$dir" && eval "$2" )
   local rc=0 out; out=$(cd "$dir" && PATH="$NOCL" "$NODE_BIN" "$CLI" doctor 2>&1) || rc=$?
   [ "$rc" = "$5" ] || fail "40.9 doctor:$1 應退出 $5(rc=$rc: $out)"
   echo "$out" | grep -E "^  $3" | grep -qE "$4" || fail "40.9 doctor:$1 應有點名問題的行(預期 $3 /$4/;got: $out)"

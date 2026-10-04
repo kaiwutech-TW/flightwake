@@ -11,7 +11,7 @@
 import { createInterface } from 'node:readline';
 import { execFileSync } from 'node:child_process';
 import {
-  LANGS, GROUPS, isAgentName, makeM, gitAvailable, repoState, detectInstall, detectedAgents, detectOrca, resolveOptions, install,
+  LANGS, GROUPS, MOD_MIN_CLAUDE, isAgentName, makeM, gitAvailable, repoState, detectInstall, detectedAgents, detectOrca, resolveOptions, install,
   printNext, addPrivateExcludes, gitMissingMessage, monorepoMessage, createWriter, refusalReport, incompleteReport,
 } from './install.mjs';
 import { installRolesSkill } from './roles.mjs';
@@ -195,7 +195,7 @@ export async function runSetup({ io, flags = {}, ctx }) {
     if (det.installed) {
       const m = det.marker;
       say(M({ en: 'flightwake is already installed here:', 'zh-TW': '這裡已經安裝了 flightwake:', 'zh-CN': '这里已经安装了 flightwake:', ja: 'ここには flightwake がインストール済です:' }));
-      say(`  v${m?.version ?? '?'}  lang=${m?.lang ?? '?'}  profile=${det.profile}${det.statusline ? '  statusline' : ''}${det.private ? '  private' : ''}${det.roles ? '  roles' : ''}${det.orca ? '  orca' : ''}`);
+      say(`  v${m?.version ?? '?'}  lang=${m?.lang ?? '?'}  profile=${det.profile}${det.statusline ? '  statusline' : ''}${det.private ? '  private' : ''}${det.roles ? '  roles' : ''}${det.orca ? '  orca' : ''}${det.mod ? '  mod' : ''}`);
       say(M({
         en: 'setup can upgrade it in place with these options (same as `npx flightwake update`). Changing options is not offered here — use init flags with --force.\n',
         'zh-TW': 'setup 可以沿用這些選項就地升級(等同 `npx flightwake update`)。這裡不提供調整選項 — 要改請用 init 加旗標與 --force。\n',
@@ -256,6 +256,22 @@ export async function runSetup({ io, flags = {}, ctx }) {
     if (!statusline && agents.includes('claude')) {
       statusline = await yesNo(M({ en: '  Bottom gauge in Claude Code (health / STATE lag / context usage)?', 'zh-TW': '  Claude Code 底部儀表(health/STATE 落後/context 用量)?', 'zh-CN': '  Claude Code 底部仪表(health/STATE 落后/context 用量)?', ja: '  Claude Code 下部のゲージ(health / STATE の遅れ / context 使用量)?' }));
     }
+    // The Claude Code mod: Claude Code only, so asked only when it was picked. Explained in plain words, with the two
+    // things that decide whether it loads at all (version, and accepting the folder trust prompt the first time).
+    let mod = !!flags.mod;
+    if (!mod && agents.includes('claude')) {
+      say(M({
+        en: `  Claude Code mod — inside Claude Code: a status row above the prompt, STATE loaded when a session starts, a log of this session's changes and test runs (/fw-log), a hint when you touch something a known trap mentions, and an optional role guard.
+    Needs Claude Code ${MOD_MIN_CLAUDE} or later; the first time you open this folder, Claude Code asks you to trust it — the mod loads only after you accept.`,
+        'zh-TW': `  Claude Code mod — 在 Claude Code 裡:輸入框上方一列狀態、session 開始時自動帶入 STATE、記下這個 session 改了什麼與跑過的測試(/fw-log)、碰到已知的坑時提醒,以及選用的角色守門。
+    需要 Claude Code ${MOD_MIN_CLAUDE} 以上;第一次在這個資料夾開 Claude Code 時會問你是否信任它(trust)— 接受後 mod 才會載入。`,
+        'zh-CN': `  Claude Code mod — 在 Claude Code 里:输入框上方一行状态、session 开始时自动带入 STATE、记下这个 session 改了什么与跑过的测试(/fw-log)、碰到已知的坑时提醒,以及可选的角色守门。
+    需要 Claude Code ${MOD_MIN_CLAUDE} 以上;第一次在这个文件夹开 Claude Code 时会问你是否信任它(trust)— 接受后 mod 才会加载。`,
+        ja: `  Claude Code mod — Claude Code の中で:入力欄の上に状態を 1 行、セッション開始時に STATE を読み込み、このセッションの変更とテスト実行の記録(/fw-log)、既知の落とし穴に触れたときのヒント、任意のロールガード。
+    Claude Code ${MOD_MIN_CLAUDE} 以上が必要。このフォルダで初めて開くとき Claude Code が信頼(trust)するか聞きます — 承認して初めて mod が読み込まれます。`,
+      }));
+      mod = await yesNo(M({ en: '  Install the Claude Code mod?', 'zh-TW': '  安裝 Claude Code mod?', 'zh-CN': '  安装 Claude Code mod?', ja: '  Claude Code mod をインストールしますか?' }));
+    }
     const roles = await yesNo(M({
       en: '  Team roles (installs only the fw-roles skill; your agent recommends roles later, nothing applied yet)?',
       'zh-TW': '  團隊角色(只安裝 fw-roles skill;之後由 agent 推薦角色,現在不套用任何東西)?',
@@ -282,7 +298,7 @@ export async function runSetup({ io, flags = {}, ctx }) {
     }
 
     // 8. --private is flag-only (never asked)
-    const opts = resolveOptions({ update: false, flags: { ...flags, lang, agents, statusline, orca, profile }, det });
+    const opts = resolveOptions({ update: false, flags: { ...flags, lang, agents, statusline, orca, mod, profile }, det });
     return await confirmAndRun({ mode: 'init', gitInit, opts, roles });
   } catch (e) {
     if (e === INTERRUPT) return cancelled(130);

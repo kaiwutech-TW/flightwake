@@ -31,6 +31,27 @@ export const SL_CMD = 'node "$CLAUDE_PROJECT_DIR/.flightwake/hooks/statusline.mj
 export const ORCA_BEGIN = '<!-- flightwake-orca:begin';
 export const ORCA_END = '<!-- flightwake-orca:end -->';
 export const ORCA_BLOCK_RE = /\n?<!-- flightwake-orca:begin[\s\S]*?<!-- flightwake-orca:end -->\n?/;
+// flightwake-mod (opt-in, Claude Code only): installed as a plugin folder Claude Code loads by itself from the
+// project's .claude/skills/ (as flightwake-mod@skills-dir). Only what the loader reads ships into a repo — the manifest,
+// the hooks modules and the $.state contract its manifest names; the mod's tests/ and scripts/ are development-only.
+export const MOD_REL = '.claude/skills/flightwake-mod';
+export const MOD_MIN_CLAUDE = '2.1.287';
+export const modShips = (rel) => rel === '.claude-plugin/plugin.json' || rel.startsWith('hooks/') || rel.startsWith('types/');
+export const modSrc = (fwSrc) => join(fwSrc, 'mods', 'flightwake');
+/** The shipped files, relative to the mod folder (sorted). */
+export function modShipList(fwSrc) {
+  const out = [];
+  const walk = (dir, rel) => {
+    for (const f of readdirSync(dir)) {
+      if (!noJunk(f)) continue;
+      const r = rel ? `${rel}/${f}` : f;
+      if (statSync(join(dir, f)).isDirectory()) walk(join(dir, f), r);
+      else if (modShips(r)) out.push(r);
+    }
+  };
+  walk(modSrc(fwSrc), '');
+  return out.sort();
+}
 const BEGIN = '<!-- flightwake:begin';
 const END = '<!-- flightwake:end -->';
 
@@ -157,13 +178,17 @@ export function detectInstall(target) {
     profile: marker ? marker.profile : (exclude?.profile ?? 'code'),
     orca: readMarkers(target).some((m) => m.orca || m.orphanOrca),
     roles: ['.claude/skills', '.agents/skills'].some((b) => existsSync(join(target, ...b.split('/'), 'fw-roles'))),
+    mod: existsSync(join(target, ...MOD_REL.split('/'))),
     installed: !!marker || !!exclude,
   };
 }
-/** Platforms that already have an instruction file here (may be empty). */
+/** Platforms that already have an instruction file here (may be empty). A CLAUDE.local.md carrying the flightwake
+ *  marker counts for claude: a --private install puts Claude's table there, and without it `update` would fall back
+ *  to codex — creating AGENTS.md and dropping CLAUDE.local.md from the exclude block. */
 export function detectedAgents(target) {
   const hasFile = (rel) => existsSync(join(target, ...rel.split('/')));
-  return Object.keys(GROUPS).filter((name) => GROUPS[name].some(hasFile));
+  const localMarker = () => { try { return readFileSync(join(target, 'CLAUDE.local.md'), 'utf8').includes(BEGIN); } catch { return false; } };
+  return Object.keys(GROUPS).filter((name) => GROUPS[name].some(hasFile) || (name === 'claude' && localMarker()));
 }
 /** Which platforms a default (no --agents) install would target: the detected ones, or codex when none. */
 export function defaultAgents(target) {
@@ -179,7 +204,7 @@ export function detectOrca(env = process.env) {
 
 /**
  * Resolve install options for init/update from flags + the detected install. Explicit flag > existing install >
- * default. update keeps lang/statusline/private/profile; orca and roles are refreshed only where already installed.
+ * default. update keeps lang/statusline/private/profile; orca, roles and the mod are refreshed only where already installed.
  */
 export function resolveOptions({ update, flags, det }) {
   return {
@@ -191,6 +216,7 @@ export function resolveOptions({ update, flags, det }) {
     agents: flags.agents ?? null,
     profile: flags.profile ?? det.profile ?? 'code',
     orca: !!flags.orca,
+    mod: !!flags.mod,
   };
 }
 
@@ -287,16 +313,22 @@ export function createWriter({ target, dry = false, log = () => {}, M = makeM('e
       renameSync(tmp, p);
     } catch (e) { try { rmSync(tmp, { force: true }); } catch {} throw e; }
   };
-  const copyTree = (src, dst) => {
+  // filter(rel) picks which files of src are copied (rel is relative to src, '/'-separated); default: all
+  const copyTree = (src, dst, filter, rel = '') => {
     mkdirSync(dst, { recursive: true });
     for (const f of readdirSync(src)) {
       if (!noJunk(f)) continue;
       const s2 = join(src, f);
       const d2 = join(dst, f);
-      if (statSync(s2).isDirectory()) copyTree(s2, d2);
-      else replaceFile(d2, readFileSync(s2));
+      const r = rel ? `${rel}/${f}` : f;
+      if (statSync(s2).isDirectory()) { if (!filter || hasWanted(s2, filter, r)) copyTree(s2, d2, filter, r); }
+      else if (!filter || filter(r)) replaceFile(d2, readFileSync(s2));
     }
   };
+  const hasWanted = (dir, filter, rel) => readdirSync(dir).some((f) => {
+    const r = `${rel}/${f}`;
+    return statSync(join(dir, f)).isDirectory() ? hasWanted(join(dir, f), filter, r) : filter(r);
+  });
   const W = {
     check,
     refuse,
@@ -314,14 +346,15 @@ export function createWriter({ target, dry = false, log = () => {}, M = makeM('e
     },
     // Copy a directory tree file by file (each file replaced atomically; files the user added are kept).
     // replace: remove the existing directory first (stale files go) — after checking nothing inside it is a symlink.
-    cp: (src, dst, { replace = false } = {}) => {
+    // filter: only the files it accepts are copied (see copyTree).
+    cp: (src, dst, { replace = false, filter = null } = {}) => {
       if (!check(dst, true, 'dir')) return false;
       const inner = existsSync(dst) ? linkInside(dst) : null;
       if (inner) return refuse(inner, 'symlink');
       writes.push(`${relOf(dst)}/`);
       if (!dry) {
         if (replace && existsSync(dst)) rmSync(dst, { recursive: true });
-        copyTree(src, dst);
+        copyTree(src, dst, filter);
       }
       return true;
     },
@@ -398,8 +431,9 @@ export const incompleteReport = (M, detail) => M({
 
 // ── install ────────────────────────────────────────────────────────────────────────────────────────────────
 /**
- * o: { target, fwSrc, version, lang, force, update, private, statusline, agents, profile, orca, marker, dry, log }
- * Returns { writes, active, agentsSkills, exitCode }. With dry: nothing is written and nothing is logged.
+ * o: { target, fwSrc, version, lang, force, update, private, statusline, agents, profile, orca, mod, marker, dry, log }
+ * Returns { writes, refused, active, agentsSkills, mod, gauge }. With dry: nothing is written and nothing is logged.
+ * mod: 'added' | 'refreshed' | null (this run); gauge: the bottom gauge is set after this run.
  */
 export function install(o) {
   const { target: TARGET, fwSrc: FW_SRC, version: VERSION, lang: LANG, force: FORCE, update: IS_UPDATE, dry } = o;
@@ -449,13 +483,15 @@ export function install(o) {
     if (!SAME_SPEC || !existsSync(dst)) return;
     try { if (readFileSync(dst, 'utf8') !== next) clobbered.push(rel); } catch {}
   };
-  const noteClobberDir = (srcDir, dstDir, relBase) => {
+  const noteClobberDir = (srcDir, dstDir, relBase, filter = null, rel = '') => {
     if (!SAME_SPEC || !existsSync(dstDir)) return;
     for (const f of readdirSync(srcDir)) {
       if (!noJunk(f)) continue;
       const s = join(srcDir, f);
       const d = join(dstDir, f);
-      if (statSync(s).isDirectory()) { noteClobberDir(s, d, `${relBase}/${f}`); continue; }
+      const r = rel ? `${rel}/${f}` : f;
+      if (statSync(s).isDirectory()) { noteClobberDir(s, d, `${relBase}/${f}`, filter, r); continue; }
+      if (filter && !filter(r)) continue;
       try { if (!existsSync(d) || readFileSync(d, 'utf8') !== readFileSync(s, 'utf8')) clobbered.push(`${relBase}/${f}`); } catch {}
     }
   };
@@ -740,6 +776,37 @@ export function install(o) {
     }
   }
 
+  // 5c. flightwake-mod (opt-in, Claude Code only). --mod adds it when Claude Code is among the active agents (otherwise
+  //     it says so and skips — not an error); --force/update refresh a mod folder that already exists (update never
+  //     adds). Shipped files are replaced one by one, so files the user (or the engine) added in that folder stay.
+  let modResult = null;
+  {
+    const dst = join(TARGET, ...MOD_REL.split('/'));
+    const existed = existsSync(dst) || isLink(dst);
+    if (o.mod && !existed && !ACTIVE.has('claude')) {
+      log(`  skip flightwake-mod${M({
+        en: ' (the mod is for Claude Code only, and Claude Code is not among the agents set up here — add --agents=claude to use it)',
+        'zh-TW': '(mod 只用於 Claude Code,而這次設定的 agent 不含 Claude Code — 要用請加 --agents=claude)',
+        'zh-CN': '(mod 只用于 Claude Code,而这次设定的 agent 不含 Claude Code — 要用请加 --agents=claude)',
+        ja: '(mod は Claude Code 専用で、今回設定する agent に Claude Code が含まれない — 使うなら --agents=claude を追加)',
+      })}`);
+    } else if (existed && !FORCE) {
+      if (o.mod) log(`  skip ${MOD_REL}${M({ en: ' (exists — --force to update)', 'zh-TW': '(已存在,--force 可更新)', 'zh-CN': '(已存在,--force 可更新)', ja: '(既存 — --force で更新)' })}`);
+    } else if (existed || o.mod) {
+      noteClobberDir(modSrc(FW_SRC), dst, MOD_REL, modShips);
+      if (W.cp(modSrc(FW_SRC), dst, { filter: modShips })) {
+        modResult = existed ? 'refreshed' : 'added';
+        log(`  ${existed ? 'update' : 'add '} ${MOD_REL}${M({ en: ' (Claude Code mod)', 'zh-TW': '(Claude Code mod)', 'zh-CN': '(Claude Code mod)', ja: '(Claude Code mod)' })}`);
+      }
+    }
+    // Private: the mod folder joins the exclude block like every other artifact (a tracked one is refused in step 6).
+    // A plain run on an install that is already private (init --mod after init --private) adds it to that block too.
+    if (existed || modResult) {
+      if (privateExcludes) privateExcludes.push(`${MOD_REL}/`);
+      else if (modResult === 'added') addPrivateExcludes(TARGET, [`${MOD_REL}/`], W);
+    }
+  }
+
   // 6. --private: entries written to .git/info/exclude (purely local, never in the repo; worktrees resolved via git).
   //    The header carries profile=notes so a private install with no marker anywhere still remembers its profile.
   if (privateExcludes) {
@@ -797,11 +864,12 @@ export function install(o) {
     } catch { log(`  ⚠️  ${REGISTRY} could not be updated — skipped (cross-repo tools won't see this repo)`); }
   }
 
-  return { writes: [...new Set(writes)], refused: [...new Set(refused)], active: ACTIVE, agentsSkills: AGENTS_SKILLS };
+  const gauge = STATUSLINE || (!dry && detectInstall(TARGET).statusline);
+  return { writes: [...new Set(writes)], refused: [...new Set(refused)], active: ACTIVE, agentsSkills: AGENTS_SKILLS, mod: modResult, gauge };
 }
 
 /** The closing message of a fresh (non-update) install: what to do next, and the opt-ins not taken. */
-export function printNext({ lang, private: PRIVATE, statusline: STATUSLINE, langExplicit, marker, log }, { active, agentsSkills }) {
+export function printNext({ lang, private: PRIVATE, statusline: STATUSLINE, langExplicit, marker, log }, { active, agentsSkills, mod, gauge }) {
   const M = makeM(lang);
   const addPaths = ['.flightwake', '.claude',
     ...(agentsSkills ? ['.agents'] : []),
@@ -857,10 +925,53 @@ export function printNext({ lang, private: PRIVATE, statusline: STATUSLINE, lang
   // guess is worse than a stated default (field-verified 2026-07-27: LANG=en_US.UTF-8 on a zh_TW machine).
   if (!langExplicit && !marker) log(`   ℹ️  Installed in English. Other languages: ${LANGS.filter((l) => l !== 'en').join(', ')} — e.g. npx flightwake init --lang=zh-TW${STATUSLINE ? ' --statusline' : ''}
        已安裝英文版,要中文/日文請加 --lang(繁中 zh-TW・简中 zh-CN・日本語 ja);已裝好也能改:同指令加 --force`);
+  if (mod === 'added') printModNotes({ lang, gauge, log });
   if (!STATUSLINE) log(M({
     en: '   ℹ️  Bottom gauge not installed (opt-in) — if you want it: npx flightwake init --statusline (health / STATE lag / context usage)',
     'zh-TW': '   ℹ️  底部儀表未裝(選配)— 要的話:npx flightwake init --statusline(health/STATE 落後/context 用量)',
     'zh-CN': '   ℹ️  底部仪表未装(选配)— 要的话:npx flightwake init --statusline(health/STATE 落后/context 用量)',
     ja: '   ℹ️  下部ゲージは未インストール(オプトイン)— 欲しい場合:npx flightwake init --statusline(health / STATE の遅れ / context 使用量)',
+  }));
+}
+
+/**
+ * After the mod is added: what has to happen in Claude Code before it loads, how to turn the role guard on (plugin
+ * options are not read from project settings, so the installer cannot — TRAPS mod-options-not-read-from-project-settings),
+ * and, when the bottom gauge is on too, what each of the two shows.
+ */
+export function printModNotes({ lang, gauge, log }) {
+  const M = makeM(lang);
+  const key = '"pluginConfigs": { "flightwake-mod@skills-dir": { "options": { "roleGuard": true } } }';
+  log(M({
+    en: `   ℹ️  Claude Code mod installed in ${MOD_REL}/ — it needs Claude Code ${MOD_MIN_CLAUDE} or later.
+       Start Claude Code from the repo root; the first time, it asks you to trust this folder — the mod loads only after you accept.
+       Role guard (off by default): the installer cannot switch it on, because plugin options are not read from project settings.
+       Turn it on yourself in Claude Code's /config, or in your user settings (~/.claude/settings.json):
+         ${key}
+       It is not a security boundary: it only stops the main session's Edit/Write into the deny-write paths of your role; Bash and aliases of a path still get through.`,
+    'zh-TW': `   ℹ️  Claude Code mod 已安裝在 ${MOD_REL}/ — 需要 Claude Code ${MOD_MIN_CLAUDE} 以上。
+       請從 repo 根目錄啟動 Claude Code;第一次會問你是否信任這個資料夾 — 接受之後 mod 才會載入。
+       角色守門(預設關閉):安裝器無法替你開啟,因為外掛選項不會從專案設定讀取。
+       請自己在 Claude Code 的 /config 開啟,或寫進你的使用者設定(~/.claude/settings.json):
+         ${key}
+       它不是安全邊界:只擋主 session 用 Edit/Write 寫入你角色的 deny-write 路徑;Bash 與同一路徑的別名仍然寫得進去。`,
+    'zh-CN': `   ℹ️  Claude Code mod 已安装在 ${MOD_REL}/ — 需要 Claude Code ${MOD_MIN_CLAUDE} 以上。
+       请从 repo 根目录启动 Claude Code;第一次会问你是否信任这个文件夹 — 接受之后 mod 才会加载。
+       角色守门(默认关闭):安装器无法替你开启,因为插件选项不会从项目设置读取。
+       请自己在 Claude Code 的 /config 开启,或写进你的用户设置(~/.claude/settings.json):
+         ${key}
+       它不是安全边界:只挡主 session 用 Edit/Write 写入你角色的 deny-write 路径;Bash 与同一路径的别名仍然写得进去。`,
+    ja: `   ℹ️  Claude Code mod を ${MOD_REL}/ にインストールしました — Claude Code ${MOD_MIN_CLAUDE} 以上が必要です。
+       Claude Code は repo のルートから起動してください。初回はこのフォルダを信頼するか聞かれます — 承認して初めて mod が読み込まれます。
+       ロールガード(既定はオフ):プラグインのオプションはプロジェクト設定から読まれないため、インストーラーではオンにできません。
+       Claude Code の /config か、ユーザー設定(~/.claude/settings.json)でご自分でオンに:
+         ${key}
+       これはセキュリティ境界ではありません:メインセッションの Edit/Write によるロールの deny-write パスへの書き込みを止めるだけで、Bash や同じパスの別名からは書けてしまいます。`,
+  }));
+  if (gauge) log(M({
+    en: '   ℹ️  Bottom gauge and mod together: the bottom gauge shows health / STATE lag / context use; the mod\'s band above the prompt hides those same fields while the gauge is on, so it stays quiet and only toasts once when context runs hot.',
+    'zh-TW': '   ℹ️  底部儀表與 mod 並存:health/STATE 落後/context 用量由底部儀表顯示;mod 在輸入框上方的橫條偵測到儀表就隱藏這些欄位、保持安靜,只在 context 過熱時跳一次提示。',
+    'zh-CN': '   ℹ️  底部仪表与 mod 并存:health/STATE 落后/context 用量由底部仪表显示;mod 在输入框上方的横条检测到仪表就隐藏这些栏位、保持安静,只在 context 过热时弹一次提示。',
+    ja: '   ℹ️  下部ゲージと mod の併用:health / STATE の遅れ / context 使用量は下部ゲージが表示。mod の入力欄の上の帯はゲージがあると同じ欄を隠して静かにし、context が逼迫したときに一度だけトーストを出す。',
   }));
 }
