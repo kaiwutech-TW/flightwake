@@ -96,6 +96,14 @@ name: no-meta
     const b = parseTraps(TRAPS.replace('raise max', 'raise max to 50'))[0]!.version
     expect(a).not.toBe(b)
   })
+  test('overlapping comment markers in the header leave no comment behind (no example entry, real entries intact)', () => {
+    // One pass of a non-greedy comment strip turns `<!<!-- x -->--` into a fresh `<!--`, re-hiding nothing and
+    // exposing the example frontmatter as an entry; the strip must run until nothing is left to remove.
+    const header = '<!<!-- x -->--\n---\nname: ghost-example\nstatus: active\ncommands: ["git push"]\n---\nexample body -->\n\n# Registry\n'
+    const es = parseTraps(header + TRAPS)
+    expect(es.map((e) => e.name)).toEqual(['pg-pool', 'old-one', 'no-meta'])
+    expect(es[0]!.commands).toEqual(['psql', 'npm run migrate'])
+  })
 })
 
 describe('roles', () => {

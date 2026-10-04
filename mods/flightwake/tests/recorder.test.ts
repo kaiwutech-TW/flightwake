@@ -2,9 +2,9 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { redact } from '../hooks/features/recorder'
+import { redact, renderLog } from '../hooks/features/recorder'
 import { declaredCommands, masksExit } from '../hooks/lib/testcmd'
-import { installWorld, MARKER, STATE_FILLED, STATE_TEMPLATE } from './world'
+import { installWorld, MARKER, STATE_FILLED, STATE_TEMPLATE, tableCells } from './world'
 import type { World } from './world'
 
 const T0 = 1_700_000_000_000
@@ -369,6 +369,23 @@ describe('recorder: /fw-log', () => {
     const text = (await run($)).text as string
     expect(text).toContain('| `pytest` | runner | pass | 0 |')
     expect(text).toContain('| ? |')
+  })
+})
+
+describe('recorder: /fw-log table escaping', () => {
+  test('a command or script holding a backslash before | reads back exactly from its row', () => {
+    const command = String.raw`npm test -- -t 'a\|b' | tee out.txt`
+    const script = String.raw`jest -t 'x\|y'`
+    const run = { command, kind: 'package-script' as const, script, cwd: '/repo', startedAt: T0, finishedAt: T0 + 1000, revision: 'abcdef1234567890', isDirty: false, result: 'unknown' as const, exitCode: 0, reason: 'script-compound' }
+    const log = renderLog('en', { sessionId: 's', startedAt: T0, files: [], shellFiles: [], tests: [run], commits: [], dropped: 0 })
+    const row = log.split('\n').find((l) => l.startsWith('| `npm test'))
+    expect(row).toBeDefined()
+    const cells = tableCells(row!)
+    expect(cells.length).toBe(8)
+    expect(cells[0]).toBe('`' + command + '`')
+    expect(cells[1]).toBe(`package-script (${script})`)
+    expect(cells[2]).toBe('unknown')
+    expect(cells[7]).toBe('script-compound')
   })
 })
 

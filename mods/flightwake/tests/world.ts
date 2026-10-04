@@ -174,3 +174,17 @@ export function fakeIo(w: World): Io {
 export function newWorld(init: Partial<World> = {}): World {
   return { root: '/repo', files: {}, git: {}, settings: {}, sessionId: 'session-1', gitCalls: [], reads: [], writes: [], failReads: [], isSettingsFailing: false, gitWithoutNoLocks: [], ...init }
 }
+
+/** Inverse of the /fw-log table cell escaping: split a table row on unescaped `|`, then undo `\\` and `\|`. */
+export function tableCells(row: string): string[] {
+  const cells: string[] = []
+  let cur = ''
+  for (let i = 0; i < row.length; i++) {
+    const ch = row[i]!
+    if (ch === '\\' && i + 1 < row.length) { cur += row[++i]; continue }
+    if (ch === '|') { cells.push(cur.trim()); cur = ''; continue }
+    cur += ch
+  }
+  cells.push(cur.trim())
+  return cells.slice(1, -1)
+}
