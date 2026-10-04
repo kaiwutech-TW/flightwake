@@ -994,8 +994,9 @@ pass "36.1 doctor private:必要排除由安裝產物推導,缺 .flightwake/ 即
 
 # 36.2 --private 下 Orca 區塊不得寫進受追蹤的指令檔:claude 改寫 CLAUDE.local.md;codex 跳過並警告
 newrepo "$TMP/ax2" >/dev/null
-node "$CLI" init --agents=claude,codex >/dev/null && git add -A && git commit -qm shared
+node "$CLI" init --agents=claude,codex >/dev/null && git add CLAUDE.md AGENTS.md && git commit -qm shared
 rc=0; out=$(node "$CLI" init --private --orca --agents=claude,codex 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "36.2 跳過受追蹤檔不是失敗,應 exit 0(rc=$rc: $out)"
 git diff --quiet -- CLAUDE.md AGENTS.md || fail "36.2 --private --orca 不得改動受追蹤的 CLAUDE.md / AGENTS.md(diff: $(git diff --stat | tr '\n' ' '))"
 grep -q 'flightwake-orca:begin' CLAUDE.local.md 2>/dev/null || fail "36.2 claude 的 Orca 區塊應改寫進 CLAUDE.local.md"
 git check-ignore -q CLAUDE.local.md || fail "36.2 CLAUDE.local.md 應被排除"
@@ -1113,8 +1114,9 @@ pass "37.1 工具名稱白名單:constructor/toString/__proto__ 等在 setup 與
 
 # 37.2 --private 的 Orca 改寫到 CLAUDE.local.md 時,新目的地受追蹤 → 跳過並警告,不寫入
 newrepo "$TMP/ay2" >/dev/null
-node "$CLI" init --agents=claude >/dev/null && echo "# 本地筆記" > CLAUDE.local.md && git add -A && git commit -qm shared
+node "$CLI" init --agents=claude >/dev/null && echo "# 本地筆記" > CLAUDE.local.md && git add CLAUDE.md CLAUDE.local.md && git commit -qm shared
 rc=0; out=$(node "$CLI" init --private --orca --agents=claude 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "37.2 跳過受追蹤檔不是失敗,應 exit 0(rc=$rc: $out)"
 git diff --quiet -- CLAUDE.md CLAUDE.local.md || fail "37.2 受追蹤的 CLAUDE.md / CLAUDE.local.md 都不得被改(diff: $(git diff --stat | tr '\n' ' '))"
 echo "$out" | grep -q -- '--private: CLAUDE.local.md' || fail "37.2 CLAUDE.local.md 受追蹤時應跳過並警告(got: $out)"
 pass "37.2 --private 的 Orca 新目的地(CLAUDE.local.md)受追蹤也跳過並警告"
@@ -1144,20 +1146,20 @@ rc=0; out=$(node "$CLI" roles install 2>&1) || rc=$?
 [ -f "$TMP/ay4-out/fw-roles/KEEP" ] && [ "$rc" = 1 ] || fail "37.4 roles install 也不得重建 repo 外的 fw-roles(rc=$rc: $out)"
 # setup 選 roles 時同樣:預檢就拒,外部目錄與 repo 都不被寫
 newrepo "$TMP/ay4b" >/dev/null; mkdir -p "$TMP/ay4b-out" .claude && ln -s "$TMP/ay4b-out" .claude/skills
-b=$(snap); rc=0; out=$(node "$DRIVE" --orca=0 -- "" 1 "" y "" "" 2>&1) || rc=$?
-[ "$rc" = 1 ] && [ -z "$(ls -A "$TMP/ay4b-out")" ] && [ "$b" = "$(snap)" ] || fail "37.4 setup(含 roles)遇 repo 外落點應在寫入前中止(rc=$rc: $out)"
+b=$(fsnap); rc=0; out=$(node "$DRIVE" --orca=0 -- "" 1 "" y "" "" 2>&1) || rc=$?
+[ "$rc" = 1 ] && [ -z "$(ls -A "$TMP/ay4b-out")" ] && [ "$b" = "$(fsnap)" ] || fail "37.4 setup(含 roles)遇 repo 外落點應在寫入前中止(rc=$rc: $out)"
 pass "37.4 roles 安裝/刷新走同一層防護:repo 外的 fw-roles 不被刪除或重建(update、roles install、setup)"
 
 # 37.5 先預檢、後寫入:必要路徑會被拒寫 → 寫入前整個中止、不留半套、不印 done;懸空目錄 symlink 有一致診斷;setup 的 doctor 失敗不印成功
 newrepo "$TMP/ay5" >/dev/null; mkdir -p .claude && echo '{"mine":1}' > shared.json && ln -s ../shared.json .claude/settings.json
-b=$(snap); rc=0; out=$(node "$CLI" init 2>&1) || rc=$?
+b=$(fsnap); rc=0; out=$(node "$CLI" init 2>&1) || rc=$?
 [ "$rc" = 1 ] || fail "37.5 必要路徑被拒寫時 init 應非零(rc=$rc)"
-[ "$b" = "$(snap)" ] && [ ! -e .flightwake ] || fail "37.5 預檢失敗時不得留下半套安裝(got: $(ls -A | tr '\n' ' '))"
+[ "$b" = "$(fsnap)" ] && [ ! -e .flightwake ] || fail "37.5 預檢失敗時不得留下半套安裝(got: $(ls -A | tr '\n' ' '))"
 echo "$out" | grep -q '✅' && fail "37.5 未完成不得印 ✅(got: $out)"
 echo "$out" | grep -q 'symlink' && echo "$out" | grep -qi 'nothing was written' || fail "37.5 應說明哪個路徑因 symlink 被拒、且什麼都沒寫(got: $out)"
 newrepo "$TMP/ay5b" >/dev/null; ln -s "$TMP/does-not-exist" .claude
-b=$(snap); rc=0; out=$(node "$CLI" init 2>&1) || rc=$?
-[ "$rc" = 1 ] && [ "$b" = "$(snap)" ] || fail "37.5 懸空的 .claude symlink:init 應非零且零寫入(rc=$rc: $out)"
+b=$(fsnap); rc=0; out=$(node "$CLI" init 2>&1) || rc=$?
+[ "$rc" = 1 ] && [ "$b" = "$(fsnap)" ] || fail "37.5 懸空的 .claude symlink:init 應非零且零寫入(rc=$rc: $out)"
 echo "$out" | grep -qE 'ENOENT|at .*\.mjs:[0-9]+' && fail "37.5 懸空 symlink 不得拋 ENOENT(got: $out)"
 echo "$out" | grep -q '\.claude' && echo "$out" | grep -qi 'symlink' || fail "37.5 懸空 symlink 應得到同樣的拒寫診斷(got: $out)"
 newrepo "$TMP/ay5c" >/dev/null; echo "# g" > GEMINI.md; mkdir -p .gemini && echo "{ bad" > .gemini/settings.json
@@ -1172,20 +1174,101 @@ sym_variant() { # $1 名稱 $2 在已安裝 repo 內做 symlink 的指令 $3 受
   local dir="$TMP/ay6-$(echo "$1" | tr -c 'a-zA-Z0-9\n' _)"; newrepo "$dir" >/dev/null
   node "$CLI" init --agents=claude >/dev/null && node "$CLI" roles install >/dev/null
   echo "# KEEP $1" >> .flightwake/STATE.md; echo "# KEEP $1" >> .flightwake/DECISIONS.md
-  eval "$2"; local tb; tb=$(shasum < "$3"); local b; b=$(snap)
+  eval "$2"; local tb; tb=$(shasum < "$3"); local b; b=$(fsnap)
   local rc=0 out; out=$(node "$CLI" update 2>&1) || rc=$?
   [ "$rc" = 1 ] || fail "37.6 $1:update 應非零(rc=$rc: $out)"
   [ "$tb" = "$(shasum < "$3")" ] || fail "37.6 $1:受保護的目標 $3 不得被改"
-  [ "$b" = "$(snap)" ] || fail "37.6 $1:預檢失敗時 repo 內不得有任何寫入"
+  [ "$b" = "$(fsnap)" ] || fail "37.6 $1:預檢失敗時 repo 內不得有任何寫入"
   echo "$out" | grep -qE 'symlink|outside' || fail "37.6 $1:應說明拒寫原因(got: $out)"
 }
 mkdir -p "$TMP/ay6-out"
 sym_variant "skill 目錄" 'cp -R .claude/skills/fw-trap "$TMP/ay6-out/fw-trap" && rm -rf .claude/skills/fw-trap && ln -s "$TMP/ay6-out/fw-trap" .claude/skills/fw-trap' "$TMP/ay6-out/fw-trap/SKILL.md"
-sym_variant "settings.json" 'rm .claude/settings.json && ln -s ../.flightwake/STATE.md .claude/settings.json' .flightwake/STATE.md
+sym_variant "settings.json" 'echo "{\"mine\":\"USER RECORD\"}" > .flightwake/records/saved.json && rm .claude/settings.json && ln -s ../.flightwake/records/saved.json .claude/settings.json' .flightwake/records/saved.json
 sym_variant "指令檔" 'rm CLAUDE.md && ln -s .flightwake/DECISIONS.md CLAUDE.md' .flightwake/DECISIONS.md
 sym_variant "roles skill 目錄" 'cp -R .claude/skills/fw-roles "$TMP/ay6-out/fw-roles" && rm -rf .claude/skills/fw-roles && ln -s "$TMP/ay6-out/fw-roles" .claude/skills/fw-roles' "$TMP/ay6-out/fw-roles/SKILL.md"
 sym_variant "hook 檔(36.3)" 'rm .flightwake/hooks/state-check.mjs && ln -s ../STATE.md .flightwake/hooks/state-check.mjs' .flightwake/STATE.md
 pass "37.6 symlink / 落點防護涵蓋 hooks、skills 目錄、settings、指令檔、roles skill(update 拒寫、目標不變、零寫入)"
+
+# 38. Astra 第三輪(docs/plans/setup.diff-review-astra-3.md)合併前必修的回歸測試
+# 38.1 寫入是「暫存檔 + rename」,不原地覆寫:hook 檔、skill 檔是 STATE / DECISIONS 的 hardlink → update 後使用者資料不變
+newrepo "$TMP/az1" >/dev/null; node "$CLI" init >/dev/null
+echo "# KEEP 38.1" >> .flightwake/STATE.md; echo "# KEEP 38.1" >> .flightwake/DECISIONS.md
+rm .flightwake/hooks/state-check.mjs && ln .flightwake/STATE.md .flightwake/hooks/state-check.mjs
+rm .claude/skills/fw-record/SKILL.md && ln .flightwake/DECISIONS.md .claude/skills/fw-record/SKILL.md
+st=$(shasum < .flightwake/STATE.md); de=$(shasum < .flightwake/DECISIONS.md)
+rc=0; out=$(node "$CLI" update 2>&1) || rc=$?
+[ "$st" = "$(shasum < .flightwake/STATE.md)" ] || fail "38.1 hook 檔是 STATE 的 hardlink 時,update 不得蓋掉 STATE"
+[ "$de" = "$(shasum < .flightwake/DECISIONS.md)" ] || fail "38.1 skill 檔是 DECISIONS 的 hardlink 時,update 不得蓋掉 DECISIONS"
+[ "$rc" = 0 ] && grep -q 'flightwake STATE checks' .flightwake/hooks/state-check.mjs || fail "38.1 hook 應被換成新的獨立檔案(rc=$rc: $out)"
+pass "38.1 暫存檔 + rename 取代目的地:hardlink 到 STATE / DECISIONS 的框架檔被更新時使用者資料不變"
+
+# 38.2 uninstall / roles remove / roles apply / roles assign 走同一層防護
+newrepo "$TMP/az2" >/dev/null; node "$CLI" init >/dev/null && node "$CLI" roles install >/dev/null
+mkdir -p "$TMP/az2-out" && mv .claude/skills/* "$TMP/az2-out/" && rmdir .claude/skills && ln -s "$TMP/az2-out" .claude/skills
+echo keep > "$TMP/az2-out/fw-roles/KEEP"
+for c in uninstall "roles remove"; do
+  rc=0; out=$(node "$CLI" $c 2>&1) || rc=$?
+  [ -f "$TMP/az2-out/fw-roles/KEEP" ] || fail "38.2 $c 不得刪除 repo 外的內容(KEEP 消失)"
+  [ "$rc" = 1 ] && echo "$out" | grep -q 'outside' || fail "38.2 $c 應以落點在 repo 外拒絕並非零(rc=$rc: $out)"
+done
+[ -f .flightwake/hooks/state-check.mjs ] && grep -q 'flightwake:begin' AGENTS.md || fail "38.2 uninstall 預檢失敗時不得先刪了其他東西"
+newrepo "$TMP/az2b" >/dev/null; node "$CLI" init --agents=claude >/dev/null
+printf '## pm — PM\n**You do**\n- plan\n\n## qa — QA\n**You do**\n- test\n\n## seats\n| repo | vendor | role |\n|---|---|---|\n| . | claude | pm |\n' > .flightwake/ROLES.md
+node "$CLI" roles apply >/dev/null || fail "38.2 測試前提:roles apply 應成功"
+node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('.flightwake/roles-manifest.json','utf8'));m.note='USER RECORD KEEP';fs.writeFileSync('.flightwake/records/saved.json',JSON.stringify(m,null,2))"
+rm .flightwake/roles-manifest.json && ln -s records/saved.json .flightwake/roles-manifest.json
+sv=$(shasum < .flightwake/records/saved.json); ro=$(shasum < .flightwake/ROLES.md)
+for c in "roles apply" "roles assign .:claude qa"; do
+  rc=0; out=$(node "$CLI" $c 2>&1) || rc=$?
+  [ "$sv" = "$(shasum < .flightwake/records/saved.json)" ] || fail "38.2 $c 不得經由 symlink 的 manifest 覆寫使用者紀錄"
+  [ "$ro" = "$(shasum < .flightwake/ROLES.md)" ] || fail "38.2 $c 預檢失敗時不得改 ROLES.md"
+  [ "$rc" = 1 ] && echo "$out" | grep -q 'symlink' || fail "38.2 $c 應以 symlink 拒絕並非零(rc=$rc: $out)"
+done
+pass "38.2 uninstall / roles remove 不刪 repo 外內容;roles apply / assign 不經由 symlink manifest 覆寫,預檢失敗零寫入"
+
+# 38.3 --private 的必要排除寫不進去 → 預檢就中止,不印 ✅、不回 0(registry 只是提醒,排除是必要條件)
+for kind in dir symlink-dir; do
+  newrepo "$TMP/az3-$kind" >/dev/null; rm -f .git/info/exclude
+  if [ "$kind" = dir ]; then mkdir .git/info/exclude; else mkdir -p "$TMP/az3-target" && ln -s "$TMP/az3-target" .git/info/exclude; fi
+  rc=0; out=$(node "$CLI" init --private 2>&1) || rc=$?
+  [ "$rc" = 1 ] || fail "38.3 exclude 是 $kind 時 init --private 應非零(rc=$rc: $out)"
+  echo "$out" | grep -q '✅' && fail "38.3 隱私未生效不得印 ✅(got: $out)"
+  [ ! -e .flightwake ] && [ ! -e .claude ] || fail "38.3 exclude 寫不進去應在預檢中止、零寫入(got: $(ls -A | tr '\n' ' '))"
+  echo "$out" | grep -q 'exclude' || fail "38.3 應點名 .git/info/exclude(got: $out)"
+done
+newrepo "$TMP/az3-tracked" >/dev/null; node "$CLI" init >/dev/null && git add -A && git commit -qm shared
+rc=0; out=$(node "$CLI" init --private 2>&1) || rc=$?
+[ "$rc" = 1 ] && ! echo "$out" | grep -q '✅' || fail "38.3 .flightwake 已受追蹤時 --private 無法生效,不得印 ✅ 或回 0(rc=$rc: $out)"
+[ ! -e .git/info/exclude ] || ! grep -q 'flightwake:begin' .git/info/exclude || fail "38.3 隱私無法生效時不得寫 exclude"
+echo "$out" | grep -q 'git rm -r --cached' || fail "38.3 應說明如何讓 .flightwake 脫離追蹤(got: $out)"
+pass "38.3 private 必要排除寫不進去(exclude 是目錄 / 指向目錄 / .flightwake 已受追蹤)→ 預檢中止、不印 ✅、非零"
+
+# 38.4 預檢檢查目的地與祖先的型別:.claude 是一般檔 → 寫入前中止;roles install 遇 .agents 是檔案也不留半套、不拋未捕捉例外
+newrepo "$TMP/az4" >/dev/null; echo "not a dir" > .claude
+rc=0; out=$(node "$CLI" init 2>&1) || rc=$?
+[ "$rc" = 1 ] && [ ! -e .flightwake ] || fail "38.4 .claude 是檔案時 init 應在寫入前中止(rc=$rc: $(ls -A | tr '\n' ' '))"
+echo "$out" | grep -qE 'ENOTDIR|at .*\.mjs:[0-9]+' && fail "38.4 不得以例外結束(got: $out)"
+echo "$out" | grep -q '\.claude' && echo "$out" | grep -qi 'not a directory' || fail "38.4 應說明 .claude 不是目錄(got: $out)"
+newrepo "$TMP/az4b" >/dev/null; node "$CLI" init --agents=claude,codex >/dev/null
+rm -rf .agents && echo "file" > .agents
+rc=0; out=$(node "$CLI" roles install 2>&1) || rc=$?
+[ "$rc" = 1 ] || fail "38.4 .agents 是檔案時 roles install 應非零(rc=$rc: $out)"
+[ ! -e .claude/skills/fw-roles ] || fail "38.4 roles install 不得裝一半(.claude/skills/fw-roles 已建立)"
+echo "$out" | grep -qE 'ENOTDIR|at .*\.mjs:[0-9]+' && fail "38.4 roles install 不得拋未捕捉例外(got: $out)"
+pass "38.4 預檢的型別檢查:.claude / .agents 是一般檔 → 寫入前中止,roles install 不留半套、不拋例外"
+
+# 38.5 預檢只檢查實際會寫的目的地:--private 下受追蹤(且為 symlink)的 .codex/hooks.json / .gemini/settings.json 被跳過 → exit 0(同 main)
+for plat in codex gemini; do
+  newrepo "$TMP/az5-$plat" >/dev/null
+  if [ "$plat" = codex ]; then f=.codex/hooks.json; ins=AGENTS.md; else f=.gemini/settings.json; ins=GEMINI.md; fi
+  mkdir -p "$(dirname $f)" && echo '{"mine":true}' > real-hooks.json && ln -s ../real-hooks.json "$f" && echo "# x" > "$ins"
+  git add -A && git commit -qm base
+  rc=0; out=$(node "$CLI" init --private --agents=$plat 2>&1) || rc=$?
+  [ "$rc" = 0 ] || fail "38.5 $plat:受追蹤而被跳過的 symlink 不應讓安裝被拒(rc=$rc: $out)"
+  echo "$out" | grep -q -- "--private: $f is git-tracked" || fail "38.5 $plat:應說明跳過受追蹤的 $f(got: $out)"
+  [ "$(cat real-hooks.json)" = '{"mine":true}' ] || fail "38.5 $plat:不得寫入受追蹤的檔"
+done
+pass "38.5 --private 下受追蹤而被跳過的 symlink 設定檔不觸發拒寫(codex / gemini,exit 0)"
 
 echo ""
 echo "✅ smoke 全過"

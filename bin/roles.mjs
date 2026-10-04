@@ -18,7 +18,7 @@
  * hash. Output is only rewritten or removed when it still matches what was generated (or already equals the new
  * content); anything else is a conflict, reported, and nothing is written. Zero dependencies (node: built-ins).
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, realpathSync, statSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync, readdirSync } from 'node:fs';
 import { join, dirname, resolve, relative, basename, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -359,16 +359,21 @@ export function planApply({ source, text, lang, version }) {
   return { errors: [], conflicts, actions, manifestPath, manifest: { version: 1, source: basename(source), outputs }, roles, seats, home };
 }
 
-function execute(plan, { log, target }) {
+// Every write goes through a guarded writer whose boundary is the repo being written (writerFor(repo)): a team that
+// spans repos is protected repo by repo — each explicitly targeted repo is its own boundary. extra = writes that
+// belong to the team's home repo before the outputs (assign's ROLES.md edit).
+function execute(plan, { log, writerFor, extra = [] }) {
   const failed = [];
+  const home = plan.home;
+  for (const [p, data] of extra) { try { writerFor(home).write(p, data); } catch (e) { failed.push(`${p}: ${e.message}`); } }
   for (const a of plan.actions) {
     if (a.act === 'same') continue;
     try {
-      if (a.act === 'rm') rmSync(a.abs);
-      else { mkdirSync(dirname(a.abs), { recursive: true }); writeFileSync(a.abs, a.next); }
+      if (a.act === 'rm') writerFor(a.repo).rm(a.abs);
+      else writerFor(a.repo).write(a.abs, a.next);
     } catch (e) { failed.push(`${a.abs}: ${e.message}`); }
   }
-  try { writeFileSync(plan.manifestPath, JSON.stringify(plan.manifest, null, 2) + '\n'); } catch (e) { failed.push(`${plan.manifestPath}: ${e.message}`); }
+  try { writerFor(home).write(plan.manifestPath, JSON.stringify(plan.manifest, null, 2) + '\n'); } catch (e) { failed.push(`${plan.manifestPath}: ${e.message}`); }
   if (failed.length) log(`⚠️  partially applied — these writes failed (re-run apply after fixing; it converges):\n     ${failed.join('\n     ')}`);
   return failed.length ? 1 : 0;
 }
@@ -397,31 +402,34 @@ function findSource(target) {
   return null;
 }
 
-export function removeRoleArtifacts(target, log) {
+/** Strip this repo's role output. W = the installer's guarded writer (no deleting or rewriting through a symlink or
+ *  outside the repo); callers preflight with a dry W first. */
+export function removeRoleArtifacts(target, log, W) {
   for (const rels of Object.values(AGENT_FILES)) {
     for (const rel of rels) {
       const p = join(target, ...rel.split('/'));
       const cur = readOr(p);
       if (!cur || !ROLE_BLOCK_RE.test(cur)) continue;
       const next = withoutBlock(cur);
-      if (next.trim()) { writeFileSync(p, next); log(`  edit ${rel} ← role block removed`); }
-      else { rmSync(p); log(`  rm   ${rel} (empty after role block removal)`); }
+      if (next.trim()) { if (W.write(p, next)) log(`  edit ${rel} ← role block removed`); }
+      else if (W.rm(p)) log(`  rm   ${rel} (empty after role block removal)`);
     }
   }
   // Generated on-call agents: only files carrying the generated marker, only in the generated dirs
   for (const dir of Object.values(NATIVE_DIRS)) {
     const d = join(target, ...dir.split('/'));
     if (!existsSync(d)) continue;
+    let left = 0;
     for (const f of readdirSafe(d)) {
-      if (!f.startsWith('fw-')) continue;
       const p = join(d, f);
-      if ((readOr(p) ?? '').includes(GEN_MARK)) { rmSync(p); log(`  rm   ${dir}/${f}`); }
+      if (f.startsWith('fw-') && (readOr(p) ?? '').includes(GEN_MARK)) { if (W.rm(p)) log(`  rm   ${dir}/${f}`); else left++; }
+      else left++;
     }
-    try { if (!readdirSafe(d).length) rmSync(d, { recursive: true }); } catch {}
+    if (!left) W.rm(d);
   }
   for (const base of SKILL_BASES) {
     const p = join(target, ...base.split('/'), 'fw-roles');
-    if (existsSync(p)) { rmSync(p, { recursive: true }); log(`  rm   ${base}/fw-roles`); }
+    if (existsSync(p) && W.rm(p)) log(`  rm   ${base}/fw-roles`);
   }
 }
 function readdirSafe(d) { try { return readdirSync(d); } catch { return []; } }
@@ -506,7 +514,8 @@ export function runRoles({ target, fwSrc, version, lang, args, log, M, noJunk, a
     installRolesSkill({ target, fwSrc, lang, bases, log: () => {}, addExcludes, W: pre.W });
     if (pre.refused.length) { log(writer.refusalReport(pre.refused)); return 1; }
     const real = writer.make(false);
-    installRolesSkill({ target, fwSrc, lang, bases, log, addExcludes, W: real.W });
+    try { installRolesSkill({ target, fwSrc, lang, bases, log, addExcludes, W: real.W }); }
+    catch (e) { log(writer.incompleteReport(e?.message ?? String(e))); return 1; }
     if (real.refused.length) { log(writer.incompleteReport(real.refused.map((r) => r.path).join(', '))); return 1; }
     log(M({
       en: '\n✅ fw-roles installed. Ask your agent to run fw-roles: it scans the project, recommends a team, lets you preview and customize, then runs `npx flightwake roles apply`.',
@@ -516,7 +525,12 @@ export function runRoles({ target, fwSrc, version, lang, args, log, M, noJunk, a
   }
 
   if (sub === 'remove') {
-    removeRoleArtifacts(target, log);
+    const pre = writer.make(true);
+    removeRoleArtifacts(target, () => {}, pre.W);
+    if (pre.refused.length) { log(writer.refusalReport(pre.refused)); return 1; }
+    const real = writer.make(false);
+    try { removeRoleArtifacts(target, log, real.W); } catch (e) { log(writer.incompleteReport(e?.message ?? String(e))); return 1; }
+    if (real.refused.length) { log(writer.incompleteReport(real.refused.map((r) => r.path).join(', '))); return 1; }
     log(M({ en: '\n✅ role blocks, generated agents and fw-roles removed from this repo. .flightwake/ROLES.md is user data and was kept.', 'zh-TW': '\n✅ 本 repo 的角色區塊、產生的 agent 與 fw-roles 已移除。.flightwake/ROLES.md 是使用者資料,保留。' }));
     return 0;
   }
@@ -569,15 +583,22 @@ export function runRoles({ target, fwSrc, version, lang, args, log, M, noJunk, a
     return 1;
   }
   if (DRY) { log(M({ en: '\n(dry run — nothing written)', 'zh-TW': '\n(dry run — 未寫入任何檔案)' })); return 0; }
-  if (sub === 'assign') {
-    if (readFileSync(source, 'utf8') !== text) { log('⚠️  ROLES.md changed while planning (another agent?) — nothing written; re-run.'); return 1; }
-    writeFileSync(source, nextText);
-    log(`  edit   ${relative(target, source) || source} ← seats (${change})`);
-  }
-  const rc = execute(plan, { log, target });
+  if (sub === 'assign' && readFileSync(source, 'utf8') !== text) { log('⚠️  ROLES.md changed while planning (another agent?) — nothing written; re-run.'); return 1; }
+  const extra = sub === 'assign' ? [[source, nextText]] : [];
+  // Preflight: the same writes, dry, one guarded writer per target repo
+  const writersFor = (dry) => { const m = new Map(); return { m, get: (repo) => { if (!m.has(repo)) m.set(repo, writer.make(dry, repo)); return m.get(repo).W; } }; };
+  const pre = writersFor(true);
+  execute(plan, { log: () => {}, writerFor: pre.get, extra });
+  const preRefused = [...pre.m.values()].flatMap((w) => w.refused);
+  if (preRefused.length) { log(writer.refusalReport(preRefused)); return 1; }
+  if (sub === 'assign') log(`  edit   ${relative(target, source) || source} ← seats (${change})`);
+  const realW = writersFor(false);
+  const rc = execute(plan, { log, writerFor: realW.get, extra });
+  const realRefused = [...realW.m.values()].flatMap((w) => w.refused);
+  if (rc || realRefused.length) { log(writer.incompleteReport(realRefused.map((r) => r.path).join(', ') || 'see the failed writes above')); return 1; }
   log(M({
     en: '\n✅ roles applied. Each agent picks its role up on its **next new session** or /clear — running sessions and workers keep their current role until then. Commit the changed files in every repo listed above.',
     'zh-TW': '\n✅ 角色已套用。每個 agent 在**下一次新對話**或 /clear 後才生效——正在跑的 session 與 worker 在那之前維持原角色。上面列到的每個 repo 都要 commit 變更的檔案。',
   }));
-  return rc;
+  return 0;
 }

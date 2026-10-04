@@ -12,7 +12,7 @@
  * The install itself lives in install.mjs (one code path for init, update and setup); setup.mjs only resolves
  * options by asking; doctor.mjs is read-only.
  */
-import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, rmSync, rmdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, rmdirSync, lstatSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -142,7 +142,8 @@ if (cmd === 'roles') {
     target: TARGET, fwSrc: FW_SRC, version: VERSION, lang: LANG, args, log, M, noJunk,
     addExcludes: (e, W) => addPrivateExcludes(TARGET, e, W),
     writer: {
-      make: (dry) => createWriter({ target: TARGET, dry, log: dry ? () => {} : log, M }),
+      // boundary = the repo being written (cross-repo roles pass each target repo)
+      make: (dry, boundary = TARGET) => createWriter({ target: boundary, dry, log: dry ? () => {} : log, M }),
       refusalReport: (r) => refusalReport(M, r),
       incompleteReport: (d) => incompleteReport(M, d),
     },
@@ -150,87 +151,101 @@ if (cmd === 'roles') {
 }
 
 // ── uninstall: reverse-remove init's fixed write set; .flightwake/ user data kept unless --purge ──
+// Every deletion and edit goes through the guarded writer (install.mjs createWriter) and is preflighted dry first:
+// a skills tree symlinked outside the repo, or any other refused path, stops uninstall before it removes anything.
 if (cmd === 'uninstall') {
   const PURGE = args.includes('--purge');
-  log(`flightwake uninstall v${VERSION}${PURGE ? ' (--purge)' : ''} → ${TARGET}\n`);
-  const rm = (rel) => {
-    const p = join(TARGET, ...rel.split('/'));
-    if (!existsSync(p)) return;
-    rmSync(p, { recursive: true });
-    log(`  rm   ${rel}`);
+  const header = `flightwake uninstall v${VERSION}${PURGE ? ' (--purge)' : ''} → ${TARGET}\n`;
+  const isLink = (p) => { try { return lstatSync(p).isSymbolicLink(); } catch { return false; } };
+  const run = (W, out, dry) => {
+    const rm = (rel, note = '') => {
+      const p = join(TARGET, ...rel.split('/'));
+      if (!existsSync(p) && !isLink(p)) return;
+      if (W.rm(p)) out(`  rm   ${rel}${note}`);
+    };
+    const rmdirQuiet = (rel) => { // only empty, real directories; non-empty = the user's own things (failing is the point)
+      const p = join(TARGET, ...rel.split('/'));
+      if (dry || isLink(p)) return;
+      try { rmdirSync(p); } catch {}
+    };
+    // 1. Skills (both trees: .claude/skills for Claude Code, .agents/skills for Codex/Gemini) + framework files
+    //    inside .flightwake/ (hooks/ removed once emptied; anything the user put there stays)
+    for (const sk of readdirSync(join(FW_SRC, 'skills', 'en'))) {
+      if (!statSync(join(FW_SRC, 'skills', 'en', sk)).isDirectory()) continue;
+      rm(`.claude/skills/${sk}`);
+      rm(`.agents/skills/${sk}`);
+    }
+    rm('.flightwake/TEMPLATE-record.md');
+    // roles add-on: its skill and role blocks are framework-written too (ROLES.md is user data, kept like STATE)
+    removeRoleArtifacts(TARGET, out, W);
+    rm('.flightwake/hooks/state-check.mjs');
+    rm('.flightwake/hooks/statusline.mjs');
+    rmdirQuiet('.flightwake/hooks');
+    // 2. Settings: pluck only flightwake's hook (Stop for Claude/Codex, AfterAgent for Gemini) and statusLine,
+    //    keep everything else; delete the file only if empty after
+    for (const [rel, event] of [
+      ['.claude/settings.json', 'Stop'], ['.claude/settings.local.json', 'Stop'],
+      ['.codex/hooks.json', 'Stop'], ['.gemini/settings.json', 'AfterAgent'],
+    ]) {
+      const p = join(TARGET, ...rel.split('/'));
+      if (!existsSync(p)) continue;
+      let st;
+      try { st = JSON.parse(readFileSync(p, 'utf8')); }
+      catch { out(`  ⚠️  ${rel} is not valid JSON — remove the state-check.mjs ${event} hook and statusline.mjs statusLine manually`); continue; }
+      if (!st || typeof st !== 'object' || Array.isArray(st)) continue;
+      let changed = false;
+      const stop = st.hooks?.[event];
+      if (Array.isArray(stop) && JSON.stringify(stop).includes('state-check.mjs')) {
+        const cleaned = stop
+          .map((e) => ({ ...e, hooks: (Array.isArray(e?.hooks) ? e.hooks : []).filter((h) => !String(h?.command ?? '').includes('state-check.mjs')) }))
+          .filter((e) => e.hooks.length);
+        if (cleaned.length) st.hooks[event] = cleaned; else delete st.hooks[event];
+        if (st.hooks && !Object.keys(st.hooks).length) delete st.hooks;
+        changed = true;
+      }
+      if (JSON.stringify(st.statusLine ?? null).includes('statusline.mjs')) { delete st.statusLine; changed = true; }
+      if (!changed) continue;
+      if (!Object.keys(st).length) rm(rel, ' (empty after removal)');
+      else if (W.write(p, JSON.stringify(st, null, 2) + '\n')) out(`  edit ${rel} ← flightwake settings removed`);
+    }
+    // 3. Marker blocks (obligation table + Orca add-on) in instruction files; delete the file only if empty after
+    //    (= flightwake created it)
+    for (const rel of INSTRUCTION_CANDIDATES) {
+      const p = join(TARGET, ...rel.split('/'));
+      if (!existsSync(p)) continue;
+      const cur = readFileSync(p, 'utf8');
+      const hasCore = cur.includes('<!-- flightwake:begin');
+      const hasOrca = ORCA_BLOCK_RE.test(cur);
+      if (!hasCore && !hasOrca) {
+        if (cur.includes('flightwake 工作紀律')) out(`  ⚠️  ${rel} has a v0.1 unmarked snippet that can't be removed automatically — delete that section by hand`);
+        continue;
+      }
+      const updated = cur.replace(ORCA_BLOCK_RE, '\n').replace(/\n?<!-- flightwake:begin[\s\S]*?<!-- flightwake:end -->\n?/, '\n').replace(/^\n+/, '');
+      if (!updated.trim()) rm(rel, ' (empty after snippet removal)');
+      else if (W.write(p, updated)) out(`  edit ${rel} ← snippet removed`);
+    }
+    // 4. Marker block in .git/info/exclude (trace of a --private install)
+    try {
+      const ep = excludePath(TARGET);
+      if (existsSync(ep) && readFileSync(ep, 'utf8').includes('# flightwake:begin')) {
+        if (W.write(ep, readFileSync(ep, 'utf8').replace(/# flightwake:begin[\s\S]*?# flightwake:end\n?/, ''), false)) out('  edit .git/info/exclude ← flightwake block removed');
+      }
+    } catch {}
+    // 5. Remove now-empty directories
+    for (const rel of ['.claude/skills', '.claude', '.agents/skills', '.agents', '.codex', '.gemini']) rmdirQuiet(rel);
+    // 6. User data only on --purge
+    if (PURGE) rm('.flightwake');
   };
-  // 1. Skills (both trees: .claude/skills for Claude Code, .agents/skills for Codex/Gemini) + framework files
-  //    inside .flightwake/ (hooks/ removed once emptied; anything the user put there stays)
-  for (const s of readdirSync(join(FW_SRC, 'skills', 'en'))) {
-    if (!statSync(join(FW_SRC, 'skills', 'en', s)).isDirectory()) continue;
-    rm(`.claude/skills/${s}`);
-    rm(`.agents/skills/${s}`);
-  }
-  rm('.flightwake/TEMPLATE-record.md');
-  // roles add-on: its skill and role blocks are framework-written too (ROLES.md is user data, kept like STATE)
-  removeRoleArtifacts(TARGET, log);
-  rm('.flightwake/hooks/state-check.mjs');
-  rm('.flightwake/hooks/statusline.mjs');
-  try { rmdirSync(join(TARGET, '.flightwake', 'hooks')); } catch {}
-  // 2. Settings: pluck only flightwake's hook (Stop for Claude/Codex, AfterAgent for Gemini) and statusLine,
-  //    keep everything else; delete the file only if empty after
-  for (const [rel, event] of [
-    ['.claude/settings.json', 'Stop'], ['.claude/settings.local.json', 'Stop'],
-    ['.codex/hooks.json', 'Stop'], ['.gemini/settings.json', 'AfterAgent'],
-  ]) {
-    const p = join(TARGET, ...rel.split('/'));
-    if (!existsSync(p)) continue;
-    let s;
-    try { s = JSON.parse(readFileSync(p, 'utf8')); }
-    catch { log(`  ⚠️  ${rel} is not valid JSON — remove the state-check.mjs ${event} hook and statusline.mjs statusLine manually`); continue; }
-    let changed = false;
-    const stop = s.hooks?.[event];
-    if (Array.isArray(stop) && JSON.stringify(stop).includes('state-check.mjs')) {
-      const cleaned = stop
-        .map((e) => ({ ...e, hooks: (e.hooks ?? []).filter((h) => !String(h.command ?? '').includes('state-check.mjs')) }))
-        .filter((e) => e.hooks.length);
-      if (cleaned.length) s.hooks[event] = cleaned; else delete s.hooks[event];
-      if (s.hooks && !Object.keys(s.hooks).length) delete s.hooks;
-      changed = true;
-    }
-    if (JSON.stringify(s.statusLine ?? null).includes('statusline.mjs')) { delete s.statusLine; changed = true; }
-    if (!changed) continue;
-    if (!Object.keys(s).length) { rmSync(p); log(`  rm   ${rel} (empty after removal)`); }
-    else { writeFileSync(p, JSON.stringify(s, null, 2) + '\n'); log(`  edit ${rel} ← flightwake settings removed`); }
-  }
-  // 3. Marker blocks (obligation table + Orca add-on) in instruction files; delete the file only if empty after
-  //    (= flightwake created it)
-  for (const rel of INSTRUCTION_CANDIDATES) {
-    const p = join(TARGET, ...rel.split('/'));
-    if (!existsSync(p)) continue;
-    const cur = readFileSync(p, 'utf8');
-    const hasCore = cur.includes('<!-- flightwake:begin');
-    const hasOrca = ORCA_BLOCK_RE.test(cur);
-    if (!hasCore && !hasOrca) {
-      if (cur.includes('flightwake 工作紀律')) log(`  ⚠️  ${rel} has a v0.1 unmarked snippet that can't be removed automatically — delete that section by hand`);
-      continue;
-    }
-    const updated = cur.replace(ORCA_BLOCK_RE, '\n').replace(/\n?<!-- flightwake:begin[\s\S]*?<!-- flightwake:end -->\n?/, '\n').replace(/^\n+/, '');
-    if (!updated.trim()) { rmSync(p); log(`  rm   ${rel} (empty after snippet removal)`); }
-    else { writeFileSync(p, updated); log(`  edit ${rel} ← snippet removed`); }
-  }
-  // 4. Marker block in .git/info/exclude (trace of a --private install)
-  try {
-    const ep = excludePath(TARGET);
-    if (existsSync(ep) && readFileSync(ep, 'utf8').includes('# flightwake:begin')) {
-      writeFileSync(ep, readFileSync(ep, 'utf8').replace(/# flightwake:begin[\s\S]*?# flightwake:end\n?/, ''));
-      log('  edit .git/info/exclude ← flightwake block removed');
-    }
-  } catch {}
-  // 5. Remove now-empty directories (non-empty = user has their own things there; rmdir fails silently, which is the point)
-  for (const rel of ['.claude/skills', '.claude', '.agents/skills', '.agents', '.codex', '.gemini']) {
-    try { rmdirSync(join(TARGET, ...rel.split('/'))); } catch {}
-  }
-  // 5b. Cross-repo registry entry
+  const pre = createWriter({ target: TARGET, dry: true, M });
+  run(pre.W, () => {}, true);
+  if (pre.refused.length) { log(header); log(refusalReport(M, pre.refused)); process.exit(1); }
+  log(header);
+  const real = createWriter({ target: TARGET, log, M });
+  try { run(real.W, log, false); } catch (e) { log(incompleteReport(M, e?.message ?? String(e))); process.exit(1); }
+  if (real.refused.length) { log(incompleteReport(M, real.refused.map((r) => r.path).join(', '))); process.exit(1); }
+  // Cross-repo registry entry (best-effort)
   unregisterRepo(TARGET, log);
-  // 6. User data
   if (PURGE) {
-    rm('.flightwake');
     log('\n✅ uninstall done (--purge). User data (STATE/DECISIONS/TRAPS/records) deleted too; anything ever committed is still recoverable from git history.');
   } else {
     log('\n✅ uninstall done. .flightwake/ (STATE/DECISIONS/TRAPS/records) is user data and was kept — use uninstall --purge or delete it yourself if you are sure.');
