@@ -3,7 +3,7 @@ record_id: 261005-integration
 session: Claude(Opus 5.5) 主實作 + 4 個 Claude(Sonnet 5.5) 文件撰寫者(四語 mod 文件與 README,產出經主實作者逐檔審閱、修正後採用)
 date: 2026-10-05
 repos: [flightwake(分支 kaiwutech-TW/integration)]
-tests: bash test/smoke.sh 41 節全過(Python 3.12 在 PATH 前);claude plugin test mods/flightwake 276 pass / 0 fail;claude plugin validate 通過(零警告);tsc 5.9.3(對 2.1.289 型別檔)clean;git-readonly-check 三項通過;node --check bin/ test/ hooks/ 全過;真機:setup 安裝後 mod 以 @skills-dir 載入、zh-TW、F1–F4 抽驗生效
+tests: (版本 0.15.0 commit 前)bash test/smoke.sh 44 節全過(Python 3.12 在 PATH 前);claude plugin test mods/flightwake 297 pass / 0 fail(11 檔);claude plugin validate 通過;tsc 5.9.3(對 2.1.289 型別檔)clean;git-readonly-check 三項通過;node --check bin/ hooks/ test/ 全過;真機:setup 安裝後 mod 以 @skills-dir 載入、zh-TW、F1–F4 抽驗生效,F5 由驗收者真機實測通過
 prod_changes: none(未 push、未 bump、未發版)
 ---
 <!-- flightwake record — 飛行紀錄。 -->
@@ -80,7 +80,7 @@ STATE 以 setup-wizard 版為底、加入 mods 段落並改寫 frontmatter 與�
   - F2:輸入框上方 `✈ flightwake · ●yellow · STATE 同步 → 先處理未驗證項再疊新工作(讀 STATE)`。
   - F4:`echo flightwake-probe` 後模型引出 `probe-echo-trap [probable] 命中 echo flightwake-probe`。
   - F3:`/fw-log` 印出 zh-TW 表格,`npm test`(script 為 `node -e "process.exit(0)"`)記為 `未知 | not-a-known-runner`(正面證明規則下正確),頁尾含 pass 的意義。
-  - F5 預設關閉,本次未抽驗。
+  - F5(角色守門,預設關閉):當時未抽驗;**後由驗收者 Fable 5.1 在真實 session 實測通過**——pm 座位寫入 `src/` 被擋並給出說明;使用者輸入 `/fw-role-release src/**` 後 `src/add.js` 可寫、狀態列持續顯示放行警告;重疊的 `src/private/**` 仍被擋;revoke 後恢復阻擋。
 - **項目 7**(2.1.289,`claude -p`、讀檔工具全關、各 3 次):只有 AGENTS.md → 3/3 答出 AGENTS 暗號,debug `no CLAUDE.md found; AGENTS.md loaded`;
   兩者都有 → 3/3 只有 CLAUDE 暗號(AGENTS 暗號答 no);都沒有 → `NONE`。只測了 `-p`;機制是同一個內建外掛,互動模式未另測。
 
@@ -98,7 +98,7 @@ STATE 以 setup-wizard 版為底、加入 mods 段落並改寫 frontmatter 與�
 - 未 push、未 bump、未發版;CI 未跑。之後由獨立審查者讀 diff 驗收、GPT-6 Astra 複審。
 - 待 Kai 決定:①項目 7 對 roles 座位設計的影響(只有 AGENTS.md 的 repo);②TRAPS 兩條 python 3.11 重複條目的壓實;③`~/.claude/projects` 四個 scratch session 資料夾是否刪除。
 - 本 repo 自己的 dogfood 安裝副本仍未刷新(刻意留到發版後,同前一階段)。
-- 未驗證:F5 與 mod 題在 setup 中的其他語言外觀;真的 resume/compact(沿用 mods record 的未驗證清單);Windows。
+- 未驗證:mod 題在 setup 中的其他語言外觀;真的 resume/compact(沿用 mods record 的未驗證清單);Windows。
 - 已知限制沿用 [[261005-flightwake-mod]] 的「驗證範圍」與 [[261005-setup-wizard]] 的已知限制;mod 文件的限制段依該 record 撰寫。
 
 ## 驗收修正(同日,b9d38f5..)
@@ -194,3 +194,16 @@ worktree 之外:`$TMPDIR/fw-integration-verify`(驗證工具與隔離的 FLIGHTW
 
 
 **最後確認(同日)**:驗收者 Fable 5.1 複核三項修正通過;GPT-6 Astra 最後確認(原文 `docs/plans/integration.diff-review-astra-3.md`,審至 6211fd2)結論**依約定標準可合併、無剩餘合併前必修**(補跑一般 cp/mv/重導向正確記錄;它追加測試後 302/302,追加的測試未進本分支)。它列的未驗證範圍:本輪未重跑 tsc、真實 Claude session、Windows、CI、競態/磁碟故障;git 確認只證明事後有變更、不證明是該指令造成(日誌維持「推斷」定位)。功能凍結;未 push/bump/發版,等 Kai 決定。
+
+## 版本 0.15.0(同日,未發版)
+
+Kai 決定:只 push 本分支、開一個 PR,在此 PR 內把版本改成 0.15.0;CI 通過並合併後才發版(今天不發)。push 與開 PR 由驗收者做。
+- 比照 4f6427a(v0.14.0):`package.json` 0.15.0;CHANGELOG `Unreleased` 改為 `[0.15.0] — 2026-10-05`、底部連結補 0.15.0 並把 Unreleased 比較基準改為 v0.15.0。
+  其他 `0.14.0` 出現處都是歷史敘述(roles「v0.14.0 起」、計畫書)或 mod 測試的 marker 範例,不同步。CLI 版本由 `bin/cli.mjs` 讀 package.json,無其他需改處。
+- **mod 維持 0.1.0**(第一次隨套件發行;之後改了 mod 發行檔就 bump mod 版本):理由見 DECISIONS 2026-10-05 首條。
+- 不打 tag、不建 GitHub Release、不 npm publish、不 push;dogfood 副本照舊不在本分支刷新。
+- 驗證(改版號後):smoke 44 節 `✅ smoke 全過`;`297 pass / 0 fail, Ran 297 tests across 11 files`;`✔ Validation passed`;tsc 5.9.3 對 Claude Code 2.1.289 型別檔 exit 0
+  (型別檔取得方式:把 mod 複製到暫存目錄,`claude --plugin-dir <副本> --model haiku -p` 載入一次,引擎在副本寫出 `tsconfig.json` 與 `.claude-plugin/types/`);git-readonly-check 三項 ok。
+- 觀察(未改,屬打包範圍):`npm pack --dry-run` 共 107 檔,其中 mod 29 檔含 `mods/flightwake/tests/`;安裝器只複製 manifest/hooks/types,所以只影響套件大小。
+- worktree 之外:取型別檔時誤用 `claude plugin init`,它在 `~/.claude/skills/probe/` 建了一個會自動載入的外掛,**已當下刪除**(兩個檔與兩層目錄,查看內容後刪);
+  `--plugin-dir -p` 那次留下 `~/.claude/projects/-Users-kaiwu--claude-jobs-0553c654-tmp-empty/`(session 紀錄,未刪,同前述 scratch 資料夾交 Kai)。

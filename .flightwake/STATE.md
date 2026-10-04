@@ -2,7 +2,7 @@
 updated: 2026-10-05
 updated_by: Claude(Opus 5.5)
 latest_record: records/261005-integration.md
-health: green  # 分支 kaiwutech-TW/integration:驗收者複核 + Astra 最後確認通過,依約定標準可合併、無剩餘必修(smoke 44 節、plugin test 297/297、validate、tsc 全過);功能凍結;未 push/發版、CI 未跑、最後一輪未重做真機 session
+health: green  # 分支 kaiwutech-TW/integration:版本已改 0.15.0(未發版);驗收者複核 + Astra 最後確認可合併,F5 角色守門已真機實測;smoke 44 節、plugin test 297/297、validate、tsc 全過;未 push(由驗收者 push 開 PR)、CI 未跑
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
 <!-- 規則:只寫「現在」與「下一步」;歷史去 records/,決策去 DECISIONS.md。 -->
@@ -15,7 +15,7 @@ flightwake **v0.14.0(2026-09-28 已發,npm latest;前版 v0.13.0 2026-09-02)**,*
 **2026-08-11:跨 repo 查詢層 `flightwake-tower` 完成(獨立 repo `~/orca/flightwake-tower`)+ 核心 registry 登記**——tower 唯讀(TRAPS 跨 repo 搜尋 + STATE 總覽含 SCOPE+ 行與 health_note,CLI 皆有 --json + 手寫零依賴 MCP stdio);核心唯一改動 = init/update 寫 `~/.flightwake/registry.json`、uninstall 移除。真實機隊 21 repo 入冊(worktree 跳過)、驗收全過;架構三決策(獨立 repo/手寫 MCP/命名)見 DECISIONS 2026-08-11,詳見 [[260811-tower-and-registry]]。**核心 0.13.0 與 tower 0.1.0 都未發版**;Phase 2(session 成本/工時:token + 5 分鐘 gap-capping)未動工。
 **2026-10-05:第一階段 setup 完成於分支 `kaiwutech-TW/setup-wizard`(未 push、未發版)**——`npx flightwake setup` 引導式安裝(確認前零寫入、摘要 = 安裝函式 dry-run)、唯讀 `doctor`、`--profile=notes`、Orca 協作附加元件、`--git-init`、init/setup 先驗 git、fw-coldstart 未初始化分支;smoke 34/34;驗收通過後再做 Kai 兩項 UX(無指令檔直接問工具、確認預設是)與 Astra 四輪共 17 項修正(含 main 既有的 symlink/hardlink 覆蓋 STATE;現在先預檢、後寫入,寫入一律暫存檔 + rename 且保留原權限),smoke 39 節。決策見 DECISIONS 2026-10-05,詳見 [[261005-setup-wizard]]。
 **2026-10-05(分支 kaiwutech-TW/mods,未 push):Claude Code mod `flightwake-mod` 完成並真機載入**——`mods/flightwake/` 一個外掛五個可開關功能(STATE 快照注入、輸入框上方橫條、session 行車記錄 `/fw-log`、TRAPS `paths`/`commands` 絆線、選配角色守門 `deny-write`);計畫 `docs/plans/mods.md` 第 2 版,證據與未驗證項見 [[261005-flightwake-mod]];驗收三輪的修正都已完成(F3 正面證明含環境與旗標值、F4 候選 cwd 有上限;見同 record)。安裝器整合等 setup-wizard 分支合併後再做。
-**2026-10-05:第三階段完成於分支 `kaiwutech-TW/integration`(未 push、未發版;驗收與 Astra 最後確認通過,可合併)**——setup-wizard 為基底合併 mods;`setup`(只對 Claude Code 問、預設否)/`init --mod`/`update`(只刷新既有)/`uninstall`/`doctor` 認得 `flightwake-mod`(裝到 `.claude/skills/flightwake-mod/`,只裝 manifest/hooks/types);fw-record 取用 `/fw-log`、TRAPS `paths`/`commands` 欄位說明(四語)、manifest author;四語 `docs/mod*.md`;順手修 main 的 private Claude 安裝 update 退回 Codex。查證:Claude Code 2.1.289 只在沒有 CLAUDE 指令檔時讀 AGENTS.md(TRAPS `claude-code-loads-agents-md-when-no-claude-md`)。詳見 [[261005-integration]]。
+**2026-10-05:第三階段完成於分支 `kaiwutech-TW/integration`(版本已改 0.15.0、未 push、未發版;驗收與 Astra 最後確認通過,可合併)**——setup-wizard 為基底合併 mods;`setup`(只對 Claude Code 問、預設否)/`init --mod`/`update`(只刷新既有)/`uninstall`/`doctor` 認得 `flightwake-mod`(裝到 `.claude/skills/flightwake-mod/`,只裝 manifest/hooks/types);fw-record 取用 `/fw-log`、TRAPS `paths`/`commands` 欄位說明(四語)、manifest author;四語 `docs/mod*.md`;順手修 main 的 private Claude 安裝 update 退回 Codex。查證:Claude Code 2.1.289 只在沒有 CLAUDE 指令檔時讀 AGENTS.md(TRAPS `claude-code-loads-agents-md-when-no-claude-md`)。詳見 [[261005-integration]]。
 **2026-09-28(晚):roles v2 完成並在下游真實團隊驗收**——座位表、待命角色原生定義(只給無座位角色)、`roles card`/`assign`、manifest 清理;Codex 真機實測、兩家實際衍生通過;改為與現行 roles 合併以 0.14.0 發佈(DECISIONS 2026-09-28)。
 **2026-09-28:roles 從零實測通過、範本擴為 9 個、四語文件、v2 計劃經 Codex 兩輪審查定案(0.14.0 發現行、v2→0.15.0,見 DECISIONS 2026-09-28)**。
 **2026-09-27:`flightwake roles` 選配附加元件完成(未發版,dogfood 中)**——起點是使用者的四 agent 團隊(Codex 專案經理/Claude 技術總監/Claude 寫手/Codex 審核,跨兩個 repo)在 /clear 後專案經理忘了派工、自己寫 code。角色改寫進各 agent 開場必讀的指令檔(Codex→AGENTS.md、Claude→CLAUDE.md),不用 hook;一份 `.flightwake/ROLES.md` 可跨 repo,`fw-roles` skill 推薦/預覽/客製,`roles apply` 套用。兩個下游 repo 誘導題 4/4。定位(選配、不進核心)與實作取捨見 DECISIONS 2026-09-27,詳見 [[260927-roles-addon]]。
@@ -41,7 +41,7 @@ flightwake **v0.14.0(2026-09-28 已發,npm latest;前版 v0.13.0 2026-09-02)**,*
 
 # 下一步入口
 
-0a. **integration 分支**:第三階段完成;Astra 必修、試裝回饋、真機回饋六項(含新 `/fw-mod`、橫條無儀表常駐)都已修,Astra 收尾複審三項必修也已修;驗收者複核通過、Astra 最後確認可合併、無剩餘必修(`docs/plans/integration.diff-review-astra-3.md`;未驗證範圍見 [[261005-integration]] 末行)。**功能凍結,等 Kai 決定**是否開 PR / bump(預計 minor)/ 發版;發版後在本 repo 跑 `npx flightwake update` 刷新 dogfood 副本。**待 Kai 決定**:項目 7 對 roles 座位設計的影響(只有 AGENTS.md 的 repo 會讓 Claude 讀到 Codex 座位)、TRAPS 兩條 python 3.11 重複條目的壓實、`~/.claude/projects` 四個 scratch session 資料夾。各分支未解項見 [[261005-integration]]、[[261005-setup-wizard]]、[[261005-flightwake-mod]] 未完節
+0a. **integration 分支 → v0.15.0**:第三階段完成;驗收者複核、Astra 最後確認可合併(`docs/plans/integration.diff-review-astra-3.md`)、F5 角色守門真機實測通過。Kai 已決定:只 push 本分支、開一個 PR,版本在 PR 內改為 0.15.0(chore(release) commit 已做;mod 維持 0.1.0,見 DECISIONS 2026-10-05 首條);**push 與開 PR 由驗收者做 → CI 通過並合併後才發版**(今天不發;發版後在本 repo `npx flightwake update` 刷新 dogfood 副本)。**待 Kai 決定**:項目 7 對 roles 座位設計的影響(只有 AGENTS.md 的 repo 會讓 Claude 讀到 Codex 座位)、TRAPS 兩條 python 3.11 重複條目的壓實、`~/.claude/projects` 下 scratch session 資料夾(現為五個,見 [[261005-integration]] 末節)。各分支未解項見 [[261005-integration]]、[[261005-setup-wizard]]、[[261005-flightwake-mod]] 未完節
 0. **v0.14.0 已發佈(2026-09-28)**:roles + v2 在 npm latest(驗證見 [[260928-roles-v2]] 補記)。後續:常用 repo `npx flightwake update`;觀察下游團隊日常 /clear 後角色與待命角色派工;Gemini 原生待命定義待驗證後再做
 1. **發宣傳**:三稿最終版(已改寫為不點名 GSD,含 HN 留言預備)在使用者桌面 `~/Desktop/flightwake-launch-copy.md`;截圖三張在使用者手上;HN 挑能盯留言的時段發
 2. HN 後續:等 hn@ycombinator.com 回覆(作者留言被 auto-flag)→ 解 flag 後補「v0.9.0 已兌現 English defaults」留言

@@ -8,6 +8,8 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-10-05
+
 ### Added
 - **`npx flightwake setup` — guided install.** Interactive (needs a terminal; without one it explains and exits 1).
   Checks git is installed, then that the directory is a repo (offers `git init`, default No, run only after the final
@@ -308,7 +310,8 @@ First public release. ✈️
 
 Initial npm publish; superseded within the day by 0.7.2.
 
-[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.15.0
 [0.14.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.14.0
 [0.13.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.13.0
 [0.11.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.11.0
