@@ -3,7 +3,7 @@ record_id: 261005-integration
 session: Claude(Opus 5.5) 主實作 + 4 個 Claude(Sonnet 5.5) 文件撰寫者(四語 mod 文件與 README,產出經主實作者逐檔審閱、修正後採用)
 date: 2026-10-05
 repos: [flightwake(分支 kaiwutech-TW/integration)]
-tests: (版本 0.15.0 commit 前)bash test/smoke.sh 44 節全過(Python 3.12 在 PATH 前);claude plugin test mods/flightwake 297 pass / 0 fail(11 檔);claude plugin validate 通過;tsc 5.9.3(對 2.1.289 型別檔)clean;git-readonly-check 三項通過;node --check bin/ hooks/ test/ 全過;真機:setup 安裝後 mod 以 @skills-dir 載入、zh-TW、F1–F4 抽驗生效,F5 由驗收者真機實測通過
+tests: (CodeQL 修正後,6c63ffc)bash test/smoke.sh 44 節全過(Python 3.12 在 PATH 前);claude plugin test mods/flightwake 299 pass / 0 fail(11 檔);claude plugin validate 通過;tsc 5.9.3(對 2.1.289 型別檔,含 hooks/ 與 tests/ 共 25 檔)clean;git-readonly-check 三項通過;node --check bin/ hooks/ test/ 全過;真機:setup 安裝後 mod 以 @skills-dir 載入、zh-TW、F1–F4 抽驗生效,F5 由驗收者真機實測通過
 prod_changes: none(未 push、未 bump、未發版)
 ---
 <!-- flightwake record — 飛行紀錄。 -->
@@ -207,3 +207,17 @@ Kai 決定:只 push 本分支、開一個 PR,在此 PR 內把版本改成 0.15.0
 - 觀察(未改,屬打包範圍):`npm pack --dry-run` 共 107 檔,其中 mod 29 檔含 `mods/flightwake/tests/`;安裝器只複製 manifest/hooks/types,所以只影響套件大小。
 - worktree 之外:取型別檔時誤用 `claude plugin init`,它在 `~/.claude/skills/probe/` 建了一個會自動載入的外掛,**已當下刪除**(兩個檔與兩層目錄,查看內容後刪);
   `--plugin-dir -p` 那次留下 `~/.claude/projects/-Users-kaiwu--claude-jobs-0553c654-tmp-empty/`(session 紀錄,未刪,同前述 scratch 資料夾交 Kai)。
+
+## PR #11 的 CodeQL 警示修正(同日,b82f215..6c63ffc)
+
+驗收者 push 後開 PR #11:smoke(ubuntu、macOS)、state-fresh、CodeQL analyze 通過,但 CodeQL 檢查因 5 個新 high 警示失敗——
+`recorder.ts:258` 的 `cell()` 只跳脫 `|`、三個 acceptance 測試同寫法(js/incomplete-sanitization);`traps.ts:34` 單次 replace 去 HTML 註解(js/incomplete-multi-character-sanitization)。
+比照 6c587d8 改程式、不壓警示。先紅後綠:
+- 紅(b82f215):`renderLog` 的指令 `npm test -- -t 'a\|b' | tee out.txt`、script `jest -t 'x\|y'` → 列被切成 10 格(應 8);
+  TRAPS 檔頭 `<!<!-- x -->--` 後接範例 frontmatter → 範例 `ghost-example` 被當成條目(含 `commands: ["git push"]`,會變成假絆線)。
+- 修(6c63ffc):`tableCell` 移到 `lib/core.ts`(先 `\` → `\\` 再 `|` → `\|`),recorder 與三個測試共用;`tests/world.ts` 的 `tableCells` 是它的反函式(未跳脫的 `|` 才分格,再還原 `\x`),
+  取代測試各自的 `(?<!\\)\|` 切法(那種切法遇 `\\|` 會錯)。去註解改為重複 replace 直到不再變化;未閉合的 `<!--` 照舊當一般文字留著(不會吃掉其後的條目)。
+- 取捨:/fw-log 的指令放在反引號 code span 裡,依 GFM 規則表格只會還原 `\|`,所以**渲染後**含反斜線的指令會多顯示一個 `\`;原始文字(fw-record 與模型讀的就是原始文字)則無歧義、可完整還原。
+- 驗證:smoke 44 節全過;外掛測試 299/299;validate;tsc(25 檔);git-readonly-check;node --check。CodeQL 是否轉綠要等驗收者 push 後 CI 結果。
+- mod 版本仍 0.1.0:mod 尚未發行過,依 DECISIONS 2026-10-05 的規則不需 bump。`bin/install.mjs` 兩處 `^<!--…-->` 只去自家 snippet 開頭一段,CodeQL 未報,未動。
+
