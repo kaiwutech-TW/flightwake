@@ -40,6 +40,10 @@ supersede is reserved for when the root cause itself changed.
 
 1. Follow the entry format demonstrated at the top of `.flightwake/TRAPS.md` (OKF-style frontmatter: name/type/status/confidence/tags/discovered)
    and write it at the **top** of `.flightwake/TRAPS.md`
+   Optional: `paths` / `commands` — fill them when the trap belongs to particular files or commands, so the Claude Code mod's tripwire can
+   show the entry the moment someone touches them: `paths: ["src/db/**", "*.sql"]` (repo-relative globs; a pattern without `/` matches that
+   file name at any depth), `commands: ["npm run migrate", "psql"]` (command prefixes, word by word). No regex. Not sure, or the trap is
+   about an idea rather than a place? Leave them empty — the entry works the same without them
 2. All four fields: symptom (paste the original error message), root cause in one sentence, fix/workaround, evidence link (commit/record)
 3. Link related traps with `[[name]]`
 4. **Write the symptom on the spot** — details fade within half a day. **Leave the root cause unsettled until it's nailed**:

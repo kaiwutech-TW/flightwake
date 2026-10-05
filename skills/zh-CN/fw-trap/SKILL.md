@@ -39,6 +39,10 @@ supersede 保留给「根因本身换了」的情况。
 
 1. 依 `.flightwake/TRAPS.md` 顶部示范的条目格式(OKF 式 frontmatter:name/type/status/confidence/tags/discovered)
    写在 `.flightwake/TRAPS.md` 的**最上面**
+   选填 `paths` / `commands`——坑绑在特定文件或命令上时才填,让 Claude Code mod 的绊线在有人碰到时把这条提示出来:
+   `paths: ["src/db/**", "*.sql"]`(repo 相对路径的 glob;不含 `/` 的样式匹配任何深度的同名文件)、
+   `commands: ["npm run migrate", "psql"]`(命令前缀,逐词比对)。不支持 regex。拿不准、或坑是观念而不是某个位置?留空即可——
+   不填的条目照常运作
 2. 四个栏位齐全:症状(贴原始错误讯息)、根因一句话、解法/绕法、佐证链接(commit/record)
 3. 相关的坑用 `[[名称]]` 互连
 4. **症状当下就写**——细节半天内就会模糊;**根因待坐实再定案**——还没坐实就先标

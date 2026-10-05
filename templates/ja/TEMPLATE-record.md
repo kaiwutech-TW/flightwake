@@ -6,7 +6,7 @@ repos: [{{触れた repo}}]
 tests: {{N passed / tsc clean / または「ランタイム面なし」}}
 prod_changes: {{migration/デプロイ/データ操作。無ければ none}}
 ---
-<!-- flightwake record — 飛行記録。トリガー:schema を触った / prod を触った / 前回の record から 3 コミット以上 / セッションの締め。 -->
+<!-- flightwake record — 飛行記録。トリガー:前回の record から 3 コミット以上 / セッションの締め /(コードの repo)schema や prod を触った。 -->
 <!-- ファイル名:records/YYMMDD-slug.md。「3 か月後の他人」に向けて書く:略語も、自分にしか分からないコードネームも使わない。 -->
 
 # {{タイトル:この作業が何をしたかを一文で}}

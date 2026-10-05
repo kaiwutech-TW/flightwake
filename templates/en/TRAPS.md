@@ -18,6 +18,9 @@ confidence: suspected  # confirmed (controlled experiment: toggle the cause → 
                        # field absent = unknown (legacy entry); readers treat it as suspected
 tags: [{{tags}}]
 discovered: {{YYYY-MM-DD}}
+paths: []          # optional: files this trap is about, as repo-relative globs — e.g. ["src/db/**", "*.sql"]
+commands: []       # optional: commands this trap is about, as prefixes — e.g. ["npm run migrate"]. Empty is fine;
+                   #   with the Claude Code mod, a matching edit or command shows this entry to the agent (once per session)
 ---
 
 **Symptom**: {{What you saw (error message / weird behavior) — this field is always fact; paste the error verbatim}}

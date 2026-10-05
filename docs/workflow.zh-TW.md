@@ -13,7 +13,7 @@
 
 | 階段 | 你做什麼 | 對模型說什麼 |
 |---|---|---|
-| 0. 首次安裝 | 裝好後讓模型寫第一份 STATE | 「initialize STATE with /fw-record」 |
+| 0. 首次安裝 | 裝好後讓模型寫第一份 STATE | `/fw-coldstart`(它會發現 STATE 未填並寫出第一份) |
 | 1. 開工/接手 | **什麼都別做**,先聽狀態回報 | `/fw-coldstart` |
 | 2. 決定做什麼 | 說清楚**要什麼**,不說怎麼做 | 「先別動 code,給我 2-3 個做法和取捨」 |
 | 3. 實作中 | 放手;只在被問決策時回答 | (方向錯才喊停:「停,因為…」) |
@@ -140,7 +140,7 @@ session 要結束時,只有一個判斷:**這件事做完了嗎?**
 <summary>⚙ 進階</summary>
 
 - health 的語義:green = 可安全疊加;yellow = 有未驗證的變更;red = 已知壞掉。誠實標色比綠色好看重要——騙儀表板的人最後騙到自己。
-- 接手一個完全陌生、沒有 flightwake 的 repo?先裝再考古:`npx flightwake init`,然後「用 /fw-record 把這個 repo 的現況考古出來寫成第一份 STATE」。
+- 接手一個完全陌生、沒有 flightwake 的 repo?先裝再考古:`npx flightwake setup`(`npx flightwake init` 是非互動形式),然後執行 `/fw-coldstart`——它會依 repo 現況寫出第一份 STATE;想挖更深可再說「把這個 repo 的現況考古出來寫成第一份 STATE」。
 </details>
 
 ---

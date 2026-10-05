@@ -1,6 +1,6 @@
 ---
 name: fw-record
-description: flightwake 收尾记录 — 写飞行记录并更新 STATE。Use when wrapping up work that touched schema/prod, spanned 3+ commits, or when the session is ending; also when the user says 收尾/记录一下/record.
+description: flightwake 收尾记录 — 写飞行记录并更新 STATE。Use when wrapping up: 3+ commits since the last record, the session is ending, or (in code repos) work that touched schema/prod; also when the user says 收尾/记录一下/record.
 ---
 
 # fw-record — 飞行记录收尾
@@ -11,6 +11,9 @@ description: flightwake 收尾记录 — 写飞行记录并更新 STATE。Use wh
 
 1. 盘点本段工作:`git log --oneline "$(git log -1 --format=%H -- .flightwake/STATE.md)"..HEAD`
    列出自上次收尾以来的 commits(STATE 从未 commit 时直接 `git log --oneline -20`);回想关键发现/决策/验证
+   — 本 session 有 `/fw-log`(Claude Code mod)时先跑它,以它的输出作为 record 的 `tests:` 证据与变更清单的依据。标成「未知」(unknown)
+     的项目是它无法证明的——自己判断(重跑,或照实写成未证实),不可算成通过;「通过」(pass)的意义以它输出结尾的说明为准。和其他命令串在一起跑的测试(`echo … && npm test; echo exit=$?`)
+     只看得到整串的退出码,不能当成通过的证据——需要留证据时,请把测试命令单独执行一次
 2. 依 `.flightwake/TEMPLATE-record.md` 写 `.flightwake/records/YYMMDD-slug.md`:
    - TL;DR 两三句(起点问题 → 终点状态)
    - 关键发现按重要性排序;够格的**同步登进 TRAPS**(用 /fw-trap 格式)**与 DECISIONS**

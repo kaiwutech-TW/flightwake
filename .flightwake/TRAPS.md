@@ -5,6 +5,168 @@
 # 坑 Registry
 
 ---
+name: force-color-colours-piped-node-output
+type: gotcha
+status: active
+tags: [test, smoke, node, environment, color]
+discovered: 2026-10-05
+confidence: confirmed
+paths: ["test/smoke.sh"]
+---
+
+**症狀**:`bash test/smoke.sh` 在第 4 節左右失敗:`❌ FAIL: 重跑後 Codex Stop hook 重複`,但 `.codex/hooks.json` 實際只有一個 hook;同一份程式先前一直全過。
+**根因**:環境裡有 `FORCE_COLOR`(這次是 `3`):node 連輸出到管道都上色,`node -e "console.log(1)"` 輸出 `ESC[33m1ESC[39m`(`od -c` 實看),所有拿 node 輸出做字串比對的斷言都會錯。
+**解法/繞法**:smoke 開頭 `unset FORCE_COLOR`(已加)。其他會比對 node 輸出的腳本同樣要清掉它;CI 若設 FORCE_COLOR 也會中。
+**佐證**:record 261005-integration「收尾複審修正」;commit 304eec9 前後同一環境一敗一過
+
+---
+name: readline-terminal-mode-loses-answer-lines
+type: gotcha
+status: active
+tags: [setup, readline, tty, orca, terminal]
+discovered: 2026-10-05
+confidence: probable
+paths: ["bin/setup.mjs"]
+---
+
+**症狀**:真實終端機(Orca、繁中)跑 `npx flightwake setup`,已回答的題目從畫面消失;`orca terminal read` 讀回來,正好是「有打字作答」的那幾行是空白(`[1] 2`、`輸入編號…:1`、`安裝 Claude Code mod? [y/N] y`),只按 Enter 的題目保留。pyte 模擬器在 60/80/100 欄都看不到。
+**根因**:`readline` 的 terminal 模式每題送 `ESC[1G ESC[0J <prompt> ESC[<n>G`(移到第 1 欄、清到螢幕尾、寫 prompt、再跳到它自己算的絕對欄位),打字回顯接在絕對欄位之後;Orca 的終端機讀取把這種行讀成空白。不是全形寬度計算問題(純 ASCII 的 `[1] 2` 也消失)。xterm 實際畫面是否也消失未另外驗證。
+**解法/繞法**:問答不需要行編輯時用 `createInterface({ terminal: false })`:tty 維持 cooked、由驅動回顯,prompt 是純文字,Ctrl-C 變成真的 SIGINT(要自己接)。改後同一 Orca 終端機每題與答案都留住。
+**佐證**:record 261005-integration「真機回饋修正」;smoke 43.1(四語、斷言輸出沒有游標/清除控制序列)
+
+---
+name: mod-state-refs-must-be-literal
+type: gotcha
+status: active
+tags: [mods, claude-code, plugin-loader, state]
+discovered: 2026-10-05
+confidence: confirmed
+paths: ["mods/flightwake/hooks/**"]
+---
+
+**症狀**:`claude plugin validate` 失敗、整個外掛不載入(所有 plugin test 跟著失敗):`$.state.get takes a reference whose plugin and key are string literals ({ plugin: "p", key: "k" }, written there or in a const of this file; only id may be computed)`。觸發的寫法是共用 helper `get(key)` 再組 `{ plugin, key }`。
+**根因**:載入器靜態檢查每個 `$.state` 參照,plugin 與 key 必須是本檔裡的字面值(直接寫在呼叫處或本檔的 const),以便對照 `types/index.d.ts` 的契約;用變數組 key 一律拒絕。與 [[mod-dollar-cannot-cross-import]] 同屬載入器的靜態規則。
+**解法/繞法**:每個 key 宣告一個 `const X_REF = { plugin: 'flightwake-mod', key: '…' } as const`,呼叫處直接用。
+**佐證**:validate 錯誤訊息原文(Claude Code 2.1.289);改成字面 const 後 validate 通過、289 測試全過(commit c4d4f42 前後)
+
+---
+name: claude-code-loads-agents-md-when-no-claude-md
+type: gotcha
+status: active
+tags: [claude-code, agents-md, roles, seats, mods, instruction-files]
+discovered: 2026-10-05
+confidence: confirmed
+paths: ["bin/roles.mjs", "docs/roles*.md", "mods/flightwake/hooks/features/role-guard.ts"]
+---
+
+**症狀**:`docs/roles.md` 寫「Claude Code 不讀 AGENTS.md(已在 2.1 驗證)」,座位設計靠這點把 Codex 的座位寫進 AGENTS.md、Claude 的寫進 CLAUDE.md;但在 Claude Code 2.1.289,只有 AGENTS.md 的資料夾裡,`claude -p` 逐字答出只寫在 AGENTS.md 的暗號,debug log:`[cc-plugin-agents-md] $.ui.log (to debug): no CLAUDE.md found; AGENTS.md loaded: …/only-agents/AGENTS.md`。
+**根因**:內建外掛 `cc-plugin-agents-md`(`agents-md@builtin`,事件 session.start/prompt.context/agent.spawn/tool.call)在祖先目錄(實測掃 8 層)找 `CLAUDE.md`、`.claude/CLAUDE.md`、`CLAUDE.local.md`;**一個都沒有時**才找 `AGENTS.md`、`.claude/AGENTS.md` 並載入。只要有任何 CLAUDE 指令檔(含 private 安裝的 CLAUDE.local.md),AGENTS.md 就不載入。它有外掛選項(`pluginConfigs["agents-md@builtin"]`),內容未查。
+**解法/繞法**:有 Claude 座位的 repo 一律有 CLAUDE.md(roles apply 會寫),座位假設成立;**只有 AGENTS.md 的 repo**(只裝給 Codex、或只有 Codex 座位)裡開 Claude Code,會讀到 Codex 座位的角色與 `$fw-` 方言的義務表。mod 的角色守門只讀 Claude 的 marker,不受影響。要不要改 roles 設計留給 Kai(integration 任務項目 7 只查證不改)。
+**佐證**:2.1.289,scratchpad 三組暫存 repo(只有 AGENTS.md / 兩者都有 / 都沒有),讀檔工具全關,各 3 次:只有 AGENTS.md → 3/3 答出 AGENTS 暗號;兩者都有 → 3/3 只有 CLAUDE 暗號、AGENTS 暗號「no」;都沒有 → NONE。debug log 兩種情況的 ancestors 掃描行。record 261005-integration「項目 7」
+
+---
+name: unquoted-heredoc-runs-backticks
+type: gotcha
+status: active
+tags: [shell, heredoc, flightwake-records, registry, agent-tooling]
+discovered: 2026-10-05
+confidence: confirmed
+---
+
+**症狀**:用 `python3 - <<EOF`(分隔字未加引號)把含反引號的 STATE 文字寫進檔案,輸出出現 `(eval):1: permission denied: docs/plans/integration.md`、`no such file or directory: kaiwutech-TW/integration`,python 報 `SyntaxError: EOL while scanning string literal`,字串中段變成 `flightwake update v0.13.0 → v0.14.0 (lang=zh-TW, statusline) → /Users/…/integration`;之後 `git status` 多出十個 dogfood 檔(skills、CLAUDE.md/AGENTS.md marker、statusline.mjs)的修改,`~/.flightwake/registry.json` 多一筆該 worktree。
+**根因**:未加引號的 heredoc 會做指令替換,flightwake 紀錄慣用的 `` `指令` `` 標記被當成要執行的指令;STATE 裡的 `` `npx flightwake update` `` 因此真的從 npm 抓已發佈版本、在當前目錄執行 update(寫 dogfood 副本與全域 registry)。
+**解法/繞法**:寫任何含反引號或 `$` 的文字時,heredoc 分隔字一律加引號(`<<'EOF'`),需要的變數改由環境變數傳入;或用 Write/Edit 工具。
+**佐證**:bash 手冊 Here Documents 一節(分隔字未加引號時內文做參數展開、指令替換、算術展開);本次實際發生於合併 commit 9274a09 之前(record 261005-integration)
+
+---
+name: smoke-needs-python311-tomllib
+type: gotcha
+status: active
+tags: [test, smoke, python, macos, environment]
+discovered: 2026-10-05
+confidence: confirmed
+---
+
+**症狀**:本機 `bash test/smoke.sh` 跑到 roles v2 那節停下:`ModuleNotFoundError: No module named 'tomllib'` → `❌ FAIL: TOML 應可解析且 escape 正確`,看起來像產生的 TOML 壞了;CI 卻是綠的。
+**根因**:smoke 第 22 節用 `python3 -c 'import tomllib'` 驗 TOML,`tomllib` 是 Python 3.11 才進標準庫;macOS 內建 `/usr/bin/python3` 是 3.9.6。CI runner 的 python 夠新。
+**解法/繞法**:PATH 前面放一個 3.11+ 的 `python3` 再跑(例如把 uv 裝的 `python3.12` symlink 成某個目錄裡的 `python3`,`PATH="<該目錄>:$PATH" bash test/smoke.sh`)。這個失敗不代表程式有問題。
+**佐證**:同一份程式碼在 3.9.6 失敗、換 3.12.14 全過,main(9dd685c)與 setup-wizard 分支各做一次(record 261005-setup-wizard 驗證段)
+
+---
+name: plain-git-status-rewrites-index
+type: gotcha
+status: active
+tags: [git, read-only, mods, hooks]
+discovered: 2026-10-05
+confidence: confirmed
+paths: ["mods/**", "hooks/*.mjs"]
+---
+
+**症狀**:號稱唯讀的工具只跑了 `git status --porcelain`,stdout 為空,`.git/index` 的位元組卻變了(Astra 驗收 diff 時在暫存 repo 實測到 mod 的 F2 指令)。
+**根因**:`git status` 發現工作樹檔案的 stat 資訊與 index 不符(內容相同、mtime 變了)時,會順手刷新並寫回 index——這是 optional lock 下的寫入;`git --no-optional-locks` 關掉它。
+**解法/繞法**:唯讀承諾的 git 呼叫一律 `git --no-optional-locks …`;驗證要比對真實 `.git/index` 位元組並附對照組(普通 status 確實會改),見 `mods/flightwake/scripts/git-readonly-check.sh`。既有 `hooks/state-check.mjs` 與 `statusline.mjs` 也跑普通 `git status`,屬核心、本分支未改。
+**佐證**:`git-readonly-check.sh` 對照組 index 雜湊改變、帶旗標的同組指令不變(records/261005-flightwake-mod.md 驗收補記)
+
+---
+name: mod-options-not-read-from-project-settings
+type: gotcha
+status: active
+tags: [claude-code, mods, plugin, config, installer]
+discovered: 2026-10-05
+confidence: confirmed
+paths: ["mods/**"]
+---
+
+**症狀**:暫存 repo 的 `.claude/settings.json` 寫了 `pluginConfigs["flightwake-mod"].options.roleGuard = true`,角色守門卻沒開;換成 `--settings` 檔、鍵寫 `flightwake-mod` 也沒開(從 `.claude/skills/` 載入時)。
+**根因**:Claude Code 2.1.289 只從 user / `--settings` / managed 設定讀外掛選項,**不讀專案設定**(debug log 原文:`no pluginConfigs["flightwake-mod@skills-dir"].options in user, --settings or managed settings (project settings are not read)`);且鍵依載入方式而異:`.claude/skills/` 載入是 `<name>@skills-dir`,`--plugin-dir` 是 `<name>` 或 `<name>@inline`。
+**解法/繞法**:文件教使用者在 `/config` 或 `~/.claude/settings.json` 用 `flightwake-mod@skills-dir` 鍵設定;安裝器(後續)不能靠寫專案 settings 幫使用者開 F5——這是每人一份的選擇。
+**佐證**:records/261005-flightwake-mod.md「真機載入」;兩次 debug log 對照(鍵 `flightwake-mod` 不生效、`flightwake-mod@skills-dir` 生效並實際擋下寫入)
+
+---
+name: project-skills-dir-mod-needs-trust
+type: gotcha
+status: active
+tags: [claude-code, mods, plugin, trust, headless]
+discovered: 2026-10-05
+confidence: probable
+---
+
+**症狀**:mod 放在暫存 repo 的 `.claude/skills/flightwake-mod/`,`claude -p` 跑起來完全沒載入(沒有系統提示區段、沒有 /fw-log,debug log 也沒提到它);同一資料夾以互動模式接受工作區信任後,立刻以 `flightwake-mod@skills-dir` 載入。
+**根因**:推測專案 skills 目錄的外掛只在資料夾**已受信任**時採用;`-p` 跳過信任對話框但不等於授予信任(與 Astra 審查的警告一致)。只觀察一組對照(同資料夾、信任前 -p 不載、信任後互動載入),信任後的 `-p` 未再測。
+**解法/繞法**:驗收真機載入要用互動 session 並接受信任(或改 `--plugin-dir` 驗功能,但那驗不到 skills-dir 路徑);文件與安裝器要說明「首次需信任此資料夾」。
+**佐證**:records/261005-flightwake-mod.md「真機載入」(load-debug.log vs load-debug4.log)
+
+---
+name: smoke-needs-python-311
+type: gotcha
+status: active
+tags: [smoke, python, macos, test]
+discovered: 2026-10-05
+confidence: confirmed
+commands: ["bash test/smoke.sh"]
+---
+
+**症狀**:`bash test/smoke.sh` 在 roles v2 節失敗:`ModuleNotFoundError: No module named 'tomllib'` → `❌ FAIL: TOML 應可解析且 escape 正確`。
+**根因**:smoke 用 `python3 -c "import tomllib"` 驗 TOML;macOS 內建 `/usr/bin/python3` 是 3.9,tomllib 3.11 才有。CI 的 runner 是新版 Python,所以只在本機咬人。
+**解法/繞法**:把 3.11+ 的 python3 放到 PATH 前面再跑(例:`uv python find '>=3.11'` 取路徑,建一個 `python3` 連結的目錄加到 PATH 前面);smoke 本身未改(本分支不動測試基礎設施)。
+**佐證**:同一 commit,PATH 換成 Python 3.13 後 smoke 全過(records/261005-flightwake-mod.md)
+
+---
+name: mod-dollar-cannot-cross-import
+type: constraint
+status: active
+tags: [claude-code, mods, plugin, hooks]
+discovered: 2026-10-05
+confidence: confirmed
+paths: ["mods/**"]
+---
+
+**症狀**:`claude plugin validate` / `claude plugin test` 拒載模組:`$ is passed to "fwContext", imported from "../lib/core": $ is followed only into a function declared in this same file, never across an import`;變體二:`"on" is passed to something other than a function named at the top of this file or imported from one of the module's own files`(把 `on` 放進表格再迴圈呼叫);變體三:`on("session.start") is registered twice without a matcher`(兩個功能模組各自 `on('session.start', hook)`——每個功能單獨測都過,合併後整個外掛不載入)。
+**根因**:Claude Code 2.1.289 的載入器靜態追蹤 `$` 與 `on`:`$` 只能在同檔宣告的函式間傳遞且一律寫成 `$.noun.event(...)`;`on` 只能直接傳給頂層具名或 import 的函式;同一外掛對同一事件**最多一個無 matcher 的註冊**(有 matcher 的不限,連重複的 matcher 也可以)。違反者整個 hooks 模組不載入(不是只跳過那個 hook)。
+**解法/繞法**:共用模組只放純函式;需要世界存取時,在功能檔內寫 `function ioOf($)` 回傳閉包物件(`{ read: (p) => $.fs.read(p), … }`)再傳給 import 的函式——閉包跨 import 可通過(validate 會顯示 `$.fs.read (via ioOf)`)。`register` 對每個功能逐行呼叫,不用表格迴圈。多個模組要掛同一事件時一律帶 matcher;要「全部都接」就寫空 matcher `on('session.start', {}, hook)`——實測 validate 通過、執行期每次都觸發。
+**佐證**:本分支 scratchpad 探針(同一模組改兩種寫法,validate 一拒一過,plugin test 一敗一過;重複註冊另以 5 種組合探針:無 matcher×2 拒、其餘皆過,空 matcher 兩個 hook 執行期都觸發);DECISIONS 2026-10-05 首條
+
+---
 name: codex-project-trust-exact-path
 type: gotcha
 status: active

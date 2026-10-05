@@ -17,12 +17,20 @@
 
 ```bash
 cd your-repo
+npx flightwake setup    # 対話式インストール:いくつか質問し、書き込む全パスを表示し、確認後にインストール
+```
+
+`setup` は端末が必要。最初に git を確認し(ディレクトリが repo でなければ `git init` を提案;既定は No で、最終確認の後にのみ実行)、続いて言語、agent(フォルダに CLAUDE.md / AGENTS.md / GEMINI.md があれば検出結果を提示;どれも無ければ使うツールを直接尋ねる——複数選択可・事前選択なし)、任意のアドオン(各項目の既定は No:下部ゲージ、Claude Code mod、roles、Orca 連携;mod の質問は Claude Code を選んだ時だけ尋ねる)、repo の種類(code / notes)を尋ね、書き込む全パスを一覧表示してから「実行しますか? [Y/n]」と尋ねる——Enter でインストール;`n`・EOF・Ctrl-C では何も書き込まれない。既に flightwake が入っている場合は、その場での更新(`update`)だけを提案する。インストールは `init` と同じ経路で行い、終わったら `doctor` を実行して次のステップを表示する。コマンドラインで渡したフラグは対応する質問への答えになる;`--private` はフラグ専用で、質問されることはない。
+
+**非対話形式**——`npx flightwake init [フラグ]`(`npx flightwake` だけでも同じ)は何も質問しない:自動化、agent、CI、やりたいことが決まっている上級者向け:
+
+```bash
 npx flightwake init --lang=ja --statusline   # 日本語 + 下部ゲージ
 npx flightwake init --lang=ja --statusline --agents=claude,codex,gemini   # 3 つの agent を一度に(Claude Code + Codex + Gemini CLI)
 npx flightwake update                        # その場で更新。インストール時のオプション(lang/statusline/private)を引き継ぐ
 ```
 
-**言語を選ぶ** — インストールされるテンプレート、skill、CLI/ゲージの出力すべてがこれに従う。**自動検出はあえてしない**:ターミナルの `LANG` と OS のロケールは日常的に食い違い(実測:OS は zh_TW なのにターミナルは `en_US.UTF-8` を報告)、自信たっぷりに間違えるほうが、既定を明示するより悪い。使いたい行をコピーしてください:
+**言語を選ぶ**(非対話形式;`setup` は代わりに尋ねてくれる)— インストールされるテンプレート、skill、CLI/ゲージの出力すべてがこれに従う。**自動検出はあえてしない**:ターミナルの `LANG` と OS のロケールは日常的に食い違い(実測:OS は zh_TW なのにターミナルは `en_US.UTF-8` を報告)、自信たっぷりに間違えるほうが、既定を明示するより悪い。使いたい行をコピーしてください:
 
 | 言語 | 新規インストール | 既に別の言語で入れている場合 |
 |---|---|---|
@@ -41,7 +49,7 @@ init が行うこと:`.flightwake/` の作成(テンプレート + Stop hook)、
 
 ### 初回インストール直後
 
-1. Claude Code セッションを開き、「**/fw-record で STATE を初期化して**」と言う——モデルが repo の現状を最初の STATE に書き起こす
+1. repo で agent セッションを開き、`/fw-coldstart` を実行する——STATE がまだ未記入のテンプレートであることを検知し、repo の現状から最初の STATE を書く(health は決して green と推測しない:実際に検証するまでは yellow)
 2. `git add .flightwake .claude CLAUDE.md && git commit`
 3. 以降のセッションはすべて下記の日常ループ
 
@@ -137,7 +145,17 @@ skill と hook はプラットフォームごとの便利な糖衣——同じ 4
 
 **`--private`** は記録を**ローカルのみ、git の外**に保つ:すべての書き込みを `.git/info/exclude` に登録(純ローカル——repo に痕跡を残さない)、hook は `.claude/settings.local.json` へ、義務表は `CLAUDE.local.md` へ(git 追跡下の既存指示ファイルには一切触れない)。代償:記録は repo と共有されず、clone し直したら `init --private` の再実行が必要——「git に入れて repo と共有」こそが flightwake のデフォルトであり存在理由;`--private` は「他人の repo での私的利用」のための非常口だ。
 
-**`uninstall`** は init の固定書き込み範囲を逆順に掃除する:skill とフレームワークファイルを削除、settings から flightwake の Stop hook を抜き取り(あなたの他の hook はそのまま)、指示ファイルと `.git/info/exclude` のマーカーブロックを除去(flightwake が作ったファイルは空になったら削除)。**`.flightwake/` はユーザーデータでありデフォルトで保持**;`uninstall --purge` で初めて一緒に削除される。
+**`doctor`**(`npx flightwake doctor`)は読み取り専用・ネットワークなしでインストール構造を検査する:git と git root、Node ≥18、`.flightwake/`、STATE(未記入のテンプレート欄は warning)、`latest_record`、マーカーブロックとその version/lang/profile の整合、skill、hook の登録(JSON が正しい、コマンドが完全一致、イベントが正しい——Claude Code/Codex は Stop、Gemini CLI は AfterAgent——重複なし、スクリプトが存在)、`--private` の exclude が実際に効いているか、任意のアドオンの状態。出力は 1 行ごとに ok / warning / fail;fail が 1 つでもあれば exit 1。検証するのはインストール構造だけで、hook が実行時に本当に発火するかは保証しない(Codex が hook のパスを信頼しているかは確認できず、ヒントを表示するのみ)。何も書き込まない。
+
+**`--profile=code|notes`**(既定は `code`)は義務表を選ぶ。`notes` はコードではない repo(執筆、調査、ノート)向け:「テスト green + typecheck クリーン」、「prod 検証の証拠」、schema/prod の締めトリガーを外し、コールドスタート、決定、罠、引き継ぎ、3 コミット以上での締め、破壊的操作の事前確認、セッション終了時の STATE の正直さは残す。インストールされるファイルは同じ。profile はマーカーに記録される(`profile=notes`);`update` は引き継ぎ、`update --profile=code` で戻せる。
+
+**`--orca`**(任意;`setup` でも尋ねるが、Orca を検出した時のみ)は、有効な各プラットフォームの指示ファイルにマーカーブロックを追加する:agent 間の議論やレビューには、見えない背景実行ではなく、見える Orca タブを使うこと。加えて単一ライターのレビュー規約(レビューを頼まれた agent は record を書かず STATE にも触れない;依頼した側が採用した結論を自分の record に書く)。`uninstall` で削除され、`update` はインストール済みの場所だけ refresh する。
+
+**`--mod`**(任意;`setup` でも尋ねるが、Claude Code を選んだ時のみ)は、Claude Code 専用のプラグイン(mod)`flightwake-mod` を `.claude/skills/flightwake-mod/` にインストールする:STATE のセッション開始時の注入、プロンプト上の帯、セッションのフライトログ、TRAPS の tripwire、オプションのロールガード。Claude Code 2.1.287 以降が必要で、そのフォルダーのワークスペース信頼プロンプトを承認し、repo のルートから session を始めたときだけ読み込まれる。Claude Code が設定対象の agent に含まれていなければ、メモを表示して mod をスキップする(エラーではない);フォルダーが既にあれば `--force` を付けない限りスキップする。`update` はインストール済みの場所だけ refresh し、新たに追加はしない。`uninstall` は配布したファイルだけを削除し、そのフォルダーに自分で足したファイルは残して一覧を出す。詳細:[docs/mod.ja.md](docs/mod.ja.md)。
+
+**`--git-init`** は、ディレクトリが git repo でないとき `init` が先に repo を作る——明示的にフラグを付けた時のみ;無ければ止まって知らせる。`init` も `setup` も最初に git がインストールされているかを確認し、無ければプラットフォーム別のインストール案内を表示する。
+
+**`uninstall`** は init の固定書き込み範囲を逆順に掃除する:skill とフレームワークファイルを削除(配布したものだけ——skill フォルダーに自分で足したファイルや、配布ファイルの位置がディレクトリになっているものは残して一覧に出す)、settings から flightwake の Stop hook を抜き取り(あなたの他の hook はそのまま)、指示ファイルと `.git/info/exclude` のマーカーブロックを除去(flightwake が作ったファイルは空になったら削除)。**`.flightwake/` はユーザーデータでありデフォルトで保持**;`uninstall --purge` で初めて一緒に削除される。
 
 **monorepo ポリシー:1 repo 1 インストール、git root に。** 仕事はセッションの形をしている——1 セッションは複数パッケージを日常的にまたぎ、記録はセッションに従う;サブディレクトリごとのインストールは一続きの仕事を細切れの record に裂き、「どの STATE を読むべきか」という新たなコールドスタートの曖昧さを生む。サブディレクトリで init を実行すると停止して root を案内する。submodule は自前の `.git` を持つ独立 repo として扱う。マルチチームの高流量 monorepo で CI の遅延チェックが誤検知するなら、まず `--threshold` を調整。
 
@@ -197,7 +215,7 @@ flightwake があなたの repo に workflow を書き込むことはない—�
 ## セキュリティ
 
 - **依存ゼロ、ネットワークなし、install script なし**:インストーラはファイルコピーのみ;hook は `git`(shell なし)で読み取り専用クエリのみ。
-- **固定書き込み範囲**:`init` が触るのは `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`、agent 指示ファイル内のマーカーブロック、そして(Codex / Gemini CLI を検出した時)`.agents/skills/fw-*`、`.codex/hooks.json`、`.gemini/settings.json` のみ;`--private` 時は代わりに `.claude/settings.local.json`、`CLAUDE.local.md`、`.git/info/exclude` 内のマーカーブロック(Codex/Gemini のファイルは未追跡の時だけ書き、exclude に加える)。`uninstall` は同じ範囲を逆順に掃除。
+- **固定書き込み範囲**:`init` が触るのは `.flightwake/`、`.claude/skills/fw-*`、`.claude/settings.json`、agent 指示ファイル内のマーカーブロック(Orca ブロックを含む。選んだ場合のみ)、`~/.flightwake/registry.json`(init/update が書き、uninstall はこの repo のエントリを削除)、`.claude/skills/fw-roles` / `.agents/skills/fw-roles`(roles を選んだ場合のみ)、`.claude/skills/flightwake-mod/`(mod を選んだ場合のみ。`uninstall` は配布したファイルだけ削除し自分で足したファイルは残す。`--private` 時は exclude ブロックに加える)、そして(Codex / Gemini CLI を検出した時)`.agents/skills/fw-*`、`.codex/hooks.json`、`.gemini/settings.json` のみ;`--private` 時は代わりに `.claude/settings.local.json`、`CLAUDE.local.md`、`.git/info/exclude` 内のマーカーブロック(Codex/Gemini のファイルは未追跡の時だけ書き、exclude に加える)。`uninstall` は同じ範囲を逆順に掃除。symlink 越しの書き込みや repo 外への書き込みは一切しない:インストール前に事前チェックし、拒否されるパスがあれば何も書き込む前に中止してそのパスを示す(非ゼロで終了)。ファイルは常に「一時ファイル + rename」で置き換え、その場で上書きしない;uninstall と roles コマンドも同じ規則に従う。`--private` はプライバシーが効かない場合(除外すべきものが既に追跡済、または `.git/info/exclude` に書けない)最初に拒否する。`doctor` は何も書き込まない(mod がインストールされていれば読み取り専用の `claude --version` を実行するが、それでも何も書き込まない)。「ファイルをコピーするだけ」の唯一の例外が `git init`:`setup` の最終サマリーで確認した後、または `--git-init` を渡した時にのみ実行される。
 - **hook は git に入る**:`.flightwake/hooks/state-check.mjs` は repo 内のファイル——commit できる人は誰でも変更できる。すべての repo-local 設定と同じ信頼レベルで、Claude Code は読み込み時に確認を求め、Codex は hook 定義ごとに信頼ハッシュを記録して変更のたびに再確認する。
 - 脆弱性報告は [SECURITY.md](SECURITY.md) へ。npm には Trusted Publishing(provenance 付き)で公開;`npm audit signatures` で検証可能。
 
