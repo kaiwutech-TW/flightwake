@@ -4,7 +4,7 @@ session: Claude(Opus 5.5) 主實作 + 4 個 Claude(Sonnet 5.5) 文件撰寫者(�
 date: 2026-10-05
 repos: [flightwake(分支 kaiwutech-TW/integration)]
 tests: (CodeQL 修正後,6c63ffc)bash test/smoke.sh 44 節全過(Python 3.12 在 PATH 前);claude plugin test mods/flightwake 299 pass / 0 fail(11 檔);claude plugin validate 通過;tsc 5.9.3(對 2.1.289 型別檔,含 hooks/ 與 tests/ 共 25 檔)clean;git-readonly-check 三項通過;node --check bin/ hooks/ test/ 全過;真機:setup 安裝後 mod 以 @skills-dir 載入、zh-TW、F1–F4 抽驗生效,F5 由驗收者真機實測通過
-prod_changes: none(未 push、未 bump、未發版)
+prod_changes: npm publish flightwake@0.15.0(2026-10-05,release run 37269098434,provenance;PR #11 merge commit 4605ee0,驗證證據見末節「發佈補記」)
 ---
 <!-- flightwake record — 飛行紀錄。 -->
 
@@ -95,10 +95,10 @@ STATE 以 setup-wizard 版為底、加入 mods 段落並改寫 frontmatter 與�
 
 ## 未完 / 交接
 
-- 未 push、未 bump、未發版;CI 未跑。之後由獨立審查者讀 diff 驗收、GPT-6 Astra 複審。
-- 待 Kai 決定:①項目 7 對 roles 座位設計的影響(只有 AGENTS.md 的 repo);②TRAPS 兩條 python 3.11 重複條目的壓實;③`~/.claude/projects` 四個 scratch session 資料夾是否刪除。
-- 本 repo 自己的 dogfood 安裝副本仍未刷新(刻意留到發版後,同前一階段)。
-- 未驗證:mod 題在 setup 中的其他語言外觀;真的 resume/compact(沿用 mods record 的未驗證清單);Windows。
+- ~~未 push、未 bump、未發版;CI 未跑~~ → 已解決:驗收、Astra 複審、PR #11 CI 全綠、v0.15.0 已發佈(見末節「發佈補記」)。
+- 待 Kai 決定:①項目 7 對 roles 座位設計的影響(只有 AGENTS.md 的 repo);②TRAPS 兩條 python 3.11 重複條目的壓實;③`~/.claude/projects` scratch session 資料夾(後增為五個,見「版本 0.15.0」節)是否刪除。
+- 本 repo 自己的 dogfood 安裝副本仍未刷新——0.15.0 已發,要不要刷新交 Kai 決定(STATE 下一步)。
+- 未驗證(發版後仍成立):mod 題在 setup 中的其他語言外觀;真的 resume/compact(沿用 mods record 的未驗證清單);Windows;zh-CN 與 ja 安裝內容與文件未經母語者校對。角色守門(F5)已由驗收者真機實測,不再列入。
 - 已知限制沿用 [[261005-flightwake-mod]] 的「驗證範圍」與 [[261005-setup-wizard]] 的已知限制;mod 文件的限制段依該 record 撰寫。
 
 ## 驗收修正(同日,b9d38f5..)
@@ -220,4 +220,16 @@ Kai 決定:只 push 本分支、開一個 PR,在此 PR 內把版本改成 0.15.0
 - 取捨:/fw-log 的指令放在反引號 code span 裡,依 GFM 規則表格只會還原 `\|`,所以**渲染後**含反斜線的指令會多顯示一個 `\`;原始文字(fw-record 與模型讀的就是原始文字)則無歧義、可完整還原。
 - 驗證:smoke 44 節全過;外掛測試 299/299;validate;tsc(25 檔);git-readonly-check;node --check。**PR #11 第二輪 CI(head 89b56e9)全數通過**:`smoke (ubuntu-latest)`、`smoke (macos-latest)`、`state-fresh`、`analyze`、`CodeQL` 皆 pass(smoke/state-fresh 由 push 與 pull_request 兩個 run 各跑一次,run 37233553325、37233556587;analyze 在 37233556587);本 PR 未解決 code-scanning 警示 0、mergeStateStatus CLEAN(驗收者回報,另以 `gh pr checks 11` / `gh pr view 11` 唯讀複核)。
 - mod 版本仍 0.1.0:mod 尚未發行過,依 DECISIONS 2026-10-05 的規則不需 bump。`bin/install.mjs` 兩處 `^<!--…-->` 只去自家 snippet 開頭一段,CodeQL 未報,未動。
+
+## 發佈補記(2026-10-05 同日)
+
+比照 [[260928-roles-v2]] 的補記;合併與發版由 Kai 決定、驗收者執行,以下各點本 session 以唯讀指令再查證一次(`gh pr view 11`、`gh run list --commit`、`gh release view`、`git ls-remote`、`gh run view`、`npm view`)。
+- PR #11 2026-10-05T05:41:40Z 以 **merge commit** 合併進 main:`4605ee0c03df4ceba0c0a3206bb86dcde75a6935`(parents 9dd685c、ab1b89a,保留全部 commit——record 引用的分支 hash 仍有效)。
+- main 上 4605ee0 的 workflow:`ci`(run 37268913169、37269098352)、`codeql`(37268913168)、`scorecard`(37268913113)皆 success。
+- GitHub Release `v0.15.0`(2026-10-05T05:44:11Z,https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.15.0),tag 指向 4605ee0。
+- release run **37269098434** success:job `publish` 依序 `bash test/smoke.sh` → `npm publish --provenance --access public`,各步 success。
+- `npm view flightwake`:version **0.15.0**、dist-tags.latest **0.15.0**、gitHead 4605ee0、`dist.attestations.provenance.predicateType` = `https://slsa.dev/provenance/v1`。
+- 實裝驗證(驗收者執行、回報):合併前以 `npm pack` 的 tarball 實裝(`init --mod --orca --profile=notes --statusline`、`doctor`、`roles`、`claude plugin validate`、`uninstall`);
+  發版後在暫存資料夾 `npx flightwake@0.15.0 init --mod` + `doctor` → 顯示 v0.15.0、0 失敗;兩個真實 repo 以正式版 `update` 後 doctor 0 失敗 0 提醒,且不再出現「框架檔有本地修改」誤報。
+- 本 repo dogfood 副本未刷新(交 Kai 決定)。
 

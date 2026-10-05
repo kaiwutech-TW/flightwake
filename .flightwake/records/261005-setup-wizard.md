@@ -55,7 +55,7 @@ prod_changes: none(未 push、未 bump、未發版)
 
 ## 未完 / 交接
 
-- 未 push、未 bump、未發版(依指示,需先問 Kai);CI 未跑
+- 未 push、未 bump、未發版(依指示,需先問 Kai);CI 未跑 → **已解決**:經 integration 分支併入 PR #11,CI 全綠,v0.15.0 已發佈(見 [[261005-integration]] 發佈補記)
 - 本 repo 自己 dogfood 的安裝副本(`.claude/skills`、`.agents/skills`、CLAUDE.md/AGENTS.md 區塊)未用新版 update 刷新——
   update 會寫真實的 `~/.flightwake/registry.json`(worktree 外),留給發版後
 - `roles apply` 在 --private 下仍會把角色區塊寫進受追蹤的指令檔與 `.claude/agents`(本階段範圍外,只修了 install 的排除)
