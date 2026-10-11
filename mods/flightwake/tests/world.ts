@@ -75,6 +75,10 @@ export type World = {
   isSettingsFailing: boolean
   /** git argv the plugin ran WITHOUT the leading --no-optional-locks (must stay empty: zero writes, .git/index included). */
   gitWithoutNoLocks: string[]
+  /** Answers `orca <args>` (the side panel's console); unset → the command is not found (exit 127). */
+  orca?: (args: string[]) => { exitCode: number; stdout: string }
+  /** Every `orca` argv the plugin ran (binary as given, then the args), joined. */
+  orcaCalls: string[]
   /** `date +%z` answer (the local UTC offset, e.g. '+0800'); unset → the command is not available (exit 127). */
   tzOffset?: string
 }
@@ -192,6 +196,11 @@ export function installWorld(on: On, init: Partial<World> = {}): World {
   })
   on('process.run', ($, e) => {
     const [cmd, ...rest] = e.argv
+    if (cmd === 'orca' || cmd?.endsWith('/orca')) {
+      w.orcaCalls.push([cmd, ...rest].join(' '))
+      const r = w.orca?.(rest)
+      return { value: { exitCode: r?.exitCode ?? 127, stdout: r?.stdout ?? '', stderr: r ? '' : 'not found', isStdoutTruncated: false, isStderrTruncated: false } }
+    }
     if (cmd === 'date' && rest.join(' ') === '+%z' && w.tzOffset !== undefined) return { value: { exitCode: 0, stdout: `${w.tzOffset}\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     if (cmd !== 'git') return { value: { exitCode: 127, stdout: '', stderr: 'not found', isStdoutTruncated: false, isStderrTruncated: false } }
     // The mod promises zero writes: every git call carries --no-optional-locks (plain `git status` may rewrite .git/index).
@@ -290,7 +299,7 @@ export function newWorld(init: Partial<World> = {}): World {
   return {
     root: '/repo', files: {}, git: {}, settings: {}, sessionId: 'session-1', gitCalls: [], reads: [], contentReads: [], writes: [], failReads: [], isSettingsFailing: false, gitWithoutNoLocks: [],
     outside: {}, mtimes: {}, links: [], aliases: {}, statDenied: [], existsDenied: [], fleetWrites: [], isFleetWriteFailing: false, isFleetIoThrowing: false, fleetWriteAttempts: [],
-    isFleetWriteHeld: false, heldWrites: [], maxFleetWritesInFlight: 0,
+    isFleetWriteHeld: false, heldWrites: [], maxFleetWritesInFlight: 0, orcaCalls: [],
     ...init,
   }
 }

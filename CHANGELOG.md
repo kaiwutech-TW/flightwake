@@ -17,6 +17,12 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 - **Panel "Watch" block**: context at 80%+ (wrap up), why health is not green, uncommitted files, the latest record's
   "Unfinished / Handoff" items, and more than 20 active TRAPS entries. Other sessions show their seat role and get a
   second line when their context is at 80%+ or they run another flightwake / mod version.
+- **Fleet console** in the side panel, inside Orca: every agent terminal Orca has — Claude Code and Codex — as one card
+  per repo (blocked first), with that repo's health and flightwake version (read-only from its own `.flightwake/`),
+  each agent's task title, role, state and a context bar. **Go** switches to the tab; **Wrap up** (idle agents only,
+  confirmed each time, re-checked before sending) types `/fw-record` or `$fw-record` into it. Runs `orca terminal list`
+  every 10 s only while the pane is open; outside Orca the fleet falls back to the Claude Code sessions' own reports.
+  States of agents without a fleet file are read from the tab title and recent output (a heuristic, labelled as such).
 - **Session file fields** (additive, `flightwake.session/1`): `context` (`{percent}`), `role` (the seat role id) and
   `fwVersion` (the install version from the marker).
 

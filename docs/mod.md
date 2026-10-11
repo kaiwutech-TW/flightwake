@@ -18,7 +18,8 @@ this session's own transcript under `~/.claude/projects/` (token totals only); f
 `~/.claude/projects/` still exists (existence only, and only a path that is that session's own transcript), and whether
 `<base>` is a records folder or lies in a git repo (`<base>/STATE.md`, and `.git` and `.flightwake/STATE.md` on `<base>`
 or a folder above it; existence only), and where the repo root and `<base>/sessions` really land (a `stat` that follows
-links). No network.
+links); for `panel` inside Orca, Orca's terminal list (through the `orca` CLI) and each listed repo's
+`.flightwake/STATE.md` and instruction-file markers (read-only). No network.
 
 What it never does: write inside the repo or your records (STATE, DECISIONS, TRAPS, records, ROLES.md). Its state is
 per session, with two exceptions: **its only file write is one file per interactive session, `<base>/sessions/<id>.json`,
@@ -103,7 +104,7 @@ Project settings are not read for plugin options, so the installer cannot set th
 | `roleGuard` | off | For this folder's Claude seat role, `deny-write: [globs]` lines in the role body (ROLES.md) become blocks on the main session's `Edit` / `Write` / `NotebookEdit` into those paths, with a message naming the role, the rule and what to do instead. Only the person can release it with `/fw-role-release` (typed in the prompt) for this session; the release stays visible in the status line. Details: [the role guard section of roles.md](roles.md#optional-the-claude-code-mods-role-guard). |
 | `spend` | on | Tokens used this session and the API-equivalent cost. Cost is Claude Code's own ledger (the figure `/cost` shows, at API list prices — on a subscription it is not a bill); tokens are summed from the session transcript under `~/.claude/projects/`, one count per API response (subagents keep their own transcripts and are not included). Shown as the band's last field (`1.2M tok · ≈$4.99`) — when the bottom gauge is the effective status line the gauge shows the same field and the band stays quiet — and as a line in `/fw-mod`; `/fw-cost` prints the breakdown (uncached input / cache write / cache read / output). Refreshed after every turn. |
 | `fleet` | on | Reports this session's state — working, blocked (waiting on you), idle or ended — to `<base>/sessions/<id>.json` outside the repo, for `/fw-fleet`, `npx flightwake fleet`, a `⛔` field on the bottom gauge and a one-time `claude --resume` hint after a session stopped unexpectedly. Interactive sessions only; never prompt or command text. See [Session fleet](#session-fleet-fleet). |
-| `panel` | on | `/fw-panel` opens a pane beside the transcript gathering what the other features know: STATE (health, lag, context use, the "In progress" and "Next entry points" items), this session's flight log and cost, and the other live sessions. Opened only when you ask; once opened it reopens by itself in later sessions until you close it. See [Side panel](#side-panel-panel). |
+| `panel` | on | `/fw-panel` opens a pane beside the transcript: this repo (health, lag, context bar, cost, what needs attention, STATE's "In progress" and "Next entry points") and the fleet — inside Orca every agent terminal, Claude Code and Codex, by repo, with **Go** and a confirmed **Wrap up** button. Opened only when you ask; once opened it reopens by itself in later sessions until you close it. See [Side panel](#side-panel-panel). |
 
 ### TRAPS fields used by the tripwire
 
@@ -121,30 +122,46 @@ commands: ["npm run migrate", "psql"]
 ## Side panel (`panel`)
 
 The band hides itself while the bottom gauge is on, so with both installed nothing of the mod is on screen. The side
-panel puts it in one place you can keep open:
+panel is one place you can keep open: this repo on top, then the whole fleet. Sections are drawn as cards; text wraps to
+the pane's width.
 
-- **Header:** health, STATE lag (the band's reading; the panel measures it itself only while the band is off), context
-  use, when STATE was last updated, this session's tokens and cost, and the flightwake install version and mod version.
-- **Watch** (only when there is something to say): context at 80% or more (wrap up: `/fw-record` → `/clear` →
-  `/fw-coldstart`); why health is yellow or red (the comment after STATE's `health:` value); uncommitted files in the
-  working tree; the "Unfinished / Handoff" items of the record STATE's `latest_record` names (only a
-  `records/<name>.md` under `.flightwake/`); more than 20 active TRAPS entries (fw-coldstart's line for compacting).
+- **This repo** (card coloured by health): health, STATE lag (the band's reading; the panel measures it itself only
+  while the band is off), a context bar (green, yellow from 60%, red from 80%), this session's tokens and cost, the
+  flightwake install version and mod version, and — only when they apply — lines marked `!`: context at 80% or more
+  (wrap up: `/fw-record` → `/clear` → `/fw-coldstart`); why health is yellow or red (the comment after STATE's `health:`
+  value); uncommitted files in the working tree; the "Unfinished / Handoff" items of the record STATE's `latest_record`
+  names (only a `records/<name>.md` under `.flightwake/`); more than 20 active TRAPS entries (fw-coldstart's line for
+  compacting).
+- **Fleet** — inside Orca: every agent terminal Orca has (Claude Code, Codex and other agent CLIs; plain shells left
+  out), one card per repo, repos with an agent waiting on you first (`⛔`, red border), then working (`●`), then idle
+  (`○`). Each card's first line is the repo with its health and flightwake version, read from that repo's own
+  `.flightwake/STATE.md` and instruction-file marker (read-only; flagged `≠` when it differs from this repo's). Each
+  agent row: the agent, the tab's task title, its seat role, its state and for how long. A Claude Code session with the
+  mod 0.3.0+ reports its exact state, context use and role in its fleet file, which wins; for every other agent the
+  state is read from the tab title (Claude Code's `✳` / spinner, Codex's "Action Required") and how recently it printed,
+  so it is a heuristic, and the panel says so.
+  - **Go** switches Orca to that tab.
+  - **Wrap up** appears only on an idle agent flightwake has a command for: a press asks first (`send /fw-record` /
+    `cancel`); the confirming press checks a fresh list and sends `/fw-record` (Claude Code) or `$fw-record` (Codex)
+    only if the agent is still idle. Nothing else is ever typed into another agent.
+  - Outside Orca, or when Orca does not answer, the fleet section falls back to the Claude Code sessions' own reports
+    (blocked first, with role, a wrap-up line at 80%+ context, and a line when the flightwake or mod version differs).
 - **In progress / Next:** the top-level items of those two STATE sections (up to 5 and 6, with a "+n more" line),
   matched by heading in all four template languages, Markdown reduced to plain text.
 - **This session:** the flight log's counts (files, shell-inferred files, test runs with ✓/✗, commits), the latest test
   runs and the files changed most recently.
-- **Other sessions:** the other live sessions from the fleet heartbeat, blocked ones first (`⛔`), with their seat role
-  and how long each has been in that state; a second line when one is at 80% context or more (wrap up), or runs another
-  flightwake or mod version than this session. Claude Code sessions with the mod 0.3.0+ only (older writers show no
-  context, role or version; Codex and Gemini sessions write no file); refreshed every 30 s.
 
 **Opening and closing.** `/fw-panel` toggles it; `/fw-panel on` and `/fw-panel off` say which. It never opens unless you
 asked: once you open it, later sessions (in any repo with flightwake) open it at start, and closing it — `/fw-panel`,
 its close mark, or ctrl+x x — stops that. Where it appears is Claude Code's choice: beside the transcript in the
 fullscreen layout from 110 terminal columns, otherwise above the prompt; a pane reopened at session start on a narrower
 terminal waits undrawn until you widen it or run `/fw-panel`. On the terminal's main screen (`CLAUDE_CODE_NO_FLICKER=0`,
-or tmux by default) it always opens above the prompt. The panel reads only what the other features already keep for the
-session, plus STATE; it runs no git while drawing.
+or tmux by default) it always opens above the prompt.
+
+**What it runs.** Drawing runs nothing; the data is gathered outside drawing. Inside Orca (`ORCA_TERMINAL_HANDLE` set)
+and only while the pane is open, it runs `orca terminal list --json` every 10 s (the CLI in `ORCA_CLI_BIN_DIR`, else
+`orca` on `PATH`) and re-reads each listed repo's STATE frontmatter and marker at most once a minute; it runs `orca
+terminal switch` and `orca terminal send` only on your presses as above. Closing the pane stops the poll.
 
 ## Session fleet (`fleet`)
 
@@ -389,8 +406,12 @@ Claude Code that the mod loaded — run `/fw-mod`.
 - **Turning `fleet` off mid-session** leaves the file to go stale; it may be offered once as a resume candidate.
   `npx flightwake fleet --prune` removes it.
 - **Policy surface.** With `fleet`, the hooks module uses `fs.write`, `fs.list` and six environment reads
-  (`FLIGHTWAKE_HOME`, `HOME`, `USERPROFILE`, `ORCA_TERMINAL_HANDLE`, `ORCA_WORKSPACE_ID`, `TMUX_PANE`). A managed policy
-  that refuses plugins which write files refuses the **whole** mod, not only this feature.
+  (`FLIGHTWAKE_HOME`, `HOME`, `USERPROFILE`, `ORCA_TERMINAL_HANDLE`, `ORCA_WORKSPACE_ID`, `TMUX_PANE`). With `panel`, it
+  also reads `ORCA_CLI_BIN_DIR` and runs the `orca` CLI inside Orca (see [Side panel](#side-panel-panel)). A managed policy
+  that refuses plugins which write files or run processes refuses the **whole** mod, not only this feature.
+- **Fleet console states are partly guessed.** For agents without a fleet file (Codex, other CLIs, Claude Code without
+  the mod), working / idle / waiting is read from the tab title and recent output, and may lag by up to 10 s or be wrong
+  when an agent changes its title format. **Wrap up** re-checks before sending, but only against the same heuristic.
 - Claude Code only. Requires 2.1.287+, an accepted folder trust prompt, and starting at the repo root.
 - **Verified once in a real Claude Code session**, where the first five features took effect. Not yet verified in a real
   session: the `spend` feature, resuming a session after a restart, behaviour after compaction, the 80% toast, the desktop / VS Code look,

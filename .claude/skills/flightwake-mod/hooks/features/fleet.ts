@@ -513,7 +513,8 @@ async function tick($: EngineInterface): Promise<void> {
     // the other sessions, with the gauge's filter (files touched within the stale floor's 4/3), for /fw-mod
     const s = await scan(io, sessionsDirOf(f.base), now, (STALE_FLOOR_MS * 4) / 3)
     f.others = countOthers(s.recs, f.sessionId, now)
-    f.othersList = otherRows(s.recs, f.sessionId, now)
+    // the side panel's console joins these to Orca's terminals: keep every live one, not a screenful
+    f.othersList = otherRows(s.recs, f.sessionId, now, 60)
     await persist($)
     schedule($)
   } catch {

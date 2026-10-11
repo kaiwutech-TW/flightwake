@@ -201,13 +201,14 @@ describe('panel: drawing', () => {
       expect(await ui.find({ type: 'Text', text: /✈ flightwake/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /●green/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /STATE 4c behind/ })).toBeDefined()
-      expect(await ui.find({ type: 'Text', text: /context 63%/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /█+░+ 63%/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /STATE updated 2026-10-01/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /^migrate the billing table$/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /^finish billing/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /^This session$/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /0 file\(s\)/ })).toBeDefined()
-      expect(await ui.find({ type: 'Text', text: /^Other sessions$/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /^Fleet$/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /outside Orca/ })).toBeDefined()
       await ui.unmount()
     })
   }
@@ -222,7 +223,6 @@ describe('panel: drawing', () => {
     engine(on, { percent: 84 })
     await $.session.start(START)
     const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: PROPS })
-    expect(await ui.find({ type: 'Text', text: /^Watch$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /wrap up: \/fw-record → \/clear → \/fw-coldstart/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /health yellow: migration unverified/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /2 uncommitted file/ })).toBeDefined()
@@ -233,12 +233,12 @@ describe('panel: drawing', () => {
     await ui.unmount()
   })
 
-  test('nothing to watch: no Watch heading', async ($, on) => {
+  test('nothing to watch: no warning lines', async ($, on) => {
     installWorld(on, { files: repoFiles(), git: { ...gitBehind(0), 'status --porcelain': '' } })
     engine(on, { percent: 10 })
     await $.session.start(START)
     const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: PROPS })
-    expect(await ui.find({ type: 'Text', text: /^Watch$/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /^! $/ })).toBeUndefined()
     await ui.unmount()
   })
 
@@ -313,7 +313,7 @@ describe('panel: drawing', () => {
     engine(on)
     await $.session.start(START)
     const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: PROPS })
-    for (const t of [/^進行中$/, /^下一步$/, /^本 session$/, /^其他 session$/]) expect(await ui.find({ type: 'Text', text: t })).toBeDefined()
+    for (const t of [/^進行中$/, /^下一步$/, /^本 session$/, /^機隊$/]) expect(await ui.find({ type: 'Text', text: t })).toBeDefined()
     await ui.unmount()
   })
 

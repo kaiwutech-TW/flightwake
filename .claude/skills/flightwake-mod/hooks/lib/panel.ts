@@ -152,7 +152,6 @@ export const T = {
   inProgress: L4({ en: 'In progress', 'zh-TW': '進行中', 'zh-CN': '进行中', ja: '進行中' }),
   next: L4({ en: 'Next', 'zh-TW': '下一步', 'zh-CN': '下一步', ja: '次の入口' }),
   session: L4({ en: 'This session', 'zh-TW': '本 session', 'zh-CN': '本 session', ja: 'このセッション' }),
-  others: L4({ en: 'Other sessions', 'zh-TW': '其他 session', 'zh-CN': '其他 session', ja: '他のセッション' }),
   more: L4<(n: number) => string>({ en: (n) => `+${n} more`, 'zh-TW': (n) => `另有 ${n} 條`, 'zh-CN': (n) => `另有 ${n} 条`, ja: (n) => `他 ${n} 件` }),
   none: L4({ en: 'none', 'zh-TW': '無', 'zh-CN': '无', ja: 'なし' }),
   updated: L4<(d: string) => string>({ en: (d) => `STATE updated ${d}`, 'zh-TW': (d) => `STATE 更新於 ${d}`, 'zh-CN': (d) => `STATE 更新于 ${d}`, ja: (d) => `STATE 更新 ${d}` }),
@@ -173,7 +172,6 @@ export const T = {
   fleetOff: L4({ en: 'session fleet is off', 'zh-TW': 'session 狀態回報已關閉', 'zh-CN': 'session 状态上报已关闭', ja: 'セッション報告はオフ' }),
   fleetWaiting: L4({ en: 'first heartbeat pending (30 s)', 'zh-TW': '等第一次心跳(30 秒)', 'zh-CN': '等第一次心跳(30 秒)', ja: '最初のハートビート待ち(30 秒)' }),
   fleetNotReporting: L4({ en: 'not reporting in this session — /fw-mod says why', 'zh-TW': '本 session 沒有回報——/fw-mod 有原因', 'zh-CN': '本 session 没有上报——/fw-mod 有原因', ja: 'このセッションは報告していない——理由は /fw-mod' }),
-  attention: L4({ en: 'Watch', 'zh-TW': '注意', 'zh-CN': '注意', ja: '注意' }),
   dirty: L4<(n: number) => string>({
     en: (n) => `${n} uncommitted file(s) in the working tree`,
     'zh-TW': (n) => `工作區有 ${n} 個未 commit 的檔`,
@@ -198,6 +196,5 @@ export const T = {
     'zh-CN': (fw, mod) => `flightwake ${fw ?? '?'} · mod ${mod}`, ja: (fw, mod) => `flightwake ${fw ?? '?'} · mod ${mod}`,
   }),
   differs: L4({ en: 'differs from this session', 'zh-TW': '與本 session 不同', 'zh-CN': '与本 session 不同', ja: 'このセッションと異なる' }),
-  claudeOnly: L4({ en: 'Claude Code sessions with the mod only', 'zh-TW': '只列有裝 mod 的 Claude Code session', 'zh-CN': '只列有装 mod 的 Claude Code session', ja: 'mod 入りの Claude Code セッションのみ' }),
   context: L4<(p: number) => string>({ en: (p) => `context ${p}%`, 'zh-TW': (p) => `context ${p}%`, 'zh-CN': (p) => `context ${p}%`, ja: (p) => `context ${p}%` }),
 }

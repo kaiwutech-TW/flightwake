@@ -7,7 +7,11 @@
  *   `statusLine` setting · the session transcript (F6) · F7's `<base>/sessions/*.json`, whether a listed session's
  *   transcript exists (existence only), existence probes for `<base>/STATE.md` and for `.git` and
  *   `.flightwake/STATE.md` on `<base>` and each folder above it, and where the root and `<base>/sessions` really
- *   land (stat with resolve). Nothing else, and no network. Everything outside the module goes through `$`; every
+ *   land (stat with resolve). F8's console, only inside Orca (ORCA_TERMINAL_HANDLE set) and only while the side
+ *   panel is open: `orca terminal list --json` every 10 s, and for each worktree it lists, that worktree's
+ *   `.flightwake/STATE.md` and instruction-file markers (read-only, no git there); on a press, `orca terminal switch`
+ *   and — after a second, confirming press, and only to an idle agent — `orca terminal send` of `/fw-record` /
+ *   `$fw-record`. Nothing else, and no network. Everything outside the module goes through `$`; every
  * helper here swallows its own errors and answers null/false, so a feature built on them degrades silently (no
  * .flightwake/, not a git repo, git missing, unreadable file) instead of surfacing an error to the person.
  * Never writes inside the repo or the user's records: the mod's only write is F7's own session file,

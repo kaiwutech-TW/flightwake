@@ -149,6 +149,29 @@ export type FwFleetOther = {
   role: string | null
   fwVersion: string | null
   mod: string | null
+  /** Its Orca terminal handle (`host.orcaTerminal`), which joins it to Orca's terminal list; null outside Orca. */
+  orcaTerminal: string | null
+}
+
+/** F8 console — one agent terminal from `orca terminal list --json` (plain shells left out). */
+export type FwConsoleTerm = { handle: string; title: string; agent: string; worktreePath: string; lastOutputAt: number | null }
+
+/** F8 console — what a listed worktree's own flightwake files say (read-only: STATE frontmatter and the marker). */
+export type FwConsoleRepo = { isFlightwake: boolean; health: FwHealth; fwVersion: string | null }
+
+/** F8 console — the last answer from Orca, taken every 10 s while the pane is open inside Orca. */
+export type FwConsole = {
+  at: number
+  status: 'ok' | 'no-orca'
+  terms: FwConsoleTerm[]
+  /** Keyed by worktree path. */
+  repos: Record<string, FwConsoleRepo>
+}
+
+/** F8 console — the pane's own interaction state: the row waiting for a wrap-up confirmation, and the last outcome. */
+export type FwPanelUi = {
+  confirm: string | null
+  notice: { text: string; isError: boolean; at: number } | null
 }
 
 /** F8 — what the side panel draws from STATE; computed outside rendering (session.start, turn.complete, a commit). */
@@ -170,6 +193,8 @@ export type FwPanelDigest = {
   contextPercent: number | null
   /** The flightwake install version from the instruction-file marker; null when none. */
   fwVersion: string | null
+  /** This session's Orca terminal handle (ORCA_TERMINAL_HANDLE); null outside Orca, where the console has no Orca rows. */
+  selfHandle: string | null
   /** What needs attention beyond STATE's own items; each field null/empty when there is nothing to say. */
   attention: {
     /** Uncommitted entries in `git status --porcelain`; null when not measured (not a git repo, git failed). */
@@ -197,6 +222,8 @@ declare module 'claude-code' {
       spend: FwSpend | null
       fleet: FwFleet | null
       panelDigest: FwPanelDigest | null
+      console: FwConsole | null
+      panelUi: FwPanelUi | null
     }
   }
 }

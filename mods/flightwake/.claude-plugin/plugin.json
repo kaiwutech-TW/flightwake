@@ -53,7 +53,7 @@
     "panel": {
       "type": "boolean",
       "title": "Side panel",
-      "description": "/fw-panel opens a pane beside the transcript with STATE, this session's flight log and cost, and the other sessions; once opened it reopens in later sessions until you close it. Never opens unless you ask.",
+      "description": "/fw-panel opens a pane beside the transcript: this repo's STATE and what needs attention, and — inside Orca — every agent terminal (Claude and Codex) by repo, with buttons to go to one or ask an idle one to wrap up (confirmed each time). Once opened it reopens in later sessions until you close it. Never opens unless you ask.",
       "default": true
     }
   }

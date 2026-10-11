@@ -380,6 +380,7 @@ export type OtherRow = {
   role: string | null
   fwVersion: string | null
   mod: string | null
+  orcaTerminal: string | null
 }
 
 const str = (v: unknown, max = 64): string | null => (typeof v === 'string' && v !== '' ? cut(v, max) : null)
@@ -402,6 +403,7 @@ export function otherRows(recs: readonly SessionRec[], myId: string, now: number
     role: str(rec.role, 40),
     fwVersion: str(rec.fwVersion, 32),
     mod: str(rec.mod, 32),
+    orcaTerminal: typeof rec.host?.orcaTerminal === 'string' && /^term_[A-Za-z0-9-]{1,80}$/.test(rec.host.orcaTerminal) ? rec.host.orcaTerminal : null,
   }))
 }
 
