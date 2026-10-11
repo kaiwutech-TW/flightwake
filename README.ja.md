@@ -7,6 +7,8 @@
 
 🌐 [English](README.md) · [繁體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md) · **日本語**
 
+[図解付きの紹介サイト](https://flightwake.kaiwu.com.tw/ja/)で、4 言語の概要と実際の Orca マルチエージェント事例を読めます。[サイトのソース](website/)。
+
 強いモデル(Claude Fable 5 世代以降)のための超軽量ワーク記録フレームワーク。ランタイム依存ゼロ、純粋な Markdown、すべて git に入る。
 
 ![この repo での実際のコールドスタート:/fw-coldstart が STATE と最新 record を読み、約 30 秒で安全な引き継ぎを報告](https://raw.githubusercontent.com/kaiwutech-TW/flightwake/main/docs/demo.gif)

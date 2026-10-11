@@ -7,6 +7,8 @@
 
 🌐 [English](README.md) · **繁體中文** · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
+[閱讀圖解展示網站](https://flightwake.kaiwu.com.tw/):四語介紹與真實 Orca 多 agent 協作案例。[網站原始碼](website/)。
+
 給強模型(Claude Fable 5 世代起)的極輕量工作記錄框架。零執行期依賴、純 Markdown、一切進 git。
 
 ![本 repo 的真實冷啟動:/fw-coldstart 讀 STATE 與最新 record,約 30 秒回報安全接手](https://raw.githubusercontent.com/kaiwutech-TW/flightwake/main/docs/demo.gif)

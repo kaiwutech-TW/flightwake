@@ -7,6 +7,8 @@
 
 🌐 **English** · [繁體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
+[Explore the illustrated website](https://flightwake.kaiwu.com.tw/en/) for the four-language overview and a real Orca multi-agent case study. [Website source](website/).
+
 An ultra-lightweight work-recording framework for strong AI coding agents (Claude Fable 5 generation and beyond). Zero runtime dependencies, pure Markdown, everything lives in git.
 
 ![A real cold start on this repo: /fw-coldstart reads STATE + the latest record and reports a safe takeover in ~30 seconds](https://raw.githubusercontent.com/kaiwutech-TW/flightwake/main/docs/demo.gif)
