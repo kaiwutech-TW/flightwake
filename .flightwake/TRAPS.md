@@ -5,6 +5,22 @@
 # 坑 Registry
 
 ---
+name: wrangler-pages-create-delegates-to-workers
+type: gotcha
+status: active
+tags: [cloudflare, wrangler, pages, astro]
+discovered: 2026-10-11
+confidence: suspected
+paths: ["website/astro.config.mjs", "website/package.json", "website/wrangler.jsonc"]
+commands: ["wrangler pages project create"]
+---
+
+**症狀**:在 `website/` 執行 Wrangler 4.149.0 的 `pages project create flightwake --production-branch main`,CLI 印出 `Delegating to the latest version of Cloudflare Pages, now part of Cloudflare Workers`、`Configuring project for Astro with "astro add cloudflare"`,改了 package/config/tsconfig,直接部署到 `flightwake.witkaiy.workers.dev`;`wrangler pages project list` 仍沒有 `flightwake`。
+**根因(暫定)**:這個版本在此 Astro 專案與命令組合下把 Pages 建立請求導向 Workers 的 framework configure + deploy 流程;尚未排除是否與本機已登入的 account、新版預設或專案名稱衝突有關。
+**繞法**:建立純靜態 Pages 專案時,用 Cloudflare Pages API 的 `POST /accounts/{account_id}/pages/projects` 建立 Direct Upload 專案;在 Astro 目錄外執行 `wrangler pages deploy website/dist --project-name flightwake --branch main`。先核對 Pages project list 確有該專案。若誤觸,用 git diff 核對並還原 CLI 自動改寫的本地檔案;額外建立的 Worker 另行處理。
+**佐證**:2026-10-11 本 session 的 Wrangler 4.149.0 CLI 輸出與 `git diff -- website`,對照 `wrangler pages project list --json` 無 flightwake;改用 Pages API 建立後,從 `/tmp` 執行 `wrangler pages deploy` 成功,`flightwake.pages.dev` HTTP 200。官方文件: https://developers.cloudflare.com/pages/get-started/direct-upload/
+
+---
 name: init-flags-on-private-install-drop-private
 type: gotcha
 status: active
