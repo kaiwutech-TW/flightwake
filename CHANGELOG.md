@@ -8,7 +8,11 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-10-11
+
 ### Added
+- **Showcase website** at https://flightwake.kaiwu.com.tw/ (four languages, picks the browser language on first visit,
+  a real anonymised two-repo multi-agent case); source under `website/`, linked from the README and the GitHub page.
 - **Tokens and API-equivalent cost** (mod 0.2.0, feature `spend`, on by default). The band's last field and a line in
   `/fw-mod` show `1.2M tok · ≈$4.99`; `/fw-cost` prints the breakdown (uncached input / cache write / cache read / output,
   the number of API responses counted, the model). Cost is Claude Code's own ledger (the `/cost` figure at API list prices;
@@ -371,7 +375,8 @@ First public release. ✈️
 
 Initial npm publish; superseded within the day by 0.7.2.
 
-[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.16.0
 [0.15.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.15.0
 [0.14.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.14.0
 [0.13.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.13.0

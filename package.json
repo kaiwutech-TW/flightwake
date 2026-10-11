@@ -1,6 +1,6 @@
 {
   "name": "flightwake",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "Flight-recorder style work framework for strong AI coding agents — records follow work, they don't lead it. ✈️",
   "bin": {
     "flightwake": "bin/cli.mjs"
@@ -30,7 +30,7 @@
     "type": "git",
     "url": "git+https://github.com/kaiwutech-TW/flightwake.git"
   },
-  "homepage": "https://github.com/kaiwutech-TW/flightwake#readme",
+  "homepage": "https://flightwake.kaiwu.com.tw/",
   "bugs": {
     "url": "https://github.com/kaiwutech-TW/flightwake/issues"
   },
