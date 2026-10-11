@@ -27,7 +27,7 @@ const MY = `${FLEET_DIR}/s1.json`
 const SPEC_KEYS = [
   'schema', 'mod', 'sessionId', 'instance', 'state', 'why', 'stateSince', 'seq', 'heartbeatAt', 'heartbeatMs',
   'startedAt', 'root', 'repoRoot', 'launchCwd', 'lang', 'surface', 'blocked', 'activity', 'inFlight', 'turns',
-  'lastTurn', 'ended', 'resume', 'transcript', 'parent', 'contested', 'host',
+  'lastTurn', 'ended', 'resume', 'transcript', 'parent', 'contested', 'host', 'context', 'role', 'fwVersion',
 ]
 
 type Held = { id: string; tool: string; release: () => void }
@@ -185,6 +185,7 @@ describe('fleet: lifecycle', () => {
       heartbeatAt: NOW, heartbeatMs: 30000, startedAt: NOW, root: '/repo', repoRoot: '/repo', launchCwd: '/repo', lang: 'en',
       surface: 'terminal', blocked: null, activity: null, inFlight: 0, turns: 0, lastTurn: null, ended: null,
       resume: { id: 's1', resumable: false }, transcript: TRANSCRIPT('s1'), parent: null, contested: false, host: {},
+      context: null, role: null, fwVersion: '0.14.0',
     })
     expect(typeof r.instance).toBe('string')
     expect(k.w.fleetWrites).toEqual([MY])

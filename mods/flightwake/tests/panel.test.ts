@@ -3,7 +3,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { panelVerb, plainItem, stateDigest } from '../hooks/lib/panel'
+import { healthWhy, panelVerb, plainItem, recordUnfinished, stateDigest } from '../hooks/lib/panel'
+import { MOD_VERSION } from '../hooks/lib/core'
 import { otherRows } from '../hooks/lib/fleet'
 import { gitBehind, installWorld, MARKER, sessionRec, STATE_FILLED, STATE_TEMPLATE } from './world'
 
@@ -95,6 +96,33 @@ describe('panel: pure helpers', () => {
   })
 })
 
+describe('panel: attention helpers', () => {
+  test('recordUnfinished reads the handoff section in every template language, capped at 3', async () => {
+    const en = '# t\n\n## Verification evidence\n\n- not this\n\n## Unfinished / Handoff\n\n- a\n- b\n- c\n- d\n'
+    expect(recordUnfinished(en)).toEqual({ items: ['a', 'b', 'c'], more: 1 })
+    expect(recordUnfinished('## 未完 / 交接\n\n- **ci** 待核對\n').items).toEqual(['ci 待核對'])
+    expect(recordUnfinished('## 未完了 / 引き継ぎ\n\n1. x\n## 次\n- y\n').items).toEqual(['x'])
+    expect(recordUnfinished('## Key findings\n\n- z\n')).toEqual({ items: [], more: 0 })
+  })
+
+  test('healthWhy: the comment after the value, never the template legend', async () => {
+    expect(healthWhy('---\nhealth: yellow  # migration unverified\n---\n')).toBe('migration unverified')
+    expect(healthWhy('---\nhealth: green   # green | yellow | red\n---\n')).toBeNull()
+    expect(healthWhy('---\nhealth: red\n---\n')).toBeNull()
+  })
+
+  test('otherRows carries context, role and versions; a pre-0.3.0 record gives nulls', async () => {
+    const now = 1_700_000_000_000
+    const recs = [
+      sessionRec({ sessionId: 'new', state: 'working', heartbeatAt: now, root: '/r/a', mod: '0.3.0', context: { percent: 86 }, role: 'reviewer', fwVersion: '0.16.0' }),
+      sessionRec({ sessionId: 'old', state: 'idle', heartbeatAt: now, root: '/r/b' }),
+    ]
+    const rows = otherRows(recs as never, 'me', now)
+    expect(rows[0]).toMatchObject({ label: 'a', contextPercent: 86, role: 'reviewer', fwVersion: '0.16.0', mod: '0.3.0' })
+    expect(rows[1]).toMatchObject({ label: 'b', contextPercent: null, role: null, fwVersion: null, mod: '0.2.0' })
+  })
+})
+
 describe('panel: open, remember, close', () => {
   test('never opens unasked the first time; /fw-panel opens it and remembers', async ($, on) => {
     const w = installWorld(on, { files: repoFiles(), git: gitBehind(0) })
@@ -183,6 +211,70 @@ describe('panel: drawing', () => {
       await ui.unmount()
     })
   }
+
+  test('watch block: wrap-up at 80%+, non-green reason, uncommitted files, the record open ends, TRAPS over 20', async ($, on) => {
+    const state = STATE_FILLED.replace('health: green   # green | yellow | red', 'health: yellow  # migration unverified')
+    const traps = Array.from({ length: 21 }, (_, i) => `---\nname: t${i}\nstatus: active\nconfidence: confirmed\n---\n**root cause**: x\n\n`).join('')
+    installWorld(on, {
+      files: { ...repoFiles(state), '.flightwake/records/261001-x.md': '# r\n\n## Unfinished / Handoff\n\n- check ci on the release commit\n', '.flightwake/TRAPS.md': traps },
+      git: { ...gitBehind(0), 'status --porcelain': ' M a.ts\n?? b.ts' },
+    })
+    engine(on, { percent: 84 })
+    await $.session.start(START)
+    const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: PROPS })
+    expect(await ui.find({ type: 'Text', text: /^Watch$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /wrap up: \/fw-record → \/clear → \/fw-coldstart/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /health yellow: migration unverified/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /2 uncommitted file/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /unfinished in 261001-x/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /– check ci on the release commit/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /21 active TRAPS entries/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: new RegExp(`flightwake 0\\.14\\.0 · mod ${MOD_VERSION.replace(/\./g, '\\.')}`) })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('nothing to watch: no Watch heading', async ($, on) => {
+    installWorld(on, { files: repoFiles(), git: { ...gitBehind(0), 'status --porcelain': '' } })
+    engine(on, { percent: 10 })
+    await $.session.start(START)
+    const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: PROPS })
+    expect(await ui.find({ type: 'Text', text: /^Watch$/ })).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test('a latest_record that leaves .flightwake/records is not read', async ($, on) => {
+    const w = installWorld(on, { files: { ...repoFiles(STATE_FILLED.replace('records/261001-x.md', '../../etc/x.md')), 'etc/x.md': '## Unfinished\n\n- leak\n' }, git: gitBehind(0) })
+    engine(on)
+    await $.session.start(START)
+    expect(w.contentReads.some((p) => p.endsWith('etc/x.md'))).toBe(false)
+  })
+
+  test('other sessions: role, a hot context with the wrap-up line, another version flagged', async ($, on) => {
+    installWorld(on, { files: repoFiles(), git: gitBehind(0) })
+    engine(on)
+    // $.state beneath the plugin, so the test can put a heartbeat's result in place (the test's $ has no state noun)
+    const state = new Map<string, { value: unknown; version: number }>()
+    on('state.get', (_$, e) => ({ value: state.get(`${e.plugin}/${e.key}`) ?? { value: undefined, version: 0 } }))
+    on('state.set', (_$, e) => {
+      const version = (state.get(`${e.plugin}/${e.key}`)?.version ?? 0) + 1
+      state.set(`${e.plugin}/${e.key}`, { value: e.value, version })
+      return { value: { isSet: true, version } }
+    })
+    await $.session.start(START)
+    const fleet = { sessionId: 's1', status: 'active', othersList: [
+      { label: 'api', display: 'blocked', blockedKind: 'permission', ageMs: 120000, contextPercent: 40, role: 'builder', fwVersion: '0.14.0', mod: MOD_VERSION },
+      { label: 'web', display: 'working', blockedKind: null, ageMs: 5000, contextPercent: 88, role: null, fwVersion: '0.15.0', mod: '0.2.0' },
+    ] }
+    state.set('flightwake-mod/fleet', { value: fleet, version: 99 })
+    const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: PROPS })
+    expect(await ui.find({ type: 'Text', text: /⛔ api · builder · blocked\(permission\) 2m/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /● web · working 5s/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /context 88% · wrap up/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /flightwake 0\.15\.0 · mod 0\.2\.0 — differs from this session/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /context 40%/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /Claude Code sessions with the mod only/ })).toBeDefined()
+    await ui.unmount()
+  })
 
   test('band off: the panel measures the lag itself', { options: { band: false } }, async ($, on) => {
     const w = installWorld(on, { files: repoFiles(), git: gitBehind(2) })

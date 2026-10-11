@@ -11,6 +11,11 @@ export const PANE_ID = 'flightwake'
 export const STORE_KEY = 'panelOpen'
 export const CAP_IN_PROGRESS = 5
 export const CAP_NEXT = 6
+export const CAP_UNFINISHED = 3
+/** fw-coldstart's red line: more active TRAPS entries than this → propose compaction. */
+export const TRAPS_COMPACT_AT = 20
+/** Another session's context use from which the panel says "wrap up" (the band's toast threshold). */
+export const CONTEXT_HOT = 80
 const ITEM_MAX = 240
 
 /**
@@ -19,6 +24,9 @@ const ITEM_MAX = 240
  */
 const IN_PROGRESS_HEADS = ['In progress', '進行中', '进行中']
 const NEXT_HEADS = ['Next entry points', 'Next', '下一步入口', '次の入口']
+
+/** A record's "Unfinished / Handoff" heading (templates/<lang>/TEMPLATE-record.md); `未完` covers zh and ja. */
+const UNFINISHED_HEADS = ['Unfinished', '未完']
 
 const HEADING_RE = /^#{1,2}\s+(.+?)\s*$/
 /** A top-level list item: `- x`, `* x`, `+ x`, `1. x`, `0a. x`, `2) x`. Indented lines are continuations. */
@@ -50,36 +58,54 @@ export type StateDigest = {
 /** The digest of a STATE text: its `updated` field and the top-level items of the two sections, capped. */
 export function stateDigest(text: string): StateDigest {
   const front = parseFrontmatter(text)
-  const updated = front?.updated && front.updated !== '' ? front.updated : null
+  const inProgress = sectionItems(text, IN_PROGRESS_HEADS)
+  const next = sectionItems(text, NEXT_HEADS)
+  return {
+    updated: front?.updated && front.updated !== '' ? front.updated : null,
+    inProgress: inProgress.slice(0, CAP_IN_PROGRESS),
+    next: next.slice(0, CAP_NEXT),
+    moreInProgress: Math.max(0, inProgress.length - CAP_IN_PROGRESS),
+    moreNext: Math.max(0, next.length - CAP_NEXT),
+  }
+}
+
+/** Top-level items under the first heading (any level up to ##) starting with one of `heads`; markup stripped. */
+function sectionItems(text: string, heads: readonly string[]): string[] {
   const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---/, '').replace(/<!--[\s\S]*?-->/g, '')
-  const inProgress: string[] = []
-  const next: string[] = []
-  let into: string[] | null = null
+  const out: string[] = []
+  let isIn = false
   let isFenced = false
   for (const line of body.split(/\r?\n/)) {
     if (/^\s*(```|~~~)/.test(line)) { isFenced = !isFenced; continue }
     if (isFenced) continue
     const h = HEADING_RE.exec(line)
     if (h && h[1] !== undefined) {
-      const title = h[1]
-      into = IN_PROGRESS_HEADS.some((p) => title.startsWith(p)) ? inProgress
-        : NEXT_HEADS.some((p) => title.startsWith(p)) ? next
-          : null
+      if (isIn) break
+      isIn = heads.some((p) => (h[1] as string).startsWith(p))
       continue
     }
-    if (into === null) continue
+    if (!isIn) continue
     const m = ITEM_RE.exec(line)
     if (!m || m[1] === undefined) continue
     const item = plainItem(m[1])
-    if (item !== '') into.push(item)
+    if (item !== '') out.push(item)
   }
-  return {
-    updated,
-    inProgress: inProgress.slice(0, CAP_IN_PROGRESS),
-    next: next.slice(0, CAP_NEXT),
-    moreInProgress: Math.max(0, inProgress.length - CAP_IN_PROGRESS),
-    moreNext: Math.max(0, next.length - CAP_NEXT),
-  }
+  return out
+}
+
+/** A record's "Unfinished / Handoff" items, capped, with the count left out. */
+export function recordUnfinished(text: string): { items: string[]; more: number } {
+  const all = sectionItems(text, UNFINISHED_HEADS)
+  return { items: all.slice(0, CAP_UNFINISHED), more: Math.max(0, all.length - CAP_UNFINISHED) }
+}
+
+/** The comment after STATE's `health:` value (`health: yellow  # migration unverified`), or null. */
+export function healthWhy(stateText: string): string | null {
+  const m = /^health:\s*\S+\s+#\s*(.+?)\s*$/m.exec(stateText)
+  if (!m || m[1] === undefined) return null
+  // the template's own legend is not a reason
+  if (/^green\s*\|/.test(m[1])) return null
+  return plainItem(m[1])
 }
 
 /** `/fw-panel [on|off]` → what to do; anything else toggles. */
@@ -147,5 +173,31 @@ export const T = {
   fleetOff: L4({ en: 'session fleet is off', 'zh-TW': 'session 狀態回報已關閉', 'zh-CN': 'session 状态上报已关闭', ja: 'セッション報告はオフ' }),
   fleetWaiting: L4({ en: 'first heartbeat pending (30 s)', 'zh-TW': '等第一次心跳(30 秒)', 'zh-CN': '等第一次心跳(30 秒)', ja: '最初のハートビート待ち(30 秒)' }),
   fleetNotReporting: L4({ en: 'not reporting in this session — /fw-mod says why', 'zh-TW': '本 session 沒有回報——/fw-mod 有原因', 'zh-CN': '本 session 没有上报——/fw-mod 有原因', ja: 'このセッションは報告していない——理由は /fw-mod' }),
+  attention: L4({ en: 'Watch', 'zh-TW': '注意', 'zh-CN': '注意', ja: '注意' }),
+  dirty: L4<(n: number) => string>({
+    en: (n) => `${n} uncommitted file(s) in the working tree`,
+    'zh-TW': (n) => `工作區有 ${n} 個未 commit 的檔`,
+    'zh-CN': (n) => `工作区有 ${n} 个未 commit 的文件`,
+    ja: (n) => `作業ツリーに未 commit のファイル ${n} 件`,
+  }),
+  healthWhy: L4<(h: string, why: string) => string>({
+    en: (h, w) => `health ${h}: ${w}`, 'zh-TW': (h, w) => `health ${h}:${w}`, 'zh-CN': (h, w) => `health ${h}:${w}`, ja: (h, w) => `health ${h}:${w}`,
+  }),
+  unfinished: L4<(rec: string) => string>({
+    en: (r) => `unfinished in ${r}:`, 'zh-TW': (r) => `${r} 的未完事項:`, 'zh-CN': (r) => `${r} 的未完事项:`, ja: (r) => `${r} の未完了:`,
+  }),
+  traps: L4<(n: number) => string>({
+    en: (n) => `${n} active TRAPS entries (over ${TRAPS_COMPACT_AT}) — time to compact`,
+    'zh-TW': (n) => `TRAPS 有 ${n} 條 active(超過 ${TRAPS_COMPACT_AT})——該壓實了`,
+    'zh-CN': (n) => `TRAPS 有 ${n} 条 active(超过 ${TRAPS_COMPACT_AT})——该压实了`,
+    ja: (n) => `TRAPS の active 項目が ${n} 件(${TRAPS_COMPACT_AT} 超)——整理の時期`,
+  }),
+  wrapUp: L4({ en: 'wrap up: /fw-record → /clear → /fw-coldstart', 'zh-TW': '該收尾:/fw-record → /clear → /fw-coldstart', 'zh-CN': '该收尾:/fw-record → /clear → /fw-coldstart', ja: '締め時:/fw-record → /clear → /fw-coldstart' }),
+  versions: L4<(fw: string | null, mod: string) => string>({
+    en: (fw, mod) => `flightwake ${fw ?? '?'} · mod ${mod}`, 'zh-TW': (fw, mod) => `flightwake ${fw ?? '?'} · mod ${mod}`,
+    'zh-CN': (fw, mod) => `flightwake ${fw ?? '?'} · mod ${mod}`, ja: (fw, mod) => `flightwake ${fw ?? '?'} · mod ${mod}`,
+  }),
+  differs: L4({ en: 'differs from this session', 'zh-TW': '與本 session 不同', 'zh-CN': '与本 session 不同', ja: 'このセッションと異なる' }),
+  claudeOnly: L4({ en: 'Claude Code sessions with the mod only', 'zh-TW': '只列有裝 mod 的 Claude Code session', 'zh-CN': '只列有装 mod 的 Claude Code session', ja: 'mod 入りの Claude Code セッションのみ' }),
   context: L4<(p: number) => string>({ en: (p) => `context ${p}%`, 'zh-TW': (p) => `context ${p}%`, 'zh-CN': (p) => `context ${p}%`, ja: (p) => `context ${p}%` }),
 }

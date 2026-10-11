@@ -15,10 +15,11 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On, RenderElement } from 'claude-code'
 
-import { fwContext, healthOf, isUninitializedState, joinPath, STATE_REL, stateLag } from '../lib/core'
+import { detectVersion, FW_DIR, fwContext, git, healthOf, isUninitializedState, joinPath, MOD_VERSION, parseFrontmatter, readRel, STATE_REL, stateLag, TRAPS_REL } from '../lib/core'
 import type { Io, Lang } from '../lib/core'
 import { fmtAge, T as FLEET_T } from '../lib/fleet'
-import { PANE_ID, panelVerb, stateDigest, STORE_KEY, T } from '../lib/panel'
+import { CONTEXT_HOT, healthWhy, PANE_ID, panelVerb, recordUnfinished, stateDigest, STORE_KEY, T, TRAPS_COMPACT_AT } from '../lib/panel'
+import { isActive, parseTraps } from '../lib/traps'
 import type { FwBandView, FwFleet, FwFlightLog, FwPanelDigest, FwSpend } from '../../types/index'
 import { lagText } from './band'
 import { spendLine } from './spend'
@@ -79,6 +80,39 @@ async function compute($: EngineInterface, sw: PanelSwitches): Promise<FwPanelDi
     moreNext: isUninitialized ? 0 : d.moreNext,
     lag,
     contextPercent,
+    fwVersion: await detectVersion(io, ctx.root),
+    attention: await attentionOf(io, ctx.root, text, isUninitialized),
+  }
+}
+
+/** What needs attention beyond STATE's items: uncommitted files, why health is not green, the latest record's open ends, TRAPS to compact. */
+async function attentionOf(io: Io, root: string, stateText: string, isUninitialized: boolean): Promise<FwPanelDigest['attention']> {
+  const status = await git(io, root, ['status', '--porcelain'])
+  const dirty = status === null ? null : status === '' ? 0 : status.split('\n').length
+  const health = healthOf(stateText)
+  let record: string | null = null
+  let unfinished: string[] = []
+  let moreUnfinished = 0
+  const latest = isUninitialized ? undefined : parseFrontmatter(stateText)?.latest_record
+  // `records/<name>.md` under .flightwake/ only: never follow a path out of it
+  if (latest && /^records\/[^/\\]+\.md$/.test(latest)) {
+    const t = await readRel(io, root, `${FW_DIR}/${latest}`)
+    if (t !== null) {
+      const u = recordUnfinished(t)
+      record = latest.slice('records/'.length, -'.md'.length)
+      unfinished = u.items
+      moreUnfinished = u.more
+    }
+  }
+  const traps = await readRel(io, root, TRAPS_REL)
+  const active = traps === null ? 0 : parseTraps(traps).filter(isActive).length
+  return {
+    dirty,
+    healthWhy: health === 'yellow' || health === 'red' ? healthWhy(stateText) : null,
+    record,
+    unfinished,
+    moreUnfinished,
+    trapsActive: active > TRAPS_COMPACT_AT ? active : null,
   }
 }
 
@@ -194,6 +228,21 @@ export function registerPanel(on: On, sw: PanelSwitches): void {
       const sl = spend !== null && spend.sessionId === d.sessionId ? spendLine(spend) : ''
       const sub = [d.updated ? T.updated[lang](d.updated) : '', sl || (sw.spend ? T.spendNone[lang] : '')].filter(Boolean).join(' · ')
       if (sub) rows.push(line({ dimColor: true }, sub))
+      rows.push(line({ dimColor: true }, T.versions[lang](d.fwVersion, MOD_VERSION)))
+
+      // ── watch: what needs attention beyond STATE's own items ──
+      const a = d.attention
+      const watch: unknown[] = []
+      if (pct !== null && pct >= CONTEXT_HOT) watch.push(line({ color: 'red' }, `! ${T.wrapUp[lang]}`))
+      if (a.healthWhy) watch.push(line({ color: d.health === 'red' ? 'red' : 'yellow' }, `! ${T.healthWhy[lang](d.health, a.healthWhy)}`))
+      if (a.dirty !== null && a.dirty > 0) watch.push(line({ color: 'yellow' }, `! ${T.dirty[lang](a.dirty)}`))
+      if (a.record !== null && a.unfinished.length > 0) {
+        watch.push(line({}, `! ${T.unfinished[lang](a.record)}`))
+        for (const it of a.unfinished) watch.push(line({}, `  – ${it}`))
+        if (a.moreUnfinished > 0) watch.push(line({ dimColor: true }, `  ${T.more[lang](a.moreUnfinished)}`))
+      }
+      if (a.trapsActive !== null) watch.push(line({ color: 'yellow' }, `! ${T.traps[lang](a.trapsActive)}`))
+      if (watch.length > 0) rows.push(h(Box, { marginTop: 1 }, line({ bold: true }, T.attention[lang])), ...watch)
 
       if (d.isUninitialized) {
         rows.push(h(Box, { marginTop: 1 }, line({ color: 'yellow' }, T.uninitialized[lang])))
@@ -249,9 +298,18 @@ export function registerPanel(on: On, sw: PanelSwitches): void {
           for (const o of f.othersList) {
             const mark = o.display === 'blocked' ? '⛔' : o.display === 'working' ? '●' : '○'
             const kind = o.blockedKind ? `(${FLEET_T.kind[lang][o.blockedKind]})` : ''
+            const role = o.role ? ` · ${o.role}` : ''
             rows.push(line({ color: o.display === 'blocked' ? 'red' : undefined, dimColor: o.display === 'idle' },
-              `${mark} ${o.label} · ${word[o.display]}${kind} ${fmtAge(o.ageMs)}`))
+              `${mark} ${o.label}${role} · ${word[o.display]}${kind} ${fmtAge(o.ageMs)}`))
+            // second line only when there is something to act on: context running hot, or another version
+            const isHot = o.contextPercent !== null && o.contextPercent >= CONTEXT_HOT
+            const vers: string[] = []
+            if (o.fwVersion !== null && d.fwVersion !== null && o.fwVersion !== d.fwVersion) vers.push(`flightwake ${o.fwVersion}`)
+            if (o.mod !== null && o.mod !== MOD_VERSION) vers.push(`mod ${o.mod}`)
+            if (isHot) rows.push(line({ color: 'red' }, `    ${T.context[lang](o.contextPercent as number)} · ${T.wrapUp[lang]}`))
+            if (vers.length > 0) rows.push(line({ color: 'yellow' }, `    ${vers.join(' · ')} — ${T.differs[lang]}`))
           }
+          rows.push(line({ dimColor: true }, `  ${T.claudeOnly[lang]}`))
         }
       }
 

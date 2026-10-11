@@ -18,7 +18,8 @@
  */
 import type { EngineInterface, On, Timer } from 'claude-code'
 
-import { fwContext, MOD_VERSION, relToRoot } from '../lib/core'
+import { detectVersion, fwContext, MOD_VERSION, readRel, relToRoot } from '../lib/core'
+import { parseSeatBlock, SEAT_FILES } from '../lib/roles'
 import type { Io, Lang } from '../lib/core'
 import { transcriptPath } from '../lib/spend'
 import {
@@ -150,8 +151,11 @@ let lastBlockedKey = 'null'
 let pendingFlush = false
 let isTicking = false
 /** What a write carries besides FwFleet, refreshed at start, adoption and heartbeat (session.end reads only this). */
-const W: { root: string; repoRoot: string | null; lang: Lang; home: string | null; host: Host; realRoot: string | null; realSessions: string | null } =
-  { root: '', repoRoot: null, lang: 'en', home: null, host: {}, realRoot: null, realSessions: null }
+const W: {
+  root: string; repoRoot: string | null; lang: Lang; home: string | null; host: Host; realRoot: string | null; realSessions: string | null
+  /** For other sessions' readers (the side panel): context use, the seat role, the flightwake install version. */
+  context: number | null; role: string | null; fwVersion: string | null
+} = { root: '', repoRoot: null, lang: 'en', home: null, host: {}, realRoot: null, realSessions: null, context: null, role: null, fwVersion: null }
 
 const noop = (): void => {}
 const canWrite = (f: FwFleet | null): f is FwFleet => f !== null && (f.status === 'active' || f.status === 'write-failed') && f.path !== null
@@ -209,6 +213,9 @@ function recordOf(f: FwFleet, now: number): SessionRec {
     parent: f.parent,
     contested: f.contested,
     host: { ...W.host },
+    context: W.context === null ? null : { percent: W.context },
+    role: W.role,
+    fwVersion: W.fwVersion,
   }
 }
 
@@ -362,6 +369,26 @@ async function refreshWorld($: EngineInterface, io: FleetIo, withRepo: boolean):
   }
 }
 
+/** The seat role and install version of the current root (re-read on each heartbeat: `roles apply` may change it). */
+async function readSeat(io: FleetIo): Promise<void> {
+  if (W.root === '') return
+  let role: string | null = null
+  for (const rel of SEAT_FILES) {
+    const t = await readRel(io, W.root, rel)
+    const seat = t === null ? null : parseSeatBlock(t)
+    if (seat) { role = seat.id; break }
+  }
+  W.role = role
+  W.fwVersion = await detectVersion(io, W.root)
+}
+
+async function readContext($: EngineInterface): Promise<void> {
+  try {
+    const p = (await $.session.usage()).context.percent
+    W.context = typeof p === 'number' && Number.isFinite(p) ? Math.round(p) : null
+  } catch { W.context = null }
+}
+
 async function sessionTurns($: EngineInterface): Promise<number> {
   try { const n = await $.session.turns(); return typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : 0 } catch { return 0 }
 }
@@ -466,6 +493,8 @@ async function tick($: EngineInterface): Promise<void> {
     if (!canWrite(f) || f.ended !== null || f.path === null || f.base === null) return
     const io = fleetIoOf($)
     await refreshWorld($, io, false)
+    await readSeat(io)
+    await readContext($)
     // the guards again: a /cd may have moved the root over the base, or a link may have replaced a folder since start
     if (W.root !== '') await placeOutside(io, W.root, f.base)
     if (!isStillOutside(f)) { await persist($); return }
@@ -570,6 +599,7 @@ async function onStart($: EngineInterface, e: { cwd: string; surface: string | n
   if (ctx === null) return // S1: flightwake is not installed here
   W.lang = ctx.lang
   W.root = ctx.root
+  await readSeat(io)
   await ensureCommand($, ctx.lang)
   const sid = await io.sessionId()
   if (!sid) return
@@ -729,6 +759,7 @@ export function registerFleet(on: On): void {
           for (const [k, c] of inFlight) if (!c.agent) inFlight.delete(k)
           F.lastTurn = { reason, at: await clockNow($), durationMs: typeof e.durationMs === 'number' && Number.isFinite(e.durationMs) ? e.durationMs : 0 }
           F.turns = Math.max(F.turns, await sessionTurns($))
+          await readContext($)
           await apply($, `turn.complete:${reason}`)
         }
       }

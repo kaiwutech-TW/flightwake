@@ -124,13 +124,19 @@ The band hides itself while the bottom gauge is on, so with both installed nothi
 panel puts it in one place you can keep open:
 
 - **Header:** health, STATE lag (the band's reading; the panel measures it itself only while the band is off), context
-  use, when STATE was last updated, and this session's tokens and cost.
+  use, when STATE was last updated, this session's tokens and cost, and the flightwake install version and mod version.
+- **Watch** (only when there is something to say): context at 80% or more (wrap up: `/fw-record` → `/clear` →
+  `/fw-coldstart`); why health is yellow or red (the comment after STATE's `health:` value); uncommitted files in the
+  working tree; the "Unfinished / Handoff" items of the record STATE's `latest_record` names (only a
+  `records/<name>.md` under `.flightwake/`); more than 20 active TRAPS entries (fw-coldstart's line for compacting).
 - **In progress / Next:** the top-level items of those two STATE sections (up to 5 and 6, with a "+n more" line),
   matched by heading in all four template languages, Markdown reduced to plain text.
 - **This session:** the flight log's counts (files, shell-inferred files, test runs with ✓/✗, commits), the latest test
   runs and the files changed most recently.
-- **Other sessions:** the other live sessions from the fleet heartbeat, blocked ones first (`⛔`), with how long each
-  has been in that state. Claude Code sessions with the mod only; refreshed every 30 s.
+- **Other sessions:** the other live sessions from the fleet heartbeat, blocked ones first (`⛔`), with their seat role
+  and how long each has been in that state; a second line when one is at 80% context or more (wrap up), or runs another
+  flightwake or mod version than this session. Claude Code sessions with the mod 0.3.0+ only (older writers show no
+  context, role or version; Codex and Gemini sessions write no file); refreshed every 30 s.
 
 **Opening and closing.** `/fw-panel` toggles it; `/fw-panel on` and `/fw-panel off` say which. It never opens unless you
 asked: once you open it, later sessions (in any repo with flightwake) open it at start, and closing it — `/fw-panel`,
@@ -295,6 +301,9 @@ milliseconds.
 | `parent` | null, or `{sessionId, via: clear / resume / fork / id-changed}` — the session this one replaced in the same process |
 | `contested` | true when two processes hold one id |
 | `host` | only the keys whose variable is set: `orcaTerminal` (`ORCA_TERMINAL_HANDLE`), `orcaWorkspace` (`ORCA_WORKSPACE_ID`), `tmuxPane` (`TMUX_PANE`) |
+| `context` | mod 0.3.0+: null, or `{percent}` — context use at the last turn or heartbeat, rounded |
+| `role` | mod 0.3.0+: the folder's Claude seat role id (from the roles block in `.claude/CLAUDE.md` / `CLAUDE.md`), or null |
+| `fwVersion` | mod 0.3.0+: the flightwake version in the repo's instruction-file marker (`0.16.0`), or null |
 
 `target` is a repo-relative path for Edit / Write / MultiEdit / Read / NotebookEdit inside the repo, else null; `agent`
 is true when a subagent made the call.

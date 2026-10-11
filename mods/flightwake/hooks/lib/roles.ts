@@ -34,6 +34,9 @@ export function parseSeatBlock(fileText: string): ParsedRole | null {
   return { id: h[1], title: (h[2] ?? '').replace(/[((].*$/, '').trim(), denyWrite: denyOf(block) }
 }
 
+/** The files a Claude seat block lives in, `.claude/CLAUDE.md` first (bin/roles.mjs AGENT_FILES.claude). */
+export const SEAT_FILES = ['.claude/CLAUDE.md', 'CLAUDE.md'] as const
+
 /**
  * A dispatch card at the very start of a prompt (leading whitespace allowed), or null. Only the opening heading
  * counts — a card quoted further down a prompt is a reference, not an assignment.

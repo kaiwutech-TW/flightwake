@@ -163,13 +163,17 @@ export type SessionRec = {
   parent: Parent | null
   contested: boolean
   host: Host
+  /** Added in mod 0.3.0 (additive): context use at the last turn or heartbeat, the seat role, the flightwake install version. */
+  context: { percent: number } | null
+  role: string | null
+  fwVersion: string | null
 }
 
 /** Every key of a record, in the order written (spec §3). */
 export const RECORD_KEYS = [
   'schema', 'mod', 'sessionId', 'instance', 'state', 'why', 'stateSince', 'seq', 'heartbeatAt', 'heartbeatMs',
   'startedAt', 'root', 'repoRoot', 'launchCwd', 'lang', 'surface', 'blocked', 'activity', 'inFlight', 'turns',
-  'lastTurn', 'ended', 'resume', 'transcript', 'parent', 'contested', 'host',
+  'lastTurn', 'ended', 'resume', 'transcript', 'parent', 'contested', 'host', 'context', 'role', 'fwVersion',
 ] as const satisfies readonly (keyof SessionRec)[]
 
 /** The record with its keys in RECORD_KEYS order (every key present; null where unknown). */
@@ -367,7 +371,18 @@ export function countOthers(recs: readonly SessionRec[], myId: string, now: numb
 }
 
 /** One other live session as the side panel lists it (no paths, no prompt or command text). */
-export type OtherRow = { label: string; display: 'working' | 'blocked' | 'idle'; blockedKind: BlockedKind | null; ageMs: number }
+export type OtherRow = {
+  label: string
+  display: 'working' | 'blocked' | 'idle'
+  blockedKind: BlockedKind | null
+  ageMs: number
+  contextPercent: number | null
+  role: string | null
+  fwVersion: string | null
+  mod: string | null
+}
+
+const str = (v: unknown, max = 64): string | null => (typeof v === 'string' && v !== '' ? cut(v, max) : null)
 
 /** The other live sessions in /fw-fleet order (blocked first), at most `cap`. */
 export function otherRows(recs: readonly SessionRec[], myId: string, now: number, cap = 8): OtherRow[] {
@@ -382,6 +397,11 @@ export function otherRows(recs: readonly SessionRec[], myId: string, now: number
     display: display as OtherRow['display'],
     blockedKind: display === 'blocked' ? rec.blocked?.kind ?? null : null,
     ageMs: ageOf(rec, display, now),
+    // pre-0.3.0 writers have none of these: null, never a guess
+    contextPercent: isNum(rec.context?.percent) ? rec.context.percent : null,
+    role: str(rec.role, 40),
+    fwVersion: str(rec.fwVersion, 32),
+    mod: str(rec.mod, 32),
   }))
 }
 

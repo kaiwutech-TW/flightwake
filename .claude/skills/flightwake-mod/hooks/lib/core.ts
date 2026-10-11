@@ -163,6 +163,22 @@ export function markerLang(text: string): Lang | null {
   return (LANGS as readonly string[]).includes(lang) ? (lang as Lang) : 'en'
 }
 
+/** The flightwake version a marker was written by (`0.16.0`), or null when the text holds no marker. */
+export function markerVersion(text: string): string | null {
+  return MARKER_RE.exec(text)?.[1] ?? null
+}
+
+/** The version recorded at install time, from the same first marker detectLang reads; null when none. */
+export async function detectVersion(io: Io, root: string): Promise<string | null> {
+  for (const rel of MARKER_FILES) {
+    const t = await readRel(io, root, rel)
+    if (t === null) continue
+    const v = markerVersion(t)
+    if (v !== null) return v
+  }
+  return null
+}
+
 /** The profile attribute of a marker (`profile=notes`); absent = code; null when the text holds no marker. */
 export function markerProfile(text: string): 'code' | 'notes' | null {
   const m = MARKER_RE.exec(text)

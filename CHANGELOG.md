@@ -14,6 +14,14 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   log and cost, and the other live sessions (blocked first). Once opened it reopens in later sessions until you close it;
   the choice is one yes/no in the mod's own plugin store. It exists because the band hides itself under the bottom gauge,
   which left nothing of the mod on screen. `/fw-mod` lists it as the eighth switch.
+- **Panel "Watch" block**: context at 80%+ (wrap up), why health is not green, uncommitted files, the latest record's
+  "Unfinished / Handoff" items, and more than 20 active TRAPS entries. Other sessions show their seat role and get a
+  second line when their context is at 80%+ or they run another flightwake / mod version.
+- **Session file fields** (additive, `flightwake.session/1`): `context` (`{percent}`), `role` (the seat role id) and
+  `fwVersion` (the install version from the marker).
+
+### Fixed
+- The empty `/fw-fleet` message named the current mod version as the minimum; it now names 0.2.0, when fleet shipped.
 
 ## [0.16.0] — 2026-10-11
 

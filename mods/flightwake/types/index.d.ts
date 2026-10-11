@@ -144,6 +144,11 @@ export type FwFleetOther = {
   blockedKind: 'permission' | 'question' | 'plan' | null
   /** How long it has been in that state, as of the heartbeat that listed it. */
   ageMs: number
+  /** From its own record; null for a writer before mod 0.3.0 or when unknown. */
+  contextPercent: number | null
+  role: string | null
+  fwVersion: string | null
+  mod: string | null
 }
 
 /** F8 — what the side panel draws from STATE; computed outside rendering (session.start, turn.complete, a commit). */
@@ -163,6 +168,21 @@ export type FwPanelDigest = {
   /** The panel's own lag reading, taken only while the band is off (else the band's view is read); null = not taken. */
   lag: { kind: FwBandView['lagKind']; behind: number | null } | null
   contextPercent: number | null
+  /** The flightwake install version from the instruction-file marker; null when none. */
+  fwVersion: string | null
+  /** What needs attention beyond STATE's own items; each field null/empty when there is nothing to say. */
+  attention: {
+    /** Uncommitted entries in `git status --porcelain`; null when not measured (not a git repo, git failed). */
+    dirty: number | null
+    /** STATE's comment after a non-green health. */
+    healthWhy: string | null
+    /** The latest record's file name and its "Unfinished / Handoff" items. */
+    record: string | null
+    unfinished: string[]
+    moreUnfinished: number
+    /** Active TRAPS entries, only when over the compaction line. */
+    trapsActive: number | null
+  }
 }
 
 declare module 'claude-code' {
