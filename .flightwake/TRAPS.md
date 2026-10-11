@@ -453,3 +453,18 @@ confidence: confirmed
 **根因**:`codex exec` 在 stdin 不是 TTY 時會**額外**讀 stdin 到 EOF 當補充輸入(即使已給 prompt 參數);agent 的 shell stdin 是不會關的 pipe,EOF 永遠不來。與 [[hook-stdin-tty-block]] 同一家族,只是這次卡的是 Codex 本體而非我們的 hook。
 **解法/繞法**:非互動呼叫一律 `codex exec … </dev/null`(或 `echo | codex exec …`)。macOS 沒有 `timeout` 指令,別指望它救場。
 **佐證**:[[260902-codex-gemini-native]](真機驗證第一次卡 9 分鐘 0% CPU;加 `</dev/null` 後同指令 100 秒內完成——開關對照一次;第二次 Stop-hook 測試同法直接過,合計兩次)
+
+---
+name: mod-test-kit-no-ui-close-no-state-noun
+type: gotcha
+status: active
+tags: [claude-code, mod, tests]
+discovered: 2026-10-11
+confidence: confirmed
+paths: ["mods/flightwake/tests/**"]
+---
+
+**症狀**:mod 測試裡寫 `$.ui.close({ id, origin: { kind: 'person' } })` 或 `$.state.set(...)`,得到 `$.ui.close is not a function` / `undefined is not an object (evaluating '$.state.set')`。
+**根因**:`claude plugin test` 給測試的 `$` 只有 kit 自己的 `ui` 名詞(mount / render / press / input / select),沒有 close;也沒有 `state` 名詞(Claude Code 2.1.296)。因此「使用者手動關 pane」(`ui.close` origin person)無法從測試觸發。
+**解法/繞法**:要預放某個 `$.state` 值,就在測試裡自己掛 `on('state.get')` / `on('state.set')` 以 Map 回答(band.test.ts、panel.test.ts 的作法),session.start 之後再寫 Map。person 關閉的行為只能真機驗。
+**佐證**:[[261011-mod-side-panel]]
