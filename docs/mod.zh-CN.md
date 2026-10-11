@@ -18,8 +18,8 @@ transcript 是否还在(只看存不存在,而且只认那个 session 自己的 
 实际落在哪里(会跟着链接走的 `stat`)。不联网。
 
 它**绝不写 repo 里的东西,也不写你的记录**(STATE / DECISIONS / TRAPS / records / ROLES.md);状态是每个 session 各自一份(`$.state`),
-只有一个例外:**它唯一的写入是每个交互 session 一个文件 `<base>/sessions/<id>.json`,放在 repo 外**(`fleet` 功能;`<base>` 是绝对路径的
-`FLIGHTWAKE_HOME`,否则是 `~/.flightwake`)。`<base>` 落在 session 的 repo 里、是 flightwake 记录文件夹、或位于任何 git repo 里时,什么都不写。
+有两个例外:**它唯一写入的文件是每个交互 session 一个文件 `<base>/sessions/<id>.json`,放在 repo 外**(`fleet` 功能;`<base>` 是绝对路径的
+`FLIGHTWAKE_HOME`,否则是 `~/.flightwake`),以及 `panel` 功能会在 mod 自己的 Claude Code 插件存储里记一个是/否——你上次是打开还是关闭了侧边面板。`<base>` 落在 session 的 repo 里、是 flightwake 记录文件夹、或位于任何 git repo 里时,什么都不写。
 它里面出任何错都会悄悄降级,不打扰你。在没有 `.flightwake/STATE.md` 的文件夹里,它什么都不做。显示语言跟随安装时记录在指令文件标记里的语言。
 
 ## 加载条件
@@ -61,9 +61,9 @@ npx flightwake doctor         # 检查安装状态
 
 如果能执行 `claude --version`,会拿它与 2.1.287 比较(更旧是警告;读不到只是提示,绝不算失败)。**`doctor` 看不到文件夹是否已被信任、session 是否从 repo 根目录启动**——它会明说这一点。请在 Claude Code 里确认 mod 真的加载了(跑 `/fw-mod`)。
 
-## 七个功能,各有开关
+## 八个功能,各有开关
 
-七个功能各自独立开关(插件选项):六个默认开启,角色守门默认关闭。开关在 Claude Code 的 `/config`,或写进你的*用户*设置:
+八个功能各自独立开关(插件选项):七个默认开启,角色守门默认关闭。(侧边面板的开关只决定 `/fw-panel` 能不能用;面板本身不问你就不会打开。)开关在 Claude Code 的 `/config`,或写进你的*用户*设置:
 
 ```json
 "pluginConfigs": { "flightwake-mod@skills-dir": { "options": { "<开关>": true } } }
@@ -80,6 +80,7 @@ npx flightwake doctor         # 检查安装状态
 | `roleGuard` | 关 | 对这个文件夹里 Claude 座位的角色,角色内文(ROLES.md)中的 `deny-write: [globs]` 行会变成对主 session 的 `Edit` / `Write` / `NotebookEdit` 写入这些路径的拦截,提示会说明角色、规则以及改做什么。只有用户本人能在输入框输入 `/fw-role-release` 为本 session 放行;放行期间状态栏持续显示。细节见 [roles.zh-CN.md](roles.zh-CN.md) 的「可选:Claude Code mod 的角色守门」一节。 |
 | `spend` | 开 | 本 session 用了多少 token、换算成 API 牌价是多少钱。金额是 Claude Code 自己的账(与 `/cost` 相同,按 API 牌价计;订阅用户不会另外被收这笔);token 从 `~/.claude/projects/` 下的 session transcript 加总,每次 API 响应只算一次(子 agent 有自己的 transcript,不计在内)。显示在 band 最后一栏(`1.2M tok · ≈$4.99`)——底部仪表是生效中的状态行时,仪表会显示同一栏、band 保持安静——以及 `/fw-mod` 的一行;`/fw-cost` 打印明细(未缓存输入/写入缓存/读取缓存/输出)。每回合结束后更新。 |
 | `fleet` | 开 | 把本 session 的状态——工作中、等你回复、闲置或已结束——上报到 repo 外的 `<base>/sessions/<id>.json`,供 `/fw-fleet`、`npx flightwake fleet`、底部仪表的 `⛔` 字段使用,并在某个 session 意外中断后提示一次 `claude --resume`。只限交互 session;绝不写 prompt 或命令内容。见下方「session 状态上报」。 |
+| `panel` | 开 | `/fw-panel` 在 transcript 旁打开一个窗格,把其他功能知道的事集中起来:STATE(健康状态、落后数、上下文用量、「进行中」与「下一步入口」的条目)、本 session 的飞行日志与费用,以及其他进行中的 session。只在你要求时才打开;打开过之后,以后的 session 会自动重新打开,直到你关掉为止。见下方「侧边面板」。 |
 
 ### tripwire 用到的 TRAPS 字段
 
@@ -91,6 +92,18 @@ commands: ["npm run migrate", "psql"]    # 命令前缀,逐个 token 比对
 ```
 
 不支持正则。已被取代(superseded)的条目永远不会被匹配。
+
+## 侧边面板(`panel`)
+
+底部仪表开着时 band 会隐藏自己,所以两个都装的话,mod 的东西在屏幕上一个都看不到。侧边面板把它们集中到一个可以一直开着的地方:
+
+- **标题栏:** 健康状态、STATE 落后数(取 band 的读数;只有 band 关闭时,面板才自己计算)、上下文用量、STATE 上次更新的时间、本 session 的 token 与费用,以及 flightwake 安装版本与 mod 版本。
+- **留意**(有事要说时才出现):上下文到 80% 以上(该收尾了:`/fw-record` → `/clear` → `/fw-coldstart`);健康状态为黄或红的原因(STATE 的 `health:` 值后面的注释);工作树里尚未 commit 的文件;STATE 的 `latest_record` 所指 record 的「未完成 / 交接」条目(只认 `.flightwake/` 下的 `records/<name>.md`);有效的 TRAPS 条目超过 20 条(fw-coldstart 提示该精简的那一条)。
+- **进行中 / 下一步:** STATE 这两节的顶层条目(分别最多 5 与 6 条,多出的用「还有 n 条」一行带过),按标题匹配,四种模板语言都认,Markdown 转为纯文本。
+- **本 session:** 飞行日志的计数(文件、由 shell 推断的文件、测试运行次数与 ✓/✗、commit)、最近几次测试运行,以及最近改动的文件。
+- **其他 session:** 从 fleet 心跳读到的其他进行中的 session,等你回复的(`⛔`)排最前,附座位角色,以及各自维持该状态多久;某个 session 的上下文到 80% 以上(该收尾了),或使用的 flightwake 或 mod 版本与本 session 不同时,会多一行。只涵盖 mod 0.3.0+ 的 Claude Code session(较旧的写入者看不到上下文、角色或版本;Codex 与 Gemini session 不写文件);每 30 秒刷新一次。
+
+**打开与关闭。** `/fw-panel` 切换开关;`/fw-panel on` 与 `/fw-panel off` 则明确指定。你没要求就绝不会打开:你打开过一次之后,以后的 session(任何有 flightwake 的 repo)启动时都会打开,而关闭它——`/fw-panel`、它的关闭标记,或 ctrl+x x——就会停止这个行为。它出现在哪里由 Claude Code 决定:全屏布局且终端宽度在 110 列以上时在 transcript 旁边,否则在输入框上方;session 开始时重新打开、但终端太窄的话,会先不绘制,等你把终端拉宽或运行 `/fw-panel`。在终端的主屏幕(`CLAUDE_CODE_NO_FLICKER=0`,或 tmux 默认)一律开在输入框上方。面板只读其他功能本来就为这个 session 保存的东西,加上 STATE;绘制时不运行 git。
 
 ## session 状态上报(`fleet`)
 
@@ -224,6 +237,9 @@ schema `flightwake.session/1`。JSON(`JSON.stringify(rec, null, 2)` 加一个换
 | `parent` | null,或 `{sessionId, via: clear / resume / fork / id-changed}`——同一个进程里被这个 session 取代的那一个 |
 | `contested` | 两个进程共用同一个 id 时为 true |
 | `host` | 只有环境变量有设的键:`orcaTerminal`(`ORCA_TERMINAL_HANDLE`)、`orcaWorkspace`(`ORCA_WORKSPACE_ID`)、`tmuxPane`(`TMUX_PANE`) |
+| `context` | mod 0.3.0+:null,或 `{percent}`——最近一个回合或心跳时的上下文用量,取整 |
+| `role` | mod 0.3.0+:这个文件夹里 Claude 座位的角色 id(来自 `.claude/CLAUDE.md` / `CLAUDE.md` 的 roles 区块),或 null |
+| `fwVersion` | mod 0.3.0+:repo 指令文件标记里的 flightwake 版本(`0.16.0`),或 null |
 
 `target` 是 Edit / Write / MultiEdit / Read / NotebookEdit 在 repo 内的 repo 相对路径,否则为 null;子 agent 发出的调用 `agent` 为 true。
 
@@ -246,7 +262,7 @@ schema `flightwake.session/1`。JSON(`JSON.stringify(rec, null, 2)` 加一个换
 
 ## 查看它在做什么:/fw-mod
 
-`/fw-mod` 是只读命令:逐一列出七个功能是开启、关闭还是闲置,原因,以及怎样让它生效(含本 session 的 token 与 API 等值费用一行;明细用 `/fw-cost`)。例如:band 因为检测到底部仪表而隐藏;tripwire 开着但闲置,因为没有任何有效 TRAPS 条目带 `paths` 或 `commands`;角色守门关闭(并告诉你怎么打开),或开着但闲置,因为这个文件夹的座位没有角色、或没有 `deny-write`;本 session 已注入 STATE,或因为 STATE 未初始化而只注入了「请先跑 /fw-coldstart」的提示;本 session 以“闲置”上报在 `~/.flightwake/sessions/…`,或因为是 `-p` 运行、文件夹会落在 repo 里而没有上报。它也会显示 mod 版本、检测到的语言与 profile。它什么都不改,也不属于七个开关之一;只要装了 flightwake 就一直可用。
+`/fw-mod` 是只读命令:逐一列出八个功能是开启、关闭还是闲置,原因,以及怎样让它生效(含本 session 的 token 与 API 等值费用一行;明细用 `/fw-cost`)。例如:band 因为检测到底部仪表而隐藏;tripwire 开着但闲置,因为没有任何有效 TRAPS 条目带 `paths` 或 `commands`;角色守门关闭(并告诉你怎么打开),或开着但闲置,因为这个文件夹的座位没有角色、或没有 `deny-write`;本 session 已注入 STATE,或因为 STATE 未初始化而只注入了「请先跑 /fw-coldstart」的提示;本 session 以“闲置”上报在 `~/.flightwake/sessions/…`,或因为是 `-p` 运行、文件夹会落在 repo 里而没有上报。它也会显示 mod 版本、检测到的语言与 profile。它什么都不改,也不属于八个开关之一;只要装了 flightwake 就一直可用。
 
 ## 底部仪表与 band 一起用
 
