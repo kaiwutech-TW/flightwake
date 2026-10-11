@@ -15,7 +15,7 @@
 以及 `fleet` 用到的 `<base>/sessions/*.json` 里的 session 文件(见下方「session 状态上报」)、别的 session 在 `~/.claude/projects/` 下的
 transcript 是否还在(只看存不存在,而且只认那个 session 自己的 transcript 路径),和 `<base>` 是不是记录文件夹或位于 git repo 里
 (`<base>/STATE.md`,以及 `<base>` 和其上层各文件夹的 `.git` 与 `.flightwake/STATE.md`;只看存不存在),还有 repo 根目录与 `<base>/sessions`
-实际落在哪里(会跟着链接走的 `stat`)。不联网。
+实际落在哪里(会跟着链接走的 `stat`);`panel` 在 Orca 里时,还有 Orca 的终端列表(通过 `orca` CLI),以及列表上每个 repo 的 `.flightwake/STATE.md` 与指令文件标记(只读)。不联网。
 
 它**绝不写 repo 里的东西,也不写你的记录**(STATE / DECISIONS / TRAPS / records / ROLES.md);状态是每个 session 各自一份(`$.state`),
 有两个例外:**它唯一写入的文件是每个交互 session 一个文件 `<base>/sessions/<id>.json`,放在 repo 外**(`fleet` 功能;`<base>` 是绝对路径的
@@ -80,7 +80,7 @@ npx flightwake doctor         # 检查安装状态
 | `roleGuard` | 关 | 对这个文件夹里 Claude 座位的角色,角色内文(ROLES.md)中的 `deny-write: [globs]` 行会变成对主 session 的 `Edit` / `Write` / `NotebookEdit` 写入这些路径的拦截,提示会说明角色、规则以及改做什么。只有用户本人能在输入框输入 `/fw-role-release` 为本 session 放行;放行期间状态栏持续显示。细节见 [roles.zh-CN.md](roles.zh-CN.md) 的「可选:Claude Code mod 的角色守门」一节。 |
 | `spend` | 开 | 本 session 用了多少 token、换算成 API 牌价是多少钱。金额是 Claude Code 自己的账(与 `/cost` 相同,按 API 牌价计;订阅用户不会另外被收这笔);token 从 `~/.claude/projects/` 下的 session transcript 加总,每次 API 响应只算一次(子 agent 有自己的 transcript,不计在内)。显示在 band 最后一栏(`1.2M tok · ≈$4.99`)——底部仪表是生效中的状态行时,仪表会显示同一栏、band 保持安静——以及 `/fw-mod` 的一行;`/fw-cost` 打印明细(未缓存输入/写入缓存/读取缓存/输出)。每回合结束后更新。 |
 | `fleet` | 开 | 把本 session 的状态——工作中、等你回复、闲置或已结束——上报到 repo 外的 `<base>/sessions/<id>.json`,供 `/fw-fleet`、`npx flightwake fleet`、底部仪表的 `⛔` 字段使用,并在某个 session 意外中断后提示一次 `claude --resume`。只限交互 session;绝不写 prompt 或命令内容。见下方「session 状态上报」。 |
-| `panel` | 开 | `/fw-panel` 在 transcript 旁打开一个窗格,把其他功能知道的事集中起来:STATE(健康状态、落后数、上下文用量、「进行中」与「下一步入口」的条目)、本 session 的飞行日志与费用,以及其他进行中的 session。只在你要求时才打开;打开过之后,以后的 session 会自动重新打开,直到你关掉为止。见下方「侧边面板」。 |
+| `panel` | 开 | `/fw-panel` 在 transcript 旁打开一个窗格:这个 repo(健康状态、落后数、上下文条、费用、需要留意的事,以及 STATE 的「进行中」与「下一步入口」)和整个 fleet——在 Orca 里是每个 agent 终端(Claude Code 与 Codex),按 repo 分组,带 **跳过去** 按钮和需要确认的 **收尾** 按钮。只在你要求时才打开;打开过之后,以后的 session 会自动重新打开,直到你关掉为止。见下方「侧边面板」。 |
 
 ### tripwire 用到的 TRAPS 字段
 
@@ -95,15 +95,19 @@ commands: ["npm run migrate", "psql"]    # 命令前缀,逐个 token 比对
 
 ## 侧边面板(`panel`)
 
-底部仪表开着时 band 会隐藏自己,所以两个都装的话,mod 的东西在屏幕上一个都看不到。侧边面板把它们集中到一个可以一直开着的地方:
+底部仪表开着时 band 会隐藏自己,所以两个都装的话,mod 的东西在屏幕上一个都看不到。侧边面板是一个可以一直开着的地方:上面是这个 repo,下面是整个 fleet。各部分画成卡片,文字按窗格宽度换行。
 
-- **标题栏:** 健康状态、STATE 落后数(取 band 的读数;只有 band 关闭时,面板才自己计算)、上下文用量、STATE 上次更新的时间、本 session 的 token 与费用,以及 flightwake 安装版本与 mod 版本。
-- **留意**(有事要说时才出现):上下文到 80% 以上(该收尾了:`/fw-record` → `/clear` → `/fw-coldstart`);健康状态为黄或红的原因(STATE 的 `health:` 值后面的注释);工作树里尚未 commit 的文件;STATE 的 `latest_record` 所指 record 的「未完成 / 交接」条目(只认 `.flightwake/` 下的 `records/<name>.md`);有效的 TRAPS 条目超过 20 条(fw-coldstart 提示该精简的那一条)。
+- **这个 repo**(卡片颜色跟随健康状态):健康状态、STATE 落后数(取 band 的读数;只有 band 关闭时,面板才自己计算)、上下文条(绿色,60% 起黄色,80% 起红色)、本 session 的 token 与费用、flightwake 安装版本与 mod 版本,以及——只在有事时才出现——以 `!` 标记的行:上下文到 80% 以上(该收尾了:`/fw-record` → `/clear` → `/fw-coldstart`);健康状态为黄或红的原因(STATE 的 `health:` 值后面的注释);工作树里尚未 commit 的文件;STATE 的 `latest_record` 所指 record 的「未完成 / 交接」条目(只认 `.flightwake/` 下的 `records/<name>.md`);有效的 TRAPS 条目超过 20 条(fw-coldstart 提示该精简的那一条)。
+- **Fleet**——在 Orca 里:Orca 有的每个 agent 终端(Claude Code、Codex 与其他 agent CLI;普通 shell 不列),每个 repo 一张卡片;有 agent 在等你回复的 repo 排最前(`⛔`,红色边框),然后是工作中(`●`),最后是空闲(`○`)。每张卡片的第一行是 repo,附它的健康状态与 flightwake 版本,读自该 repo 自己的 `.flightwake/STATE.md` 与指令文件标记(只读;与这个 repo 不同时标 `≠`)。每个 agent 一行:agent、标签页的任务标题、座位角色、状态与持续多久。装有 mod 0.3.0+ 的 Claude Code session 会在它的 session 状态上报文件里上报确切的状态、上下文用量与角色,以那份为准;其他 agent 的状态则从标签页标题(Claude Code 的 `✳` / 转圈图标、Codex 的「Action Required」)和它最近一次输出的时间判断,所以只是推测,面板也会这样标明。
+  - **跳过去**:把 Orca 切到那个标签页。
+  - **收尾**:只出现在空闲、而且 flightwake 有对应指令的 agent 上;按一下会先问(「确定发送 /fw-record」/「取消」);再按确认时会重新取一次列表,agent 仍是空闲才发送 `/fw-record`(Claude Code)或 `$fw-record`(Codex)。除此之外,绝不会有任何东西被输入到别的 agent 里。
+  - 在 Orca 之外,或 Orca 没有响应时,fleet 部分改为列出各 Claude Code session 自己上报的状态(等你回复的排最前,附角色;上下文到 80% 以上时多一行收尾提示;flightwake 或 mod 版本不同时也多一行)。
 - **进行中 / 下一步:** STATE 这两节的顶层条目(分别最多 5 与 6 条,多出的用「还有 n 条」一行带过),按标题匹配,四种模板语言都认,Markdown 转为纯文本。
 - **本 session:** 飞行日志的计数(文件、由 shell 推断的文件、测试运行次数与 ✓/✗、commit)、最近几次测试运行,以及最近改动的文件。
-- **其他 session:** 从 fleet 心跳读到的其他进行中的 session,等你回复的(`⛔`)排最前,附座位角色,以及各自维持该状态多久;某个 session 的上下文到 80% 以上(该收尾了),或使用的 flightwake 或 mod 版本与本 session 不同时,会多一行。只涵盖 mod 0.3.0+ 的 Claude Code session(较旧的写入者看不到上下文、角色或版本;Codex 与 Gemini session 不写文件);每 30 秒刷新一次。
 
-**打开与关闭。** `/fw-panel` 切换开关;`/fw-panel on` 与 `/fw-panel off` 则明确指定。你没要求就绝不会打开:你打开过一次之后,以后的 session(任何有 flightwake 的 repo)启动时都会打开,而关闭它——`/fw-panel`、它的关闭标记,或 ctrl+x x——就会停止这个行为。它出现在哪里由 Claude Code 决定:全屏布局且终端宽度在 110 列以上时在 transcript 旁边,否则在输入框上方;session 开始时重新打开、但终端太窄的话,会先不绘制,等你把终端拉宽或运行 `/fw-panel`。在终端的主屏幕(`CLAUDE_CODE_NO_FLICKER=0`,或 tmux 默认)一律开在输入框上方。面板只读其他功能本来就为这个 session 保存的东西,加上 STATE;绘制时不运行 git。
+**打开与关闭。** `/fw-panel` 切换开关;`/fw-panel on` 与 `/fw-panel off` 则明确指定。你没要求就绝不会打开:你打开过一次之后,以后的 session(任何有 flightwake 的 repo)启动时都会打开,而关闭它——`/fw-panel`、它的关闭标记,或 ctrl+x x——就会停止这个行为。它出现在哪里由 Claude Code 决定:全屏布局且终端宽度在 110 列以上时在 transcript 旁边,否则在输入框上方;session 开始时重新打开、但终端太窄的话,会先不绘制,等你把终端拉宽或运行 `/fw-panel`。在终端的主屏幕(`CLAUDE_CODE_NO_FLICKER=0`,或 tmux 默认)一律开在输入框上方。
+
+**它运行什么。** 绘制时不运行任何东西;数据是在绘制之外收集的。在 Orca 里(设了 `ORCA_TERMINAL_HANDLE`)而且只在窗格打开时,它每 10 秒运行一次 `orca terminal list --json`(用 `ORCA_CLI_BIN_DIR` 里的 CLI,否则用 `PATH` 上的 `orca`),并且列表上每个 repo 的 STATE frontmatter 与标记最多每分钟重读一次;`orca terminal switch` 与 `orca terminal send` 只在你按上面所述按下按钮时才运行。关掉窗格就停止轮询。
 
 ## session 状态上报(`fleet`)
 
@@ -126,8 +130,8 @@ commands: ["npm run migrate", "psql"]    # 命令前缀,逐个 token 比对
 大约每回合 2 次、每个对话框 2 次、每 30 秒 1 次。每次都整个文件重写。
 
 **绝不写的东西。** prompt 文本、Bash 命令文本、提问/选项/计划文本、URL、查询、样式、repo 外的任何路径、权限的 `tool_input`、MCP 消息、
-git remote 或 branch、模型、费用、上下文百分比。文件里只有 id、repo 路径、工具名称、Edit / Write / MultiEdit / Read / NotebookEdit
-的 repo 相对路径、时间与计数。
+git remote 或 branch、模型、费用。文件里只有 id、repo 路径、工具名称、Edit / Write / MultiEdit / Read / NotebookEdit
+的 repo 相对路径、时间与计数,以及(mod 0.3.0 起)上下文百分比、座位角色 id 与 flightwake 版本。
 
 **什么时候完全不写。** 每一种都会在 `/fw-mod` 显示为闲置原因,其他功能不受影响:
 
@@ -285,6 +289,7 @@ schema `flightwake.session/1`。JSON(`JSON.stringify(rec, null, 2)` 加一个换
 - **session 状态上报与同步的主目录:** 另一台机器上进行中的 session 看起来也是进行中(文件里没有主机名)。
 - **两个进程共用同一个 session id**(例如在两个终端各跑一次 `claude --resume <id>`)会显示为「不明」。其中一个结束而另一个还在时,文件最多有 30 秒显示已结束,直到另一个的下一次心跳。
 - **session 中途关掉 `fleet`**:文件会变成失联,可能被当成接回候选提示一次。`npx flightwake fleet --prune` 可删掉。
-- **策略面。** 有 `fleet` 时,hooks 模块会用到 `fs.write`、`fs.list` 与六个环境变量读取(`FLIGHTWAKE_HOME`、`HOME`、`USERPROFILE`、`ORCA_TERMINAL_HANDLE`、`ORCA_WORKSPACE_ID`、`TMUX_PANE`)。拒绝会写文件插件的受管策略会拒绝**整个** mod,不只这个功能。
+- **策略面。** 有 `fleet` 时,hooks 模块会用到 `fs.write`、`fs.list` 与六个环境变量读取(`FLIGHTWAKE_HOME`、`HOME`、`USERPROFILE`、`ORCA_TERMINAL_HANDLE`、`ORCA_WORKSPACE_ID`、`TMUX_PANE`)。有 `panel` 时,还会读 `ORCA_CLI_BIN_DIR`,并在 Orca 里运行 `orca` CLI(见上方「侧边面板」)。拒绝会写文件或运行进程的插件的受管策略会拒绝**整个** mod,不只这个功能。
+- **Fleet 面板的状态有一部分是猜的。** 没有 session 状态上报文件的 agent(Codex、其他 CLI、没装 mod 的 Claude Code),工作中 / 空闲 / 等你回复是从标签页标题和最近的输出判断的,最多可能慢 10 秒,agent 改了标题格式时也可能判断错。**收尾**在发送前会重新检查,但用的仍是同一套推测。
 - 只支持 Claude Code,需要 2.1.287+、已接受的文件夹信任提示,并从 repo 根目录启动。
 - 只在一个真实的 Claude Code session 里验证过一次(前五个功能都生效)。**尚未在真实 session 里验证**:`spend` 功能、重启后恢复 session、compaction 之后的行为、80% 提示、桌面版 / VS Code 的外观,`/config` 是否列出这些选项(文档如此描述),以及整个 `fleet` 功能(发版前必须在真实 session 里验过对话框、auto 模式、AskUserQuestion、`/clear`、`/exit` 与 `kill -9` 各情况)。

@@ -20,6 +20,7 @@ Gemini CLI 沒有對應的機制;而 flightwake 其他一切(skill、Stop hook�
 - 實際生效的 `statusLine` 設定
 - `spend` 用:本 session 自己在 `~/.claude/projects/` 下的 transcript(只加總 token)
 - `fleet` 用:`<base>/sessions/*.json` 的 session 檔(見下方「session 狀態回報」)、別的 session 在 `~/.claude/projects/` 下的 transcript 是否還在(只看存不存在,而且只認那個 session 自己的 transcript 路徑),以及 `<base>` 是不是紀錄資料夾或位在 git repo 裡(`<base>/STATE.md`,和 `<base>` 及其上層各資料夾的 `.git` 與 `.flightwake/STATE.md`;只看存不存在),還有 repo 根目錄與 `<base>/sessions` 實際落在哪裡(會跟著連結走的 `stat`)
+- `panel` 用(只在 Orca 裡):Orca 的終端機清單(透過 `orca` CLI),以及清單上每個 repo 的 `.flightwake/STATE.md` 與指令檔標記(唯讀)
 
 不連網。它**從不寫 repo 裡的東西,也不寫你的紀錄**(STATE、DECISIONS、TRAPS、records、ROLES.md),狀態是每個 session 各自一份(`$.state`),
 有兩個例外:**它唯一寫入的檔案是每個互動 session 一個檔 `<base>/sessions/<id>.json`,放在 repo 外**(`fleet` 功能;`<base>` 是絕對路徑的
@@ -101,7 +102,7 @@ mod 要同時滿足以下條件才會載入:
 | `roleGuard` | 關 | 針對這個資料夾 Claude 座位上的角色,角色內文(ROLES.md)裡的 `deny-write: [globs]` 行會變成對主 session 的 `Edit` / `Write` / `NotebookEdit` 寫入這些路徑的攔截,訊息會說明是哪個角色、哪條規則、改怎麼做。只有使用者本人能用 `/fw-role-release`(在輸入框打)為本 session 放行;放行期間狀態列持續顯示。細節見 [roles.zh-TW.md](roles.zh-TW.md) 的「選配:Claude Code mod 的角色守門」。 |
 | `spend` | 開 | 本 session 用了多少 token、換算成 API 牌價是多少錢。金額是 Claude Code 自己的帳(與 `/cost` 相同,按 API 牌價計;訂閱用戶不會另外被收這筆);token 從 `~/.claude/projects/` 下的 session transcript 加總,每次 API 回應只算一次(子 agent 有自己的 transcript,不計在內)。顯示在 band 最後一欄(`1.2M tok · ≈$4.99`)——底部儀表是生效中的狀態列時,儀表會顯示同一欄、band 保持安靜——以及 `/fw-mod` 的一行;`/fw-cost` 印出明細(未快取輸入/寫入快取/讀取快取/輸出)。每回合結束後更新。 |
 | `fleet` | 開 | 把本 session 的狀態——工作中、等你回覆、閒置或已結束——回報到 repo 外的 `<base>/sessions/<id>.json`,供 `/fw-fleet`、`npx flightwake fleet`、底部儀表的 `⛔` 欄位使用,並在某個 session 意外中斷後提示一次 `claude --resume`。只限互動 session;絕不寫 prompt 或指令內容。見下方「session 狀態回報」。 |
-| `panel` | 開 | `/fw-panel` 在 transcript 旁開一個窗格,把其他功能知道的事集中起來:STATE(health、落後量、context 用量、「進行中」與「下一步入口」的項目)、本 session 的飛行日誌與費用,以及其他進行中的 session。只在你要求時才開;開過之後,往後的 session 會自動重開,直到你關掉為止。見下方「側邊面板」。 |
+| `panel` | 開 | `/fw-panel` 在 transcript 旁開一個窗格:這個 repo(health、落後量、context 條、費用、需要留意的事,以及 STATE 的「進行中」與「下一步入口」)和整個 fleet——在 Orca 裡是每個 agent 終端機(Claude Code 與 Codex),依 repo 分組,附 **跳過去** 按鈕與要確認的 **收尾** 按鈕。只在你要求時才開;開過之後,往後的 session 會自動重開,直到你關掉為止。見下方「側邊面板」。 |
 
 ### tripwire 用到的 TRAPS 欄位
 
@@ -124,15 +125,19 @@ tripwire 開著但閒置,因為沒有任何啟用中的 TRAPS 條目有 `paths` 
 
 ## 側邊面板(`panel`)
 
-底部儀表開著時,band 會隱藏自己,所以兩個都裝的話,mod 的東西在畫面上一個都看不到。側邊面板把它們集中在一個可以一直開著的地方:
+底部儀表開著時,band 會隱藏自己,所以兩個都裝的話,mod 的東西在畫面上一個都看不到。側邊面板是一個可以一直開著的地方:上面是這個 repo,下面是整個 fleet。各區塊畫成卡片,文字會依窗格寬度換行。
 
-- **標頭:** health、STATE 落後量(取 band 的讀數;只有 band 關著時,面板才自己計算)、context 用量、STATE 上次更新的時間、本 session 的 token 與費用,以及 flightwake 安裝版本與 mod 版本。
-- **留意**(有事要說時才出現):context 到 80% 以上(該收尾了:`/fw-record` → `/clear` → `/fw-coldstart`);health 是黃色或紅色的原因(STATE 的 `health:` 值後面的註解);工作樹裡尚未 commit 的檔案;STATE 的 `latest_record` 所指 record 的「未完成 / 交接」項目(只認 `.flightwake/` 底下的 `records/<name>.md`);啟用中的 TRAPS 條目超過 20 則(fw-coldstart 提示該壓實的那一條)。
+- **這個 repo**(卡片顏色跟著 health):health、STATE 落後量(取 band 的讀數;只有 band 關著時,面板才自己計算)、context 條(綠色,60% 起黃色,80% 起紅色)、本 session 的 token 與費用、flightwake 安裝版本與 mod 版本,以及——只在有事時才出現——以 `!` 標記的行:context 到 80% 以上(該收尾了:`/fw-record` → `/clear` → `/fw-coldstart`);health 是黃色或紅色的原因(STATE 的 `health:` 值後面的註解);工作樹裡尚未 commit 的檔案;STATE 的 `latest_record` 所指 record 的「未完成 / 交接」項目(只認 `.flightwake/` 底下的 `records/<name>.md`);啟用中的 TRAPS 條目超過 20 則(fw-coldstart 提示該壓實的那一條)。
+- **Fleet**——在 Orca 裡:Orca 有的每個 agent 終端機(Claude Code、Codex 與其他 agent CLI;一般 shell 不列),每個 repo 一張卡片;有 agent 在等你回覆的 repo 排最前(`⛔`,紅色邊框),接著是工作中(`●`),最後是閒置(`○`)。每張卡片的第一行是 repo,附它的 health 與 flightwake 版本,讀自該 repo 自己的 `.flightwake/STATE.md` 與指令檔標記(唯讀;與這個 repo 不同時標 `≠`)。每個 agent 一列:agent、分頁的任務標題、座位角色、狀態與持續多久。有 mod 0.3.0+ 的 Claude Code session 會在它的 session 狀態回報檔裡回報確切的狀態、context 用量與角色,以那份為準;其他 agent 的狀態則從分頁標題(Claude Code 的 `✳` / 轉圈圖示、Codex 的「Action Required」)和它最近一次輸出的時間判斷,所以只是推測,面板也會這樣標明。
+  - **跳過去**:把 Orca 切到那個分頁。
+  - **收尾**:只出現在閒置、而且 flightwake 有對應指令的 agent 上;按一下會先問(「確定送出 /fw-record」/「取消」);再按確認時會重新取一次清單,agent 仍是閒置才送出 `/fw-record`(Claude Code)或 `$fw-record`(Codex)。除此之外,絕不會有任何東西被打進別的 agent。
+  - 在 Orca 之外,或 Orca 沒有回應時,fleet 區塊改為列出各 Claude Code session 自己回報的狀態(等你回覆的排最前,附角色;context 到 80% 以上時多一行收尾提示;flightwake 或 mod 版本不同時也多一行)。
 - **進行中 / 下一步:** STATE 這兩段的頂層項目(分別最多 5 與 6 項,多的以「還有 n 項」一行帶過),依標題比對,四種範本語言都認得,Markdown 化為純文字。
 - **本 session:** 飛行日誌的計數(檔案、由 shell 推斷的檔案、測試執行次數與 ✓/✗、commit)、最近幾次測試執行,以及最近改動的檔案。
-- **其他 session:** 從 session 狀態回報的心跳讀到的其他進行中 session,等你回覆的(`⛔`)排最前,附座位角色,以及各自維持該狀態多久;某個 session 的 context 到 80% 以上(該收尾了),或使用的 flightwake 或 mod 版本與本 session 不同時,會多一行。只涵蓋 mod 0.3.0+ 的 Claude Code session(較舊的寫入者看不到 context、角色或版本;Codex 與 Gemini session 不寫檔);每 30 秒更新一次。
 
-**開啟與關閉。** `/fw-panel` 切換開關;`/fw-panel on` 與 `/fw-panel off` 則明確指定。你沒要求就絕不會開:你開過一次之後,往後的 session(任何有 flightwake 的 repo)啟動時都會開,而關閉它——`/fw-panel`、它的關閉記號,或 ctrl+x x——就會停止這個行為。它出現在哪裡由 Claude Code 決定:全螢幕版面且終端機寬度在 110 欄以上時,在 transcript 旁邊,否則在提示列上方;session 開始時重開、但終端機太窄的話,會先不畫,等你把終端機拉寬或執行 `/fw-panel`。在終端機的主畫面(`CLAUDE_CODE_NO_FLICKER=0`,或 tmux 預設)一律開在提示列上方。面板只讀其他功能本來就替這個 session 保存的東西,加上 STATE;繪製時不執行 git。
+**開啟與關閉。** `/fw-panel` 切換開關;`/fw-panel on` 與 `/fw-panel off` 則明確指定。你沒要求就絕不會開:你開過一次之後,往後的 session(任何有 flightwake 的 repo)啟動時都會開,而關閉它——`/fw-panel`、它的關閉記號,或 ctrl+x x——就會停止這個行為。它出現在哪裡由 Claude Code 決定:全螢幕版面且終端機寬度在 110 欄以上時,在 transcript 旁邊,否則在提示列上方;session 開始時重開、但終端機太窄的話,會先不畫,等你把終端機拉寬或執行 `/fw-panel`。在終端機的主畫面(`CLAUDE_CODE_NO_FLICKER=0`,或 tmux 預設)一律開在提示列上方。
+
+**它執行什麼。** 繪製時不執行任何東西;資料是在繪製之外收集的。在 Orca 裡(有設 `ORCA_TERMINAL_HANDLE`)而且只在窗格開著時,它每 10 秒執行一次 `orca terminal list --json`(用 `ORCA_CLI_BIN_DIR` 裡的 CLI,否則用 `PATH` 上的 `orca`),並且每個清單上 repo 的 STATE frontmatter 與標記最多每分鐘重讀一次;`orca terminal switch` 與 `orca terminal send` 只在你照上面所述按下按鈕時才執行。關掉窗格就停止輪詢。
 
 ## session 狀態回報(`fleet`)
 
@@ -155,8 +160,8 @@ tripwire 開著但閒置,因為沒有任何啟用中的 TRAPS 條目有 `paths` 
 大約每回合 2 次、每個對話框 2 次、每 30 秒 1 次。每次都整檔重寫。
 
 **絕不寫的東西。** prompt 文字、Bash 指令文字、提問/選項/計畫文字、URL、查詢、樣式、repo 外的任何路徑、權限的 `tool_input`、MCP 訊息、
-git remote 或 branch、模型、費用、context 百分比。檔案裡只有 id、repo 路徑、工具名稱、Edit / Write / MultiEdit / Read / NotebookEdit
-的 repo 相對路徑、時間與計數。
+git remote 或 branch、模型、費用。檔案裡只有 id、repo 路徑、工具名稱、Edit / Write / MultiEdit / Read / NotebookEdit
+的 repo 相對路徑、時間與計數,以及(mod 0.3.0 起)context 百分比、座位角色 id 與 flightwake 版本。
 
 **什麼時候完全不寫。** 每一種都會在 `/fw-mod` 顯示成閒置原因,其他功能不受影響:
 
@@ -310,7 +315,8 @@ schema `flightwake.session/1`。JSON(`JSON.stringify(rec, null, 2)` 加一個換
   檔案最多有 30 秒顯示已結束,直到另一個的下一次心跳。
 - **session 中途關掉 `fleet`**:檔案會變成失聯,可能被當成接回候選提示一次。`npx flightwake fleet --prune` 可刪掉。
 - **政策面。** 有 `fleet` 時,hooks 模組會用到 `fs.write`、`fs.list` 與六個環境變數讀取(`FLIGHTWAKE_HOME`、`HOME`、`USERPROFILE`、
-  `ORCA_TERMINAL_HANDLE`、`ORCA_WORKSPACE_ID`、`TMUX_PANE`)。拒絕會寫檔外掛的受管政策會拒絕**整個** mod,不只這個功能。
+  `ORCA_TERMINAL_HANDLE`、`ORCA_WORKSPACE_ID`、`TMUX_PANE`)。有 `panel` 時,還會讀 `ORCA_CLI_BIN_DIR`,並在 Orca 裡執行 `orca` CLI(見上方「側邊面板」)。拒絕會寫檔或執行程序的外掛的受管政策會拒絕**整個** mod,不只這個功能。
+- **Fleet 面板的狀態有一部分是猜的。** 沒有 session 狀態回報檔的 agent(Codex、其他 CLI、沒裝 mod 的 Claude Code),工作中 / 閒置 / 等你回覆是從分頁標題和最近的輸出判斷的,最多可能慢 10 秒,agent 改了標題格式時也可能判斷錯。**收尾**在送出前會重新檢查,但用的仍是同一套推測。
 - 只支援 Claude Code。需要 2.1.287 以上、已接受資料夾信任提示、而且從 repo 根目錄開始。
 - 已在一個真實的 Claude Code session 裡驗證過一次(前五個功能都生效)。**還沒有**在真實 session 驗證的:`spend` 功能、重啟後接續 session、compaction
   之後的行為、80% 的 toast、桌面版 / VS Code 的外觀,`/config` 是否真的列出這些選項(文件是這樣描述的),以及整個 `fleet` 功能(發版前必須在真實 session 裡

@@ -189,9 +189,9 @@ with mode `0700` when it is absent (they never change an existing folder and ref
 whole file is rewritten each time.
 
 **What it never writes.** Prompt text, Bash command text, question / option / plan text, URLs, queries, patterns, any
-path outside the repo, permission `tool_input`, MCP messages, git remote or branch, model, cost or context %. The
-file holds ids, the repo paths, tool names, a repo-relative file path for Edit / Write / MultiEdit / Read /
-NotebookEdit, times and counters.
+path outside the repo, permission `tool_input`, MCP messages, git remote or branch, model or cost. The file holds ids, the repo paths, tool names, a
+repo-relative file path for Edit / Write / MultiEdit / Read / NotebookEdit, times and counters, and (mod 0.3.0+) the
+context percentage, the seat role id and the flightwake version.
 
 **When it writes nothing.** Each case shows as an idle reason in `/fw-mod`, and the other features are unaffected:
 
