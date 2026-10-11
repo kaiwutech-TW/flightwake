@@ -12,9 +12,11 @@ import { registerRecorder } from './features/recorder'
 import { registerTripwire } from './features/tripwire'
 import { registerRoleGuard } from './features/role-guard'
 import { registerStatus } from './features/status'
+import { registerSpend } from './features/spend'
+import { registerFleet } from './features/fleet'
 
 /** userConfig field → default, mirrored from .claude-plugin/plugin.json (F5 is opt-in). */
-export const DEFAULTS = { stateInject: true, band: true, recorder: true, tripwire: true, roleGuard: false } as const
+export const DEFAULTS = { stateInject: true, band: true, recorder: true, tripwire: true, roleGuard: false, spend: true, fleet: true } as const
 
 export const isEnabled = (options: PluginOptions, key: keyof typeof DEFAULTS): boolean =>
   typeof options[key] === 'boolean' ? options[key] === true : DEFAULTS[key]
@@ -27,11 +29,14 @@ export const register: Register = (on, options) => {
   if (isEnabled(options, 'recorder')) try { registerRecorder(on) } catch {} // F3
   if (isEnabled(options, 'tripwire')) try { registerTripwire(on) } catch {} // F4
   if (isEnabled(options, 'roleGuard')) try { registerRoleGuard(on) } catch {} // F5
+  if (isEnabled(options, 'spend')) try { registerSpend(on) } catch {} // F6
+  if (isEnabled(options, 'fleet')) try { registerFleet(on) } catch {} // F7
   // /fw-mod: not a switch — it is how the switches are seen
   try {
     registerStatus(on, {
       stateInject: isEnabled(options, 'stateInject'), band: isEnabled(options, 'band'), recorder: isEnabled(options, 'recorder'),
-      tripwire: isEnabled(options, 'tripwire'), roleGuard: isEnabled(options, 'roleGuard'),
+      tripwire: isEnabled(options, 'tripwire'), roleGuard: isEnabled(options, 'roleGuard'), spend: isEnabled(options, 'spend'),
+      fleet: isEnabled(options, 'fleet'),
     })
   } catch {}
 }

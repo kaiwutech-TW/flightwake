@@ -1,19 +1,21 @@
 /**
- * /fw-mod — what each of the five features is doing right now and why (2026-10-05 field feedback: the mod is
+ * /fw-mod — what each of the seven features is doing right now and why (2026-10-05 field feedback: the mod is
  * designed not to interrupt, so after installing nobody could tell whether it had loaded or which features were
  * acting). Read-only: it reads what the features themselves read (STATE, TRAPS, the instruction-file markers and the
- * seat block, settings) and the features' own $.state values; it changes nothing. Registered regardless of the five
+ * seat block, settings) and the features' own $.state values; it changes nothing. Registered regardless of the seven
  * switches — it is how you see them — but only in a folder where flightwake is installed.
  */
 import type { EngineInterface, On } from 'claude-code'
 
-import type { FwFlightLog, FwRoleGuard, FwStateSnapshot } from '../../types'
+import type { FwFleet, FwFlightLog, FwRoleGuard, FwSpend, FwStateSnapshot } from '../../types'
 import { detectProfile, fwContext, isUninitializedState, legacyStatuslineActive, M, MOD_VERSION, readRel, STATE_REL, TRAPS_REL } from '../lib/core'
 import type { Io, Lang } from '../lib/core'
 import { parseSeatBlock } from '../lib/roles'
 import { hasMatchers, isActive, parseTraps } from '../lib/traps'
+import { fmtTokens, fmtUsd, totalTokens } from '../lib/spend'
+import { fleetModLine, T as FLEET_T } from '../lib/fleet'
 
-export type Switches = { stateInject: boolean; band: boolean; recorder: boolean; tripwire: boolean; roleGuard: boolean }
+export type Switches = { stateInject: boolean; band: boolean; recorder: boolean; tripwire: boolean; roleGuard: boolean; spend: boolean; fleet: boolean }
 
 // The Io closure over this file's `$` (IO_OF_TEMPLATE in hooks/lib/core.ts; `$` may not cross an import).
 function ioOf($: EngineInterface): Io {
@@ -36,6 +38,8 @@ const SEAT_FILES = ['.claude/CLAUDE.md', 'CLAUDE.md'] as const
 const SNAPSHOT_REF = { plugin: 'flightwake-mod', key: 'stateSnapshot' } as const
 const LOG_REF = { plugin: 'flightwake-mod', key: 'flightLog' } as const
 const GUARD_REF = { plugin: 'flightwake-mod', key: 'roleGuard' } as const
+const SPEND_REF = { plugin: 'flightwake-mod', key: 'spend' } as const
+const FLEET_REF = { plugin: 'flightwake-mod', key: 'fleet' } as const
 
 /** How to switch a feature on or off yourself (plugin options are not read from project settings). */
 const howTo = (lang: Lang, key: keyof Switches, value: boolean): string => {
@@ -57,6 +61,8 @@ const LABEL: Record<keyof Switches, Record<Lang, string>> = {
   recorder: { en: 'session flight log', 'zh-TW': 'session 行車記錄', 'zh-CN': 'session 行车记录', ja: 'セッション記録' },
   tripwire: { en: 'trap tripwire', 'zh-TW': '踩坑絆線', 'zh-CN': '踩坑绊线', ja: '落とし穴の検知線' },
   roleGuard: { en: 'role guard', 'zh-TW': '角色守門', 'zh-CN': '角色守门', ja: 'ロールガード' },
+  spend: { en: 'tokens and cost', 'zh-TW': 'token 與費用', 'zh-CN': 'token 与费用', ja: 'トークンとコスト' },
+  fleet: FLEET_T.label,
 }
 const line = (lang: Lang, key: keyof Switches, state: string, why: string): string => `- **${LABEL[key][lang]}** (\`${key}\`): ${state} — ${why}`
 
@@ -147,6 +153,34 @@ async function statusText($: EngineInterface, sw: Switches): Promise<string | nu
       'zh-CN': `角色 ${role}(${source})挡下 Edit/Write 写入 ${deny.join(', ')}${released.length ? `;本 session 已放行:${released.join(', ')}` : ''}(${notBoundary})`,
       ja: `ロール ${role}(${source})が ${deny.join(', ')} への Edit/Write を止める${released.length ? `。このセッションで解除:${released.join(', ')}` : ''}(${notBoundary})`,
     })))
+  }
+  // F6
+  if (!sw.spend) out.push(line(lang, 'spend', OFF(lang), howTo(lang, 'spend', true)))
+  else {
+    let s: FwSpend | null = null
+    try { s = (await $.state.get(SPEND_REF)).value ?? null } catch {}
+    const cur = s !== null && s.sessionId === sid ? s : null
+    const tok = cur?.tokens ? fmtTokens(totalTokens(cur.tokens)) : null
+    const usd = cur !== null && cur.usd !== null ? fmtUsd(cur.usd) : null
+    out.push(line(lang, 'spend', ON(lang), cur === null
+      ? M(lang, { en: 'no figure yet this session (taken after each turn) — /fw-cost prints the breakdown', 'zh-TW': '本 session 尚無數字(每回合結束後更新)— /fw-cost 印出明細', 'zh-CN': '本 session 尚无数字(每回合结束后更新)— /fw-cost 打印明细', ja: 'このセッションの数値はまだない(各ターン後に更新)— /fw-cost で詳細' })
+      : M(lang, {
+        en: `this session: ${tok === null ? 'tokens unknown' : `${tok} tokens`} · API-equivalent ${usd === null ? 'cost unknown' : `≈ ${usd}`} — /fw-cost prints the breakdown`,
+        'zh-TW': `本 session:${tok === null ? 'token 不明' : `${tok} tokens`} · API 等值 ${usd === null ? '費用不明' : `≈ ${usd}`} — /fw-cost 印出明細`,
+        'zh-CN': `本 session:${tok === null ? 'token 不明' : `${tok} tokens`} · API 等值 ${usd === null ? '费用不明' : `≈ ${usd}`} — /fw-cost 打印明细`,
+        ja: `このセッション:${tok === null ? 'トークン不明' : `${tok} tokens`} · API 換算 ${usd === null ? 'コスト不明' : `≈ ${usd}`} — /fw-cost で詳細`,
+      })))
+  }
+  // F7
+  if (!sw.fleet) out.push(line(lang, 'fleet', OFF(lang), howTo(lang, 'fleet', true)))
+  else {
+    let f: FwFleet | null = null
+    try { f = (await $.state.get(FLEET_REF)).value ?? null } catch {}
+    let home: string | null = null
+    try { home = (await $.env.get('HOME')) || null } catch { home = null }
+    if (home === null) { try { home = (await $.env.get('USERPROFILE')) || null } catch { home = null } }
+    const fl = fleetModLine(lang, f, home)
+    out.push(line(lang, 'fleet', fl.isOn ? ON(lang) : IDLE(lang), fl.text))
   }
   out.push('', M(lang, { en: 'Read-only: /fw-mod changes nothing.', 'zh-TW': '唯讀:/fw-mod 不改任何東西。', 'zh-CN': '只读:/fw-mod 不改任何东西。', ja: '読み取り専用:/fw-mod は何も変更しない。' }))
   return out.join('\n')

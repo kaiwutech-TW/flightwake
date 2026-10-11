@@ -14,10 +14,12 @@ import type { EngineInterface, On, RenderElement } from 'claude-code'
 
 import { fwContext, healthOf, isUninitializedState, joinPath, legacyStatuslineActive, M, STATE_REL, stateLag } from '../lib/core'
 import type { Io, Lang } from '../lib/core'
-import type { FwBandView } from '../../types/index'
+import type { FwBandView, FwSpend } from '../../types/index'
+import { spendLine } from './spend'
 
 const bandView = atom({ plugin: 'flightwake-mod', key: 'bandView' } as const, null)
 const bandToastSession = { plugin: 'flightwake-mod', key: 'bandToastSession' } as const
+const spendRef = atom({ plugin: 'flightwake-mod', key: 'spend' } as const, null)
 
 function ioOf($: EngineInterface): Io {
   return {
@@ -206,6 +208,11 @@ export function registerBand(on: On): void {
       if (lag) row.push(h(Text, { wrap: 'truncate' }, ` · ${lag}`))
       // Always the percent when known (the band stands in for the gauge); the colour thresholds are unchanged
       if (pct !== null) row.push(h(Text, { color: pct >= HOT ? 'red' : pct >= WARM ? 'yellow' : undefined, wrap: 'truncate' }, ` · ${Math.round(pct)}%`))
+      // F6: tokens so far and the API-equivalent cost (its own feature computes them; the band only reads)
+      let spend: FwSpend | null = null
+      try { spend = (await read($, spendRef)) as FwSpend | null } catch { spend = null }
+      const sl = spendLine(spend)
+      if (sl) row.push(h(Text, { dimColor: true, wrap: 'truncate' }, ` · ${sl}`))
       if (v.hint) row.push(h(Text, { dimColor: true, wrap: 'truncate-end' }, ` → ${v.hint}`))
       const tree = h(Box, { width: e.props.bodyColumns, flexDirection: 'row', overflow: 'hidden' }, ...row)
       return tree && typeof tree !== 'string' ? (tree as RenderElement) : next(e)

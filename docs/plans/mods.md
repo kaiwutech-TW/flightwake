@@ -5,7 +5,7 @@
 
 ## 第 2 版修訂(優先於正文)
 
-- **讀取範圍**明列唯讀來源:`.flightwake/`、git 狀態、CLAUDE.md / `.claude/CLAUDE.md` / CLAUDE.local.md 的 flightwake 與 roles marker、AGENTS.md / GEMINI.md 的 flightwake marker(只為取得語言;驗收修正加入)、package.json 的 scripts、`.claude/settings` 的 statusLine 設定(取有效設定);其餘不讀。git 一律帶 `--no-optional-locks`(嚴格零寫入,含 `.git/index`)。
+- **讀取範圍**明列唯讀來源:`.flightwake/`、git 狀態、CLAUDE.md / `.claude/CLAUDE.md` / CLAUDE.local.md 的 flightwake 與 roles marker、AGENTS.md / GEMINI.md 的 flightwake marker(只為取得語言;驗收修正加入)、package.json 的 scripts、`.claude/settings` 的 statusLine 設定(取有效設定);F6 `spend` 另讀本 session 自己的 transcript(`~/.claude/projects/<cwd 轉義>/<session>.jsonl`,只加總 token,2026-10-09 加入);F7 `fleet` 另讀 `<base>/sessions/*.json`(`<base>` = 絕對路徑的 `FLIGHTWAKE_HOME`,否則 `~/.flightwake`)、別的 session 的 transcript 是否存在(只查存在,且只認 `~/.claude/projects/<key>/<該 session id>.jsonl` 這種路徑),以及 `<base>` 是否為紀錄資料夾或位在 git repo / flightwake 根目錄內(`<base>/STATE.md`、`<base>` 與其上層的 `.git` 與 `.flightwake/STATE.md`,只查存在)、repo 根目錄與 `<base>/sessions` 的實際路徑(stat resolve)(2026-10-11 加入);其餘不讀。git 一律帶 `--no-optional-locks`(嚴格零寫入,含 `.git/index`)。
 - **F1** session 開始時取一次穩定快照,不每回合重讀重寫系統提示;過長時不截前 N 字,優先保留 health、進行中、下一步入口與原檔路徑。
 - **F2** 落後量對齊 state-check 完整語意(STATE 有未 commit 變更=正在更新;尚未 commit 過的基線不計;計算出錯不可顯示成同步);偵測舊儀表看有效設定而非檔案存在;重複時由 mod 自己隱藏重複欄位,不改使用者設定。
 - **F3** 只記觀測到的指令完成結果:已知測試指令 + 可靠完成事件 + 退出碼才標通過/失敗;逾時、取消、背景未完成、結果缺失標 unknown;含 `|| true`、管線或複合指令者不以整體退出碼宣稱通過;`npm test` 類要確認 script 內容;每筆記 cwd、時間、當時 revision 與 dirty 狀態;不推算通過數;只存本 session,不建跨 session 歷史;指令參數可能含敏感資訊,要遮蔽。
@@ -29,9 +29,9 @@ flightwake 有幾處靠「模型自覺」或外部 node 腳本在撐,Claude Code
 
 - mod 是 **Claude Code 專屬的加值層**。`.flightwake/` 的 Markdown 仍是唯一事實來源;Codex 與 Gemini 沒有對應機制,現有的 skill 與 hook 全部保留,行為不變。
 - mod 沒裝、沒載入、或載入失敗時,flightwake 的一切照常運作。mod 的任何錯誤都必須安靜降級,不得擋住使用者的工作。
-- **只讀 `.flightwake/` 與 git 狀態;不連網;不寫使用者資料**(STATE / DECISIONS / TRAPS / records / ROLES.md)。唯一的寫入是 mod 自己的 session 狀態與跨 session 儲存。要寫進 record 的內容一律交給 agent 透過 `fw-record` 寫。
+- **只讀 `.flightwake/` 與 git 狀態(讀取範圍見第 2 版修訂;F6 另讀本 session 的 transcript;F7 另讀 `~/.flightwake/sessions`、別的 session 的 transcript 是否存在、`<base>` 是否在 repo 內);不連網;不寫 repo 內的東西與使用者資料**(STATE / DECISIONS / TRAPS / records / ROLES.md)。~~唯一的寫入是 mod 自己的 session 狀態與跨 session 儲存。~~ [superseded→2026-10-11 DECISIONS「mod 唯一寫入」] 狀態仍是 mod 自己的 session 狀態(`$.state`);**唯一的寫入是 `<base>/sessions/<id>.json`**(F7 `fleet`;在 repo 外,`<base>` 落在 session 的 repo 內(依拼寫或實際路徑)、是 flightwake 紀錄資料夾或位在任何 git repo / flightwake 根目錄內就拒寫,查不到答案也拒寫,repo 根目錄移動後每次寫入前再查;不經 symlink、不覆蓋非本格式檔(心跳時再查);刪除只在 `npx flightwake fleet --prune`,只刪本格式的檔,base 在 repo 內則拒絕)。要寫進 record 的內容一律交給 agent 透過 `fw-record` 寫。
 - 「記錄追隨工作,不引導工作」:mod 可以呈現事實、提醒、在明確規則下擋下動作,不得新增開工前的關卡或規劃步驟。
-- 五個功能各自有開關(manifest 的 `userConfig`),任何一個關掉都不影響其他。
+- ~~五個功能各自有開關~~ [superseded:七個,見 2026-10-09 F6、2026-10-11 F7] 七個功能各自有開關(manifest 的 `userConfig`),任何一個關掉都不影響其他。
 - 所有顯示文字四語(en、zh-TW、zh-CN、ja),語言跟隨安裝時記錄的語言。
 
 ## 技術前提(2026-10-05 已查證)
@@ -164,7 +164,7 @@ tests/<f>.test.ts            各功能測試
 - `$` 不能跨 import 傳遞。功能檔內自建 `ioOf($)`(照抄 core.ts 的 IO_OF_TEMPLATE)再把 `Io` 傳給 lib;`$` 一律寫成 `$.noun.event(...)`。
 - `on` 只能直接傳給具名函式;register 逐行呼叫。
 - 測試中外掛向 `$` 要的一切都必須由測試的 hook 回答,否則拋錯——每個測試先 `installWorld(on, …)`。
-- mod 永不寫檔(`fs.write` 在夾具中一律拒絕並記錄);只用 `$.state`,不用 `$.store`。
+- ~~mod 永不寫檔(`fs.write` 在夾具中一律拒絕並記錄)~~ [superseded→2026-10-11 DECISIONS「mod 唯一寫入」]:mod 永不寫 repo 內的東西或使用者資料;唯一的寫入是 F7 的 session 檔 `<base>/sessions/<id>.json`;測試夾具只允許這個路徑(記在 `fleetWrites`),其他 `fs.write` 一律拒絕並記在 `writes`(必須為空)。`$.fs.write` 只能出現在 `hooks/features/fleet.ts`。只用 `$.state`,不用 `$.store`。
 
 各功能對外的約定:
 
@@ -175,6 +175,8 @@ tests/<f>.test.ts            各功能測試
 | F3 recorder | `tool.call`(Edit/Write/NotebookEdit/Bash)、`session.start`、指令 `/fw-log` | `flightLog` | 不改寫工具結果;只記觀測 |
 | F4 tripwire | `tool.call`(Edit/Write/NotebookEdit/Bash),結果後附 `context`(防下一次,不是這一次) | `trapsHinted` | 永不 deny |
 | F5 role-guard | `session.start`、`prompt.submit`(派工卡)、`tool.call`(Edit/Write/NotebookEdit,僅主 loop)、指令 `/fw-role-release` | `roleGuard` | 只 deny 寫入 deny-write 路徑;無 roles 時完全不作用 |
+| F6 spend(2026-10-09 加入) | `session.start`、`session.measure`、指令 `/fw-cost` | `spend` | 只讀本 session 的 transcript(加總 token)與引擎自己的帳(`cost.usd`);讀不到顯示「不明」而不是 0;不寫檔;band / 儀表同一欄,不改其他功能的結果 |
+| F7 fleet(2026-10-11 加入) | `session.start`、`classic.SessionStart`(/clear、/resume、fork 接手新 id)、`turn.start`、`prompt.submit`(不讀 `e.text`)、`turn.complete`、`tool.call`、`tool.check`(只為配對)、`classic.PermissionRequest`、`classic.PermissionDenied`、`ui.render` ToolProgress(只清除)、`session.compact`、`session.end`、指令 `/fw-fleet`;30 秒心跳;toast(接回提示) | `fleet` | 唯一的 `fs.write`,只寫 repo 外的 `<base>/sessions/<id>.json`;只在狀態變化、接手與心跳時寫;不寫 prompt/指令/提問/計畫/URL/`tool_input`/remote/branch/模型/費用;`-p`/SDK 不寫;不改其他功能的結果 |
 
 顯示文字一律經 `M(lang, { en, 'zh-TW', 'zh-CN', ja })`,lang 來自 `fwContext(io)`。沒有 `.flightwake/STATE.md` 時 `fwContext` 為 null,所有功能靜默。
 

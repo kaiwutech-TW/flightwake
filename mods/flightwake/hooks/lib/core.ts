@@ -1,18 +1,25 @@
 /**
  * Shared world access for every feature.
  *
- * READ SCOPE (docs/plans/mods.md, revised 2026-10-05) — the mod reads only:
+ * READ SCOPE (docs/plans/mods.md, revised 2026-10-05; F7 additions) — the mod reads only:
  *   .flightwake/ · git state · the flightwake / roles markers in CLAUDE.md, .claude/CLAUDE.md, CLAUDE.local.md ·
  *   the flightwake marker in AGENTS.md / GEMINI.md (language only) · package.json `scripts` · the effective
- *   `statusLine` setting. Nothing else, and no network. Everything outside the module goes through `$`; every helper here
- * swallows its own errors and answers null/false, so a feature built on them degrades silently (no
+ *   `statusLine` setting · the session transcript (F6) · F7's `<base>/sessions/*.json`, whether a listed session's
+ *   transcript exists (existence only), existence probes for `<base>/STATE.md` and for `.git` and
+ *   `.flightwake/STATE.md` on `<base>` and each folder above it, and where the root and `<base>/sessions` really
+ *   land (stat with resolve). Nothing else, and no network. Everything outside the module goes through `$`; every
+ * helper here swallows its own errors and answers null/false, so a feature built on them degrades silently (no
  * .flightwake/, not a git repo, git missing, unreadable file) instead of surfacing an error to the person.
- * Read-only by contract: nothing here writes outside the mod's own $.state / $.store.
+ * Never writes inside the repo or the user's records: the mod's only write is F7's own session file,
+ * `<base>/sessions/<id>.json` outside the repo, made in hooks/features/fleet.ts alone — refused when `<base>` lies
+ * inside the repo (by spelling or by real path), is a records folder, or lies in any git repo or flightwake root;
+ * never through a symlink; never over a file that is not ours. The shared Io here has no write; everything else
+ * stays in $.state / $.store.
  */
 
 export const PLUGIN = 'flightwake-mod' as const
 /** Mirrors .claude-plugin/plugin.json `version` (the mod cannot read its own manifest); test/smoke.sh checks they match. */
-export const MOD_VERSION = '0.1.0'
+export const MOD_VERSION = '0.2.0'
 export const FW_DIR = '.flightwake'
 export const STATE_REL = '.flightwake/STATE.md'
 export const TRAPS_REL = '.flightwake/TRAPS.md'

@@ -4,7 +4,7 @@
  * The returned object is live: mutate `files` / `git` / `settings` mid-test to simulate an external program
  * editing files or committing, a /cd, etc.
  */
-import type { On } from 'claude-code'
+import type { FsEntry, On } from 'claude-code'
 
 import type { Io } from '../hooks/lib/core'
 
@@ -27,8 +27,46 @@ export type World = {
   gitCalls: string[]
   /** Every path the plugin read or probed — for asserting the read scope. */
   reads: string[]
-  /** Every fs.write the plugin attempted (must stay empty: the mod never writes files). */
+  /** Every path whose content the plugin read (fs.read only, not exists / stat / list): "existence only" checks. */
+  contentReads: string[]
+  /**
+   * Forbidden writes — anything other than the mod's own `<base>/sessions/<id>.json` outside the repo; must stay
+   * empty. (Those few allowed writes land in `fleetWrites` / `outside` instead.)
+   */
   writes: string[]
+  /** Absolute paths outside root → content (the fleet's sessions folder, a transcript, a seeded file). */
+  outside: Record<string, string>
+  /** Absolute path → mtimeMs, for `fs.stat` / `fs.list` (0 when unset). */
+  mtimes: Record<string, number>
+  /** Absolute paths that are symbolic links (`fs.stat` isLink; `fs.list` kind 'other'). */
+  links: string[]
+  /** Spelling → where it really lands, for `fs.stat(p, { resolve: true })` realPath (a link above, a case alias). */
+  aliases: Record<string, string>
+  /** Absolute paths whose fs.stat is refused (EACCES), and whose fs.exists is refused: a guard that cannot get an answer. */
+  statDenied: string[]
+  existsDenied: string[]
+  /** Every allowed fleet write (`<base>/sessions/<id>.json`, outside root), in order. */
+  fleetWrites: string[]
+  /** When true, an allowed fleet write is refused (EACCES) — a full disk, a read-only home. */
+  isFleetWriteFailing: boolean
+  /** When true, fs.write / fs.list / fs.stat outside root throw (not a refusal: the capability itself blows up). */
+  isFleetIoThrowing: boolean
+  /** When true, only an allowed fleet fs.write throws (the guards' stats still answer, so the write is attempted). */
+  isFleetWriteThrowing?: boolean
+  /** Every fleet write the plugin attempted, landed or not (a refused or thrown one too). */
+  fleetWriteAttempts: string[]
+  /**
+   * When true, a fleet write waits until the test calls one of `heldWrites` (each lands the text it was called with):
+   * releasing them in any order shows whether an older write can land after a newer one.
+   */
+  isFleetWriteHeld: boolean
+  heldWrites: (() => void)[]
+  /** The largest number of fleet writes in flight at once (held or not). */
+  maxFleetWritesInFlight: number
+  /** An extra allowed base (an absolute FLIGHTWAKE_HOME): writes under `<fleetHome>/sessions/` are fleet writes too. */
+  fleetHome?: string
+  /** The time stamped into `mtimes` on a fleet write (a number, or a getter such as a mock clock's `now`). */
+  now?: number | (() => number)
   /** $.session.cwd(); defaults to root when unset. */
   cwd?: string
   /** Repo-relative paths whose fs.read is refused (exists still says yes) — a capability failing for one reader. */
@@ -44,6 +82,28 @@ export type World = {
 const rel = (w: World, p: string): string | null =>
   p === w.root ? '' : p.startsWith(`${w.root}/`) ? p.slice(w.root.length + 1) : null
 
+/** A path outside root that exists: a seeded file, a folder holding one, or a link. */
+const isOutside = (w: World, p: string): boolean =>
+  p in w.outside || w.links.includes(p) || Object.keys(w.outside).some((k) => k.startsWith(`${p}/`))
+
+/**
+ * The one write the mod may make: `<base>/sessions/<id>.json` with base = `fleetHome` when set, else HOME_OUT's
+ * `.flightwake`; a FILE_RE name, no `..`, never under root. Anything else (another repo's `.flightwake/sessions`
+ * included) is a forbidden write.
+ */
+const FILE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json$/
+const isFleetPath = (w: World, p: string): boolean => {
+  const pre = `${w.fleetHome ?? `${HOME_OUT}/.flightwake`}/sessions/`
+  return rel(w, p) === null && p.startsWith(pre) && FILE_NAME_RE.test(p.slice(pre.length)) && !p.split('/').includes('..')
+}
+
+/** Where `p` really lands: the longest `aliases` spelling it starts with, swapped for its target. */
+const realOf = (w: World, p: string): string => {
+  let best = ''
+  for (const a of Object.keys(w.aliases)) if ((p === a || p.startsWith(`${a}/`)) && a.length > best.length) best = a
+  return best === '' ? p : `${w.aliases[best]}${p.slice(best.length)}`
+}
+
 export function installWorld(on: On, init: Partial<World> = {}): World {
   const w = newWorld(init)
   on('session.root', () => ({ value: w.root }))
@@ -52,26 +112,81 @@ export function installWorld(on: On, init: Partial<World> = {}): World {
   on('settings.read', () => (w.isSettingsFailing ? { deny: 'settings unavailable' } : { value: w.settings }))
   on('fs.exists', ($, e) => {
     w.reads.push(e.path)
+    if (w.existsDenied.includes(e.path)) return { deny: `EACCES: ${e.path}` }
     const r = rel(w, e.path)
-    if (r === null) return { value: false }
+    if (r === null) return { value: isOutside(w, e.path) }
     return { value: r in w.files || Object.keys(w.files).some((k) => k.startsWith(`${r}/`)) }
   })
   on('fs.read', ($, e) => {
     w.reads.push(e.path)
+    w.contentReads.push(e.path)
     const r = rel(w, e.path)
     if (r !== null && w.failReads.includes(r)) return { deny: `EIO: ${e.path}` }
-    const t = r === null ? undefined : w.files[r]
+    const t = r === null ? w.outside[e.path] : w.files[r]
     if (t === undefined) return { deny: `ENOENT: ${e.path}` }
     return { value: t }
   })
   on('fs.stat', ($, e) => {
     w.reads.push(e.path)
+    if (w.statDenied.includes(e.path)) return { deny: `EACCES: ${e.path}` }
     const r = rel(w, e.path)
-    const t = r === null ? undefined : w.files[r]
-    if (t === undefined) return { deny: `ENOENT: ${e.path}` }
-    return { value: { kind: 'file', size: t.length, mtimeMs: 0, isLink: false } as never }
+    if (r === null && w.isFleetIoThrowing) throw new Error(`stat blew up: ${e.path}`)
+    const mtimeMs = w.mtimes[e.path] ?? 0
+    const isLink = w.links.includes(e.path)
+    const real = e.resolve === true ? { realPath: realOf(w, e.path) } : {}
+    if (r === null) {
+      const t = w.outside[e.path]
+      if (t !== undefined) return { value: { kind: 'file', size: t.length, mtimeMs, isLink, ...real } }
+      // a seeded folder, a link, `/`, and the folders above the root and the test home (and the home itself)
+      const isDir = isOutside(w, e.path) || e.path === '/' || w.root.startsWith(`${e.path}/`) || e.path === HOME_OUT || HOME_OUT.startsWith(`${e.path}/`)
+      if (isDir) return { value: { kind: isLink ? 'other' : 'dir', size: 0, mtimeMs, isLink, ...real } }
+      return { deny: `ENOENT: ${e.path}` }
+    }
+    const t = w.files[r]
+    if (t !== undefined) return { value: { kind: 'file', size: t.length, mtimeMs, isLink, ...real } }
+    if (r === '' || Object.keys(w.files).some((k) => k.startsWith(`${r}/`))) return { value: { kind: 'dir', size: 0, mtimeMs, isLink, ...real } }
+    return { deny: `ENOENT: ${e.path}` }
   })
-  on('fs.write', ($, e) => {
+  on('fs.list', ($, e) => {
+    w.reads.push(e.path)
+    if (w.isFleetIoThrowing) throw new Error(`list blew up: ${e.path}`)
+    const dir = e.path.replace(/\/+$/, '')
+    const all: Record<string, string> = { ...w.outside }
+    for (const [k, v] of Object.entries(w.files)) all[`${w.root}/${k}`] = v
+    for (const l of w.links) if (!(l in all)) all[l] = ''
+    const pre = `${dir}/`
+    const seen = new Map<string, FsEntry>()
+    for (const [p, text] of Object.entries(all)) {
+      if (!p.startsWith(pre)) continue
+      const rest = p.slice(pre.length)
+      const name = rest.split('/')[0]!
+      if (name === '' || seen.has(name)) continue
+      const child = `${pre}${name}`
+      if (w.links.includes(child)) seen.set(name, { name, kind: 'other', size: 0, mtimeMs: 0, isLink: true })
+      else if (rest.includes('/')) seen.set(name, { name, kind: 'dir', size: 0, mtimeMs: 0, isLink: false })
+      else seen.set(name, { name, kind: 'file', size: text.length, mtimeMs: w.mtimes[child] ?? 0, isLink: false })
+    }
+    if (seen.size === 0) return { deny: `ENOENT: ${e.path}` }
+    return { value: [...seen.values()] }
+  })
+  let inFlight = 0
+  on('fs.write', async ($, e) => {
+    if (isFleetPath(w, e.path)) {
+      w.fleetWriteAttempts.push(e.path)
+      if (w.isFleetIoThrowing || w.isFleetWriteThrowing === true) throw new Error(`write blew up: ${e.path}`)
+      if (w.isFleetWriteFailing) return { deny: `EACCES: ${e.path}` }
+      inFlight += 1
+      w.maxFleetWritesInFlight = Math.max(w.maxFleetWritesInFlight, inFlight)
+      try {
+        if (w.isFleetWriteHeld) await new Promise<void>((land) => { w.heldWrites.push(land) })
+      } finally {
+        inFlight -= 1
+      }
+      w.outside[e.path] = e.text
+      w.mtimes[e.path] = typeof w.now === 'function' ? w.now() : (w.now ?? 0)
+      w.fleetWrites.push(e.path)
+      return { value: undefined }
+    }
     w.writes.push(e.path)
     return { deny: 'the mod must not write files' }
   })
@@ -172,7 +287,12 @@ export function fakeIo(w: World): Io {
 }
 
 export function newWorld(init: Partial<World> = {}): World {
-  return { root: '/repo', files: {}, git: {}, settings: {}, sessionId: 'session-1', gitCalls: [], reads: [], writes: [], failReads: [], isSettingsFailing: false, gitWithoutNoLocks: [], ...init }
+  return {
+    root: '/repo', files: {}, git: {}, settings: {}, sessionId: 'session-1', gitCalls: [], reads: [], contentReads: [], writes: [], failReads: [], isSettingsFailing: false, gitWithoutNoLocks: [],
+    outside: {}, mtimes: {}, links: [], aliases: {}, statDenied: [], existsDenied: [], fleetWrites: [], isFleetWriteFailing: false, isFleetIoThrowing: false, fleetWriteAttempts: [],
+    isFleetWriteHeld: false, heldWrites: [], maxFleetWritesInFlight: 0,
+    ...init,
+  }
 }
 
 /** Inverse of the /fw-log table cell escaping: split a table row on unescaped `|`, then undo `\\` and `\|`. */
@@ -187,4 +307,30 @@ export function tableCells(row: string): string[] {
   }
   cells.push(cur.trim())
   return cells.slice(1, -1)
+}
+
+// ── F7 fleet helpers ───────────────────────────────────────────────────────────────────────────────────────────
+/** A home outside the world's root, for tests where F7 writes. */
+export const HOME_OUT = '/home/u'
+export const FLEET_DIR = '/home/u/.flightwake/sessions'
+
+/** The parsed record of `<dir>/<id>.json` (default: under HOME_OUT), or null when it is missing or torn. */
+export function fleetFile(w: World, id: string, dir = FLEET_DIR): Record<string, any> | null {
+  const t = w.outside[`${dir}/${id}.json`]
+  if (t === undefined) return null
+  try { return JSON.parse(t) as Record<string, any> } catch { return null }
+}
+
+/** A valid `flightwake.session/1` record (every §3 field present), for seeding other sessions; override any field. */
+export function sessionRec(partial: Record<string, unknown> = {}): Record<string, unknown> {
+  const id = typeof partial.sessionId === 'string' ? partial.sessionId : 'other-1'
+  const at = typeof partial.heartbeatAt === 'number' ? partial.heartbeatAt : 0
+  const root = typeof partial.root === 'string' ? partial.root : '/repo'
+  return {
+    schema: 'flightwake.session/1', mod: '0.2.0', sessionId: id, instance: 'seeded-inst', state: 'idle', why: 'session.start',
+    stateSince: at, seq: 1, heartbeatAt: at, heartbeatMs: 30000, startedAt: at, root, repoRoot: root, launchCwd: root,
+    lang: 'en', surface: 'terminal', blocked: null, activity: null, inFlight: 0, turns: 0, lastTurn: null, ended: null,
+    resume: { id, resumable: false }, transcript: null, parent: null, contested: false, host: {},
+    ...partial,
+  }
 }

@@ -1,16 +1,17 @@
 // Acceptance review 2026-10-05 (docs/plans/mods.diff-review-astra.md): one describe per adopted item, each case
 // written to fail on 1faec87 before its fix. Items: (1) F3 never records an unproven pass, (2) F5 overlapping rules,
-// (3) uninstalled folders stay silent + F5 snapshot bound to root, (4) zero writes (git --no-optional-locks),
+// (3) uninstalled folders stay silent + F5 snapshot bound to root, (4) no write inside the repo or user data — the
+// only write is F7's `<base>/sessions/<id>.json` outside the repo — and every git call carries --no-optional-locks,
 // (5) F4 resolves paths against the real cwd / cd and the parser keeps lines after a comment, (6) F1 template
 // detection and marker attributes, (7) /fw-role-release requires the composer origin; plus lifecycle cases.
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { detectLang, isUninitializedState, tableCell } from '../hooks/lib/core'
 import { parseCommand } from '../hooks/lib/shell'
-import { fakeIo, gitBehind, installWorld, MARKER, newWorld, STATE_FILLED, type World } from './world'
+import { fakeIo, FLEET_DIR, gitBehind, HOME_OUT, installWorld, MARKER, newWorld, STATE_FILLED, type World } from './world'
 
-const ALL_ON = { options: { stateInject: true, band: true, recorder: true, tripwire: true, roleGuard: true } }
+const ALL_ON = { options: { stateInject: true, band: true, recorder: true, tripwire: true, roleGuard: true, fleet: true } }
 
 const seat = (deny: string) => `<!-- flightwake-roles:begin v0.14.0 lang=en src=ROLES.md -->
 # Your role: pm — Project manager (the Claude Code in this folder)
@@ -41,7 +42,8 @@ function engineBelow(on: On, w: World, opts: { isUsageFailing?: boolean } = {}):
   on('session.end', () => ({ sessionId: w.sessionId }) as never)
   on('prompt.submit', (_$, e) => ({ text: e.text }) as never)
   on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'engine', scope: 'shared' as const }] }))
-  on('turn.complete', () => ({}) as never)
+  on('turn.complete', () => ({ text: '' }) as never) // 2.1.294 holds the result to { text }
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('session.turns', () => ({ value: 1 }))
   on('session.usage', () => (opts.isUsageFailing ? { deny: 'usage unavailable' } : { value: { startedAt: 0, context: { window: 200000, percent: 10 }, rateLimits: [] } }) as never)
   on('command.register', (_$, e) => {
@@ -140,11 +142,15 @@ describe('(3) uninstalled folders stay silent; F5 snapshot is bound to the root'
   })
   test('F3: nothing is recorded where flightwake is not installed, and /fw-log is not registered', ALL_ON, async ($, on) => {
     const w = installWorld(on, { files: { 'package.json': JSON.stringify({ scripts: { test: 'vitest run' } }) }, git: gitBehind(0) })
+    mock.env(on, { HOME: HOME_OUT }) // a home F7 could write to: it must not, where flightwake is not installed
     const p = engineBelow(on, w)
     await start($, w)
     await bash($, 'npm test')
     await write($, '/repo/src/a.ts')
     expect(p.registered).not.toContain('fw-log')
+    expect(p.registered).not.toContain('fw-fleet')
+    expect(w.fleetWrites).toEqual([])
+    expect(w.writes).toEqual([])
     w.files['.flightwake/STATE.md'] = STATE_FILLED // installed later in the same session: earlier activity was not kept
     expect(await fwLog($)).toContain('Nothing observed yet')
   })
@@ -161,20 +167,40 @@ describe('(3) uninstalled folders stay silent; F5 snapshot is bound to the root'
   })
 })
 
-describe('(4) zero writes: every git call carries --no-optional-locks', () => {
-  test('a session touching every feature runs git only with --no-optional-locks', ALL_ON, async ($, on) => {
-    const w = installWorld(on, { files: installed({ 'package.json': JSON.stringify({ scripts: { test: 'vitest run' } }) }), git: gitBehind(4) })
-    engineBelow(on, w)
+describe('(4) never writes inside the repo or user data — the only write is `<base>/sessions/<id>.json`; every git call carries `--no-optional-locks`', () => {
+  const session = async ($: any, w: World) => {
     await start($, w)
     await compose($)
+    await $.turn.start({ text: 'go', turnId: 't1' })
     await bash($, 'npm test')
     await bash($, 'git commit -m x')
     await write($, '/repo/a.ts')
-    await $.turn.complete({} as never).catch(() => undefined)
+    await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'complete' } as never) // 2.1.294 holds the input to { answer, … }
+    await $.command.run({ command: 'fw-fleet', args: '', origin: COMPOSER })
+    await $.session.end({ reason: 'prompt_input_exit', sessionId: w.sessionId, resume: { id: w.sessionId } } as never)
+  }
+  test('a session touching every feature runs git only with --no-optional-locks', ALL_ON, async ($, on) => {
+    const w = installWorld(on, { files: installed({ 'package.json': JSON.stringify({ scripts: { test: 'vitest run' } }) }), git: gitBehind(4) })
+    engineBelow(on, w)
+    await session($, w)
     expect(w.gitCalls.length).toBeGreaterThan(0)
     expect(w.gitWithoutNoLocks).toEqual([])
     expect(w.writes).toEqual([])
+    expect(w.fleetWrites).toEqual([]) // no HOME: F7 has nowhere to write
     // scripts/git-readonly-check.sh proves this exact subcommand set leaves a real .git/index byte-identical
+    expect([...new Set(w.gitCalls.map((c) => c.split(' ')[0]))].sort()).toEqual(['log', 'rev-list', 'rev-parse', 'status'])
+  })
+  test('with a home outside the repo: the only writes are this session\'s own file there, never under the root', ALL_ON, async ($, on) => {
+    const w = installWorld(on, { files: installed({ 'package.json': JSON.stringify({ scripts: { test: 'vitest run' } }) }), git: gitBehind(4) })
+    mock.env(on, { HOME: '/home/u' })
+    engineBelow(on, w)
+    await session($, w)
+    expect(w.fleetWrites.length).toBeGreaterThan(0)
+    expect(w.fleetWrites.every((p) => p === '/home/u/.flightwake/sessions/session-1.json')).toBe(true)
+    expect(w.fleetWrites.some((p) => p.startsWith(w.root))).toBe(false)
+    expect(JSON.parse(w.outside[`${FLEET_DIR}/session-1.json`]!)).toMatchObject({ state: 'ended', ended: { reason: 'prompt_input_exit' } })
+    expect(w.writes).toEqual([])
+    expect(w.gitWithoutNoLocks).toEqual([])
     expect([...new Set(w.gitCalls.map((c) => c.split(' ')[0]))].sort()).toEqual(['log', 'rev-list', 'rev-parse', 'status'])
   })
 })

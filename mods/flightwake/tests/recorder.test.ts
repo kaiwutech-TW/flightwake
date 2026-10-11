@@ -326,7 +326,7 @@ describe('recorder: /fw-log', () => {
   test('registered at session start with a localized description', async ($, on) => {
     const { registered } = boot(on, { files: { '.flightwake/STATE.md': STATE_FILLED, 'CLAUDE.md': MARKER('zh-TW') } })
     await $.session.start(startArgs)
-    expect(registered.filter((n) => n !== 'fw-mod')).toEqual(['fw-log'])
+    expect(registered.filter((n) => n !== 'fw-mod' && n !== 'fw-cost' && n !== 'fw-fleet')).toEqual(['fw-log'])
   })
 
   test('summary: files, a runs table, commits, and the footer', async ($, on) => {
