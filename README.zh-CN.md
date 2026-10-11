@@ -159,7 +159,7 @@ skill 与 hook 是各平台的便利糖衣——同一套四个 skill、同一�
 
 **`--orca`**(可选;也是 `setup` 清单的一行,只在检测到 Orca 时列出,只在 setup 于 Orca 里运行时预选)在每个启用平台的指令文件加一个标记区块:跨 agent 讨论与评审要用看得见的 Orca 标签页,不要用藏在后台的运行;并附单一写手评审协议(被请来评审的 agent 不写 record、不碰 STATE;提问方把采纳的结论写进自己的 record)。`uninstall` 会移除;`update` 在已安装处刷新;`update --orca` 会加上。
 
-**`--mod`**(可选;也是 `setup` 清单的一行,只在选了 Claude Code 时列出,除非你的 Claude Code 低于 2.1.287,否则预选)安装 Claude Code mod `flightwake-mod`,放在 `.claude/skills/flightwake-mod/`(只复制 manifest、`hooks/`、`types/`):session 开始时注入 STATE、输入框上方的提示行、session 飞行日志(`/fw-log`)、TRAPS 触发提醒,以及默认关闭的角色守门。需要 Claude Code 2.1.287+,接受文件夹信任提示,并从 repo 根目录启动。这个 repo 已经开着 Claude Code 的话,请结束它、从 repo 根目录重新启动——运行中的 session 永远不会加载新加的 mod——再跑 `/fw-mod` 确认有加载。目录已存在时需 `--force` 才会覆盖;`update` 刷新已安装的 mod,`update --mod` 会加上;`uninstall` 只移除发行的文件,你在该文件夹自己加的文件会保留并列出。详见 [docs/mod.zh-CN.md](docs/mod.zh-CN.md)。
+**`--mod`**(可选;`setup` 选了 Claude Code 时列出,版本 ≥2.1.287 时预选)把 `flightwake-mod` 安装到 `.claude/skills/flightwake-mod/`。mod 0.3.0 有八个开关:STATE 注入、提示栏、会话飞行日志、TRAPS 提醒、默认关闭的角色守门、API 等值费用、会话 Fleet、侧边面板。`/fw-mod` 显示各功能状态;`/fw-panel` 打开面板,查看当前仓库的健康状态、context 和注意事项。在 Orca 中,面板还会按仓库展示 Claude、Codex 终端,提供跳转以及需要再次确认的空闲代理收尾。面板只在你要求后打开,并记住选择直到关闭。需要 Claude Code 2.1.287+、接受文件夹信任提示,并从仓库根目录启动。**新安装**后请重启 Claude Code,再运行 `/fw-mod` 确认加载。`update` 刷新已安装的 mod,`update --mod` 加装;`uninstall` 只移除发行文件并保留用户添加的文件。详见 [docs/mod.zh-CN.md](docs/mod.zh-CN.md)。
 
 **`--git-init`** 让 `init` 在目录不是 git repo 时先创建它——只有明确给旗标才会做;没给就停下并告知。`init` 与 `setup` 都会先检查 git 是否已安装,没有则按平台给出安装提示。
 

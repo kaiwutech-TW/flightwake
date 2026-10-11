@@ -16,7 +16,7 @@ export const GET: APIRoute = () => {
 - Multi-agent workflow: https://github.com/kaiwutech-TW/flightwake/blob/main/docs/multi-agent.md
 - Real work record: https://github.com/kaiwutech-TW/flightwake/blob/main/.flightwake/records/261011-fleet-and-setup-flow.md
 
-The current published npm release is 0.16.0. It includes guided setup improvements and the optional Claude Code mod 0.2.0 with spend and Fleet. Some Fleet runtime cases still require real-session verification. Consult the repository and npm for current release status.
+The current published npm release is 0.16.0. Version 0.17.0 is available on GitHub main but its npm package and GitHub Release are pending. The 0.17.0 source includes the optional Claude Code mod 0.3.0 side panel showing repo state, attention items, and an Orca fleet console for Claude and Codex terminals. The panel opens on request with /fw-panel; /fw-mod reports the eight feature switches. Some runtime cases still require real-session verification. Consult the repository and npm for current release status.
 
 flightwake keeps STATE, DECISIONS, TRAPS and records as Markdown in git. It supports Claude Code, Codex and Gemini CLI. Optional Orca integration coordinates visible agent sessions; flightwake provides their shared handoff trail.
 `;
