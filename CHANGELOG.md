@@ -8,6 +8,8 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-10-11
+
 ### Added
 - **Side panel** (mod 0.3.0, feature `panel`, on by default but opens only when asked). `/fw-panel` opens a pane beside
   the transcript with STATE (health, lag, context, the "In progress" and "Next entry points" items), this session's flight
@@ -396,7 +398,8 @@ First public release. ✈️
 
 Initial npm publish; superseded within the day by 0.7.2.
 
-[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.17.0
 [0.16.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.16.0
 [0.15.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.15.0
 [0.14.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.14.0
