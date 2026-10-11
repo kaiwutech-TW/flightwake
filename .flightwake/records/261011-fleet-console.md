@@ -4,7 +4,7 @@ session: Claude Code (Opus 5.5)
 date: 2026-10-11
 repos: [flightwake]
 tests: claude plugin test mods/flightwake 500 pass / 0 fail(單獨執行);claude plugin validate --strict 通過;tsc 5.9.3 對 2.1.296 型別 clean;bash test/smoke.sh 全過(Python 3.12 在 PATH 前)
-prod_changes: none(未發佈;mod 0.3.0 只在 main 與本 repo dogfood 副本)
+prod_changes: npm publish flightwake@0.17.0(2026-10-11,release run 38139683264,provenance;見末節「發佈補記」)
 ---
 
 # 側邊面板改成機隊中控台:Orca 裡所有 agent(含 Codex)按 repo 分卡,可跳過去、可請閒置者收尾
@@ -33,3 +33,12 @@ prod_changes: none(未發佈;mod 0.3.0 只在 main 與本 repo dogfood 副本)
 - **中控台真機驗證**:卡片與按鈕在實際寬度的版面、跳過去、對一個不重要的閒置分頁試「收尾」、Codex 狀態判讀準不準、session 重開後自動開與 poll。
 - 中控台段落的三語翻譯(subagent 進行中,完成後檢查再 commit)。
 - 面板手動關閉(ctrl+x x)後下次不自動開——仍只能真機驗。
+
+## 發佈補記(2026-10-11,同 session)
+
+使用者決定 GitHub 與 npm 都推。步驟與證據:
+- 切版:`package.json` 0.17.0、CHANGELOG `[Unreleased]` → `[0.17.0] — 2026-10-11`;`node bin/cli.mjs update` 刷新本 repo dogfood 安裝(同時把先前 update 裝上、未 commit 的 Orca 協作區塊與 `fw-roles` 一起 commit),doctor 失敗 0 提醒 0;smoke 全過、plugin test 500/500、validate(原始碼與 dogfood 副本)通過、tsc clean、兩份 mod 內容一致。commit 9777586,`git push` 直接進 main(GitHub 提示以管理員略過 4 個必要狀態檢查);ci / codeql / scorecard 對 9777586 皆 success。
+- 期間另一個 session(Codex,網站)推了 c373453(四語 README、網站 0.17 面板示意)與 b596ea5(其 record);c373453 的 ci / codeql 通過後,`gh release create v0.17.0 --target b596ea5…`(說明在 Release 頁)。
+- release run **38139683264** success:`bash test/smoke.sh` 全過 → `npm publish --provenance --access public`,日誌 `+ flightwake@0.17.0`,provenance 進 sigstore(logIndex 3207298900)。
+- npm:`dist-tags.latest = 0.17.0`、`dist.attestations` 存在。暫存 repo `npx -y flightwake@0.17.0 init --agents=claude --lang=zh-TW --mod` 成功,裝出的 mod 為 0.3.0 且含 `panel.ts`。
+- 未隨版驗證:中控台「跳過去 / 收尾」與 Codex 狀態判讀、手動關閉後不自動開(Release 說明已明講)。
