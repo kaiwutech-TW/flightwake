@@ -4,7 +4,7 @@ session: Claude(Fable 5.1)主導 + 兩個 Workflow(subagent 全為 Claude Opus 5
 date: 2026-10-11
 repos: [flightwake(main)]
 tests: bash test/smoke.sh 46 節全過(Python 3.12 在 PATH 前;新 16.2、45、46.1–46.8);claude plugin test mods/flightwake 465 pass / 0 fail(13 檔;F6 前 312);claude plugin validate 通過;tsc 5.9.3(對 2.1.289 型別檔)clean;git-readonly-check 三項 ok;node --check bin/ test/ hooks/ 全過;doctor 失敗 0 提醒 0;真機:本 session `/fw-mod` 印出 v0.2.0 七個開關(spend、fleet 皆開),`~/.flightwake/sessions/<本 session id>.json` 由本 session 寫、`npx flightwake fleet` 列出「工作中」
-prod_changes: none(mod 0.2.0 與安裝流程已 commit 進 main、未發版)
+prod_changes: npm publish flightwake@0.16.0(2026-10-11,release run 38129566832,provenance;證據見末節「發佈補記」)
 ---
 <!-- flightwake record — 飛行紀錄。 -->
 
@@ -14,7 +14,7 @@ prod_changes: none(mod 0.2.0 與安裝流程已 commit 進 main、未發版)
 缺的是「一眼看出每個 session 在工作/卡住等人/閒置」與「重啟後自動 `claude --resume`」。於是做了 mod F7 `fleet`:每個互動 session 把狀態寫到 repo 外的
 `<base>/sessions/<id>.json`,由 `/fw-fleet`、`npx flightwake fleet`、底部儀表 `⛔` 欄讀取,意外中斷後一次性提示接回指令。接著使用者指出 `update` 從不裝 mod/roles、沒人知道有這些東西,
 做了安裝流程升級:依終端機語系預選語言、附加元件一次多選(精確集合)、已安裝 repo 三選一、`update` 結尾點名未裝的附加元件。兩批都是 Workflow 實作 + 三鏡頭對抗審查各兩輪,
-最後由主導者重跑全部關卡。F6 `spend`(10-09 做好)一併收在此 record。已依使用者決定分四個 commit 直接進 main,未發版。
+最後由主導者重跑全部關卡。F6 `spend`(10-09 做好)一併收在此 record。已依使用者決定分四個 commit 直接進 main,同日以 0.16.0 發版(見末節)。
 
 ## 關鍵發現(重要性排序)
 
@@ -57,5 +57,14 @@ baa0ee8..(本 record 的 commit)共四個 commit:3048dc6 dogfood 副本刷新到
   下一個 session 的一次性接回 toast;`/fw-fleet` 四語表;ToolProgress 提早清 blocked。另:input 指紋在真引擎的 PermissionRequest `tool_input` 是否等於 `tool.check` 的 input(不等就退回 `perm:n`)。
 - **spend 在 mod 熱重載後顯示「token 不明」但費用仍有值**:待查是 reload 清掉 module memory 還是 `$.state` 只存了費用。
 - Windows 的 Intl 與 Linux 的 `Intl` 行為未測;`claude --version` 慢機器上 5 秒上限的體感未測。
-- 發版:mod 0.2.0 與安裝流程一起進下一版(0.16.0?由 Kai 決定);push 後看 CI(ubuntu smoke、CodeQL)。README 仍說已安裝 repo 的 setup 不改語言與類型(帶 `--lang/--profile` 其實會改,行為本來就如此)。
+- 發版已做(0.16.0,見補記)。README 仍說已安裝 repo 的 setup 不改語言與類型(帶 `--lang/--profile` 其實會改,行為本來就如此)。
 - STATE 原「0a」待 Kai 決定的四項(roles 座位、TRAPS python 3.11 重複、scratch session 資料夾)仍開著。
+
+## 發佈補記(2026-10-11,同 session)
+
+使用者決定直接進 main 並發 0.16.0,順便把另一個 session(Codex)做好的展示網站網址放上 GitHub 頁面。步驟與證據(皆為唯讀指令再查):
+- 網站:`gh repo edit --homepage` 設為展示網站網址(`gh repo view` 回讀一致);`package.json` 的 `homepage` 同步;README 四語在 Codex 的 bdf0fb2 已連結。
+- 切版:CHANGELOG `[Unreleased]` → `[0.16.0] — 2026-10-11`(加展示網站一條)、`package.json` 0.16.0、本 repo dogfood 副本用 `node bin/cli.mjs update` 刷到 0.16.0(doctor 0/0);本地 smoke 46 節全過後 commit c6c486b,`git push` 直接進 main(GitHub 提示以管理員略過 4 個必要狀態檢查;push 後 ci/codeql/scorecard 對 c6c486b 皆 success)。
+- 發版:`gh release create v0.16.0`(說明在 Release 頁)→ release run **38129566832** success:`bash test/smoke.sh` → `npm publish --provenance --access public`,日誌 `+ flightwake@0.16.0`、provenance 進 sigstore 透明日誌(logIndex 320490026)。
+- npm:registry 直查 `dist-tags.latest = 0.16.0`、`time.0.16.0 = 2026-10-11T09:49:05Z`、`dist.attestations` 存在(publish 後約 1 分鐘才可見,npm 自己也提示「processing」)。暫存 repo `npx -y flightwake@0.16.0 init --agents=claude --lang=zh-TW` 成功並印附加元件提示;`doctor` 只剩 STATE 模板未填的提醒。
+- 未隨版驗證:F7 的 permission/clear/exit/kill 真機路徑(文件已標「未在真實 session 驗證」),列在 STATE 進行中。
