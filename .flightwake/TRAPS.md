@@ -5,6 +5,115 @@
 # 坑 Registry
 
 ---
+name: init-flags-on-private-install-drop-private
+type: gotcha
+status: active
+tags: [install, private, cli, hints]
+discovered: 2026-10-11
+confidence: confirmed
+paths: ["bin/install.mjs", "bin/cli.mjs", "bin/setup.mjs", "bin/doctor.mjs"]
+commands: ["npx flightwake init"]
+---
+
+**症狀**:`--private` 安裝(`git status` 乾淨)上照著提示跑 `npx flightwake init --statusline`,`git status --porcelain` 出現 `?? .claude/`——共用、會被 commit 的 `.claude/settings.json` 被寫出來,隱私安裝悄悄變成一半共用。
+**根因**:`resolveOptions` 只在 update 時繼承既有的 private(`private: flags.private || (update && det.private)`),init 不帶 `--private` 就是共用安裝。任何對既有安裝說「跑 init 加某旗標」的提示(儀表提示、語言提示、非 TTY 的 setup 說明、覆蓋手改警告、doctor 的不一致提示)都會把 private 丟掉。
+**解法/繞法**:對已安裝的 repo 一律提示 `npx flightwake update --<flag>` / `update --lang=` / `update --agents=` 與 `roles install`(update 沿用 private/儀表/profile/語言);init 的例子只給全新 repo。smoke 46.6 驗 private 安裝上非 TTY setup 與覆蓋警告的輸出不含 `init --`。
+**佐證**:2026-10-11 在 scratchpad 兩次重現:`init --private --agents=claude` 後 `[]`,再 `init --statusline --agents=claude` → `[?? .claude/ ]`;對照組 `update --statusline` → `[]`(b4db041,安裝/升級流程修正這輪)
+
+---
+name: intl-locale-mirrors-posix-env
+type: gotcha
+status: active
+tags: [node, intl, locale, macos, setup]
+discovered: 2026-10-11
+confidence: confirmed
+paths: ["bin/install.mjs"]
+---
+
+**症狀**:想用 `Intl.DateTimeFormat().resolvedOptions().locale` 當「OS 語系」的後備,但在系統語言是繁中(`defaults read -g AppleLocale` = `zh_TW`)的 macOS 上,LANG/LC_* 全不設時 Node 回 `en-US`;`LANG=C` 也是 `en-US`;`LC_MESSAGES=`(空字串)+ `LANG=ja_JP.UTF-8` 竟回 `und`。
+**根因**:Node 的 ICU 預設語系取自 POSIX 環境變數(LC_ALL → LC_MESSAGES → LANG),不讀 macOS 的 AppleLocale;沒設就用 ICU 的預設 en-US,有變數但是空字串時解析成 `und`。所以在 macOS(Linux 同理,但本輪未在 Linux 實測)Intl 不是獨立訊號,只是環境變數的鏡子;只有 Windows 上才可能多給資訊。
+**解法/繞法**:`detectLocale` 先看三個環境變數(第一個**非空**的為準,C/POSIX 就停),三者皆空才問 Intl;`localeToLang` 把 `und`/`c`/`posix` 都當 en。不要拿 Intl 推論「使用者的 OS 是什麼語言」。
+**佐證**:2026-10-11 Node v26.9.0 / macOS 實測(unset → en-US、C → en-US、zh_TW.UTF-8 → zh-TW、ja_JP.UTF-8 → ja-JP、空 LC_MESSAGES + ja → und);smoke 46.1 的對照表
+
+---
+name: permission-request-has-no-tool-use-id
+type: gotcha
+status: active
+tags: [mods, claude-code, permission, fleet, hooks]
+discovered: 2026-10-11
+confidence: confirmed
+paths: ["mods/flightwake/hooks/features/fleet.ts", "mods/flightwake/tests/fleet.test.ts"]
+---
+
+**症狀**:F7 要知道「哪個 tool call 的權限對話框開著」,但 `classic.PermissionRequest` 的 `e` 沒有 `tool_use_id`,無法直接對到 `tool.call` 的那一筆;用工具名稱亂配會把別的 call 的對話框清掉(R2 PermissionDenied 用工具名稱 fallback 時,auto-mode classifier 拒絕的另一個 Bash 就清掉了開著的 Bash 對話框)。
+**根因**:引擎型別 `PermissionRequestHookInput = BaseHookInput & { tool_name; tool_input; permission_suggestions?; mcp_server? }`(claude-code.d.ts 2.1.289 第 7175 行),沒有 id;`PermissionDeniedHookInput` 反而必有 `tool_use_id`(第 7151 行)。另外 AskUserQuestion / ExitPlanMode 也走權限路徑(check 為 `ask`、會觸發 PermissionRequest),同一個 call 會先有 question/plan 證據、再來一個 permission。
+**解法/繞法**:`tool.check` 結果為 `ask` 時記下 `tool_use_id → tool`,PermissionRequest 再按工具名配「最舊、未配對、仍在飛行中」的那筆;配到的 key 若已有 question/plan 證據就保留它(kind 與 since 不變——since 是讀者的去重鍵);沒有任何同名 call 在飛行中就不設 blocked(那個 call 已結束,沒人會清)。PermissionDenied 只清自己 `tool_use_id` 的證據,不按工具名。
+**佐證**:fleet.test.ts「AskUserQuestion through the permission dialog as well」「PermissionDenied for another call」「a PermissionRequest for no running call」;F7 複審 2026-10-11 R1/R2 各條
+
+---
+name: render-hook-state-set-refused-and-after-may-drop
+type: gotcha
+status: active
+tags: [mods, claude-code, ui-render, state, clock]
+discovered: 2026-10-11
+confidence: confirmed
+paths: ["mods/flightwake/hooks/features/fleet.ts", "mods/flightwake/tests/fleet.test.ts"]
+---
+
+**症狀**:在 `ui.render`(ToolProgress)hook 裡更新 `$.state` 會被拒;改用 `$.clock.after(0, …)` 延後後,若用旗標「已排一個 after(0)」去重,一旦那次 after 被拒,旗標永遠不復位,之後所有清除都被吞掉,紀錄卡在 blocked(心跳還一直把它寫成新鮮的)。
+**根因**:d.ts:`$.state.set` 「Refused while a `ui.render` hook draws」(第 3303 行);`$.clock.after`「`fn` runs when it resolves, and never when a hook refuses it」(第 3349 行附近),而且回傳的 Timer 不會告訴你被拒了。
+**解法/繞法**:render 裡只改模組記憶體,寫入延到 `after(0)`;去重旗標要能被任何一次重新推導(`apply`)清掉,`after` 丟例外時也清;寫檔前若 `state === 'blocked'` 卻沒有證據就先重新推導(blocked 與 null 永不同時寫出);call 結束時發現同樣情況也重新推導。
+**佐證**:fleet.test.ts「a ToolProgress clear whose after(0) is refused」兩則(測試用包住 mock.clock 的 on 來拒絕 after(0))
+
+---
+name: classic-hook-empty-matcher-accepted
+type: constraint
+status: active
+tags: [mods, claude-code, plugin-loader, classic-hooks]
+discovered: 2026-10-11
+confidence: confirmed
+paths: ["mods/flightwake/hooks/features/fleet.ts"]
+commands: ["claude plugin validate mods/flightwake"]
+---
+
+**症狀**:不確定 `on('classic.PermissionRequest', {}, hook)` 這種在 classic 事件上用空 matcher 的寫法載入器收不收(spec §6 要求若被拒就改成不帶 matcher 並記錄)。
+**根因**:無——實測接受。
+**解法/繞法**:F7 的 `classic.SessionStart` / `classic.PermissionRequest` / `classic.PermissionDenied` 都用 `{}`。`claude plugin validate mods/flightwake` 通過(2026-10-11,2.1.289 型別),`claude plugin test` 實際載入整個 hooks module 並觸發這三個事件(fleet.test.ts)。若日後 validate 拒絕,因為每個事件只有 F7 一個註冊,可以直接改成不帶 matcher。
+**佐證**:2026-10-11 `claude plugin validate mods/flightwake` → ✔ Validation passed;fleet.test.ts /clear、權限各則
+
+---
+name: plugin-tool-check-cannot-carry-tool-use-id-in-tests
+type: gotcha
+status: active
+tags: [mods, claude-code, testing, permission]
+discovered: 2026-10-11
+confidence: confirmed
+paths: ["mods/flightwake/tests/fleet.test.ts", "mods/flightwake/tests/world.ts"]
+---
+
+**症狀**:測試想模擬「引擎把 call 交給模式的決策者」(`tool.check` 帶 `tool_use_id`),從外掛自己的 `$.tool.check` 查詢發出去的永遠沒有 id,K1 不記、R1 永遠配不到,看起來像配對邏輯壞了。另:測試的 `on` 同一事件只能註冊一次(第二次整個 hooks module 不載入:`on("clock.after") registered twice`),所以不能在 `mock.clock` 之外再掛一個 `clock.after`。
+**根因**:只有引擎(也就是測試的 `$`)raise 的 `tool.check` 會帶 id;外掛的 `$.tool.check` 是查詢,沒有 call 可對。測試 kit 每個事件只收一個測試 hook。
+**解法/繞法**:在最底層的測試 `tool.call` hook 裡,用測試自己的 `$`(closure 抓住的引擎 `$`)raise `$.tool.check({ tool, input, tool_use_id })` 與 `$.classic.PermissionRequest(...)`;要改寫 mock 的行為(例如拒絕 after(0))就把包過的 `on` 傳給 `mock.clock`,在它註冊時包住 handler。
+**佐證**:fleet.test.ts 檔頭註解與 `boot()`(`onClock` 包裝、`isAfter0Refused`)
+
+---
+name: mod-installed-into-running-session-is-invisible-until-restart
+type: gotcha
+status: active
+tags: [mods, claude-code, plugin-loader, install, doctor, session]
+discovered: 2026-10-09
+confidence: confirmed
+paths: ["bin/install.mjs", "docs/mod*.md", "mods/flightwake/**"]
+commands: ["npx flightwake init --mod", "npx flightwake update", "npx flightwake setup"]
+---
+
+**症狀**:在本 repo `update`/`init --mod` 裝好 `.claude/skills/flightwake-mod/` 後,`doctor` 回報 `ok flightwake-mod v0.1.0`、`Claude Code 2.1.294(mod 需要 2.1.287 以上)`、失敗 0,但正在用的 Claude Code session 裡什麼都沒變:沒有 `/fw-mod`、`/fw-log`,system prompt 沒有 STATE 快照,輸入框上方沒有 band——看起來像 mod 壞了。
+**根因**:hooks module 只在 Claude Code **程序啟動時**載入;`.claude/skills/` 不是熱監看的資料夾(只有 `~/.claude/dev-mods/<session>/` 與 `--plugin-dir` 會熱重載)。這次的 session 程序(pid 72962,`~/.claude/sessions/72962.json`)是 2026-10-04 以 2.1.289 啟動的,mod 2026-10-09 03:34 才裝進去;同一資料夾用新程序實跑(`claude -p --debug-file`,2.1.294)debug log 就有 `hooks module flightwake-mod@skills-dir loaded` 與 `plugin.register: flightwake-mod … admitted`。坐實:舊 session 無 `/fw-mod`、無快照段;2026-10-09 重開 session 後 `/fw-mod` 列出五項且 stateInject 回報「已在本 session 注入 STATE」——同一資料夾、同一安裝,只差程序重啟。
+**解法/繞法**:裝完 mod 要**重開 Claude Code session**(從 repo 根目錄、同一個已信任的資料夾),再跑 `/fw-mod` 確認。安裝器那一半已補(2026-10-11,安裝/升級流程修正這輪,b4db041):`printModNotes` 在 init / `update --mod` / setup 加裝 mod 時都印「已開著的 Claude Code 要結束、從 repo 根目錄重開」,setup 的 mod 列也寫明;`doctor` 那一半仍待補(它只說用 `/fw-mod` 確認有載入,沒提重開)。另注意:就算載入了,band 在 `statusline.mjs` 是生效中狀態列時刻意安靜,所以「看不到東西」不等於沒載入——`/fw-mod` 才是判準。
+**佐證**:`~/.claude/sessions/72962.json`(procStart Oct 4 16:22、version 2.1.289);`.claude/skills/flightwake-mod/hooks` mtime Oct 9 03:34;scratchpad `dbg.txt` 第 452、459 行(2026-10-09 headless 實跑);plugin-authoring skill 說明「hot reloading」只及於 dev-mods 與 `--plugin-dir`
+**補充(2026-10-11,2.1.296)**:反向情況不成立——**已載入的 mod 檔案被改動會在同一個 session 內重新載入**。證據:本 session 程序(pid 17296)是 2026-10-10 23:34 以 `claude --resume` 啟動,workflow agent 於 2026-10-11 14:59–15:02 用 `node bin/cli.mjs update` 覆寫 `.claude/skills/flightwake-mod/hooks/*`,F7 fleet 14:59:51 就開始寫 `~/.flightwake/sessions/<本 session id>.json`,使用者之後跑 `/fw-mod` 看到 v0.2.0 七個開關含 fleet 行,全程沒重開。副作用:module memory 歸零(`/fw-mod` 的 spend 列顯示「token 不明」)。所以「要重開」只確定適用於**新裝**的 mod 資料夾;升級既有 mod 後先用 `npx flightwake fleet` 或 `/fw-mod` 看是否已自動重載。使用者層記憶 `claude-code-plugins-load-at-process-start` 已同步。
+
+---
 name: force-color-colours-piped-node-output
 type: gotcha
 status: active

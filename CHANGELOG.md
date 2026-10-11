@@ -8,6 +8,67 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ## [Unreleased]
 
+### Added
+- **Tokens and API-equivalent cost** (mod 0.2.0, feature `spend`, on by default). The band's last field and a line in
+  `/fw-mod` show `1.2M tok · ≈$4.99`; `/fw-cost` prints the breakdown (uncached input / cache write / cache read / output,
+  the number of API responses counted, the model). Cost is Claude Code's own ledger (the `/cost` figure at API list prices;
+  on a subscription it is not a bill), taken from the engine's `session.measure` event after every turn. Tokens are summed
+  from the session transcript under `~/.claude/projects/`, once per API response (one response spans several transcript
+  lines sharing `message.id`); subagents keep their own transcripts and are not included. Null when unknown, never zero.
+- **Bottom gauge (`statusline.mjs`)** shows the same field (`tokens` from the transcript Claude Code hands it, `≈$` from
+  `cost.total_cost_usd` on stdin), so the band stays quiet when the gauge is the effective status line, as before.
+- **Session fleet** (mod 0.2.0, feature `fleet`, on by default). Each interactive session reports working/blocked/idle/ended
+  to `~/.flightwake/sessions/<id>.json` (blocked only from an unanswered permission dialog or an
+  AskUserQuestion/ExitPlanMode in flight); `/fw-fleet`, `npx flightwake fleet [--json] [--prune]`, a `⛔` field on the
+  bottom gauge, and a one-time `claude --resume` hint after an unclean death. `FLIGHTWAKE_HOME` (absolute only) moves the
+  folder; nothing is written for `-p` / SDK runs, when the folder would be inside the repo (re-checked after a `/cd`), or
+  when it is a flightwake records folder or lies in any git repo or flightwake root (a repo installed at `$HOME`; judged by
+  real path too, and refused when a check cannot be answered). The file format
+  (`flightwake.session/1`, additive-only) is documented for other tools under "Fleet file contract" in `docs/mod.md`.
+  `init --mod`, `update --mod` and setup's add path create the folder with mode 0700 (never inside a repo; setup lists it
+  before Proceed); `uninstall` and `--purge` keep it, even when it
+  lies inside the `.flightwake/` being purged; `fleet --prune` is the only delete, deletes only flightwake session files
+  (never another tool's JSON), refuses when the folder lies inside a repo, and re-reads each file's mtime right before
+  deleting it. A resume command is offered for stale sessions and ended ones (except after `/clear` / `/resume`)
+  whose own transcript still exists; a transcript path a record names is used only when it is that session's transcript
+  under `~/.claude/projects/`.
+- **setup preselects the language** from the terminal locale (`LC_ALL` → `LC_MESSAGES` → `LANG`, the OS locale via Intl
+  only when none is set; `C`/`POSIX` = English) and shows where the guess came from, plus a
+  `lang=… · agents=… · add-ons=… · profile=…` line before the path list; `init`/`update` never guess.
+- **setup on an installed repo** can *upgrade and add add-ons* (adds only; same path as `update --statusline/--mod/--orca`).
+- **`update` and `init` end with one line** naming applicable add-ons that are not installed, with `npx flightwake setup`
+  or the direct `update --…` / `roles install` command; nothing is added automatically. An `orca` found only on PATH (it
+  may be GNOME's screen reader) is not named.
+
+### Changed
+- **The mod's write invariant is restated:** it never writes inside the repo or your records; its only write is the
+  session fleet file `<base>/sessions/<id>.json` outside the repo (refused when `<base>` resolves inside the repo, is a
+  records folder or lies in any git repo or flightwake root; never through a symlink, never over a file that is not a
+  flightwake session file). The read scope gains `<base>/sessions/*.json`, a check that another session's transcript
+  exists (existence only), existence probes for `<base>/STATE.md` and for `.git` and `.flightwake/STATE.md` on `<base>`
+  and the folders above it, and where the repo root and `<base>/sessions` really land (a `stat` that follows links).
+- **setup add-ons are one list** with recommended defaults (mod when Claude Code is picked and new enough; bottom gauge
+  only when neither you nor the repo has a status line; Orca only inside Orca; roles never) — was four yes/no questions,
+  all No; Enter keeps the marked ones, numbers/names pick exactly those, `0` none; a `--statusline` / `--mod` / `--orca`
+  flag always reaches the install (which says why when it can't apply); leaving an installed repo as it is exits 0.
+- **init's language hint** names the detected locale and suggests `npx flightwake update --lang=…`.
+- **mod next steps** say to restart an already-open Claude Code session from the repo root, then `/fw-mod`.
+
+### Fixed
+- Mod tests on Claude Code 2.1.294: `turn.complete` now holds the hook result to `{ text }` and the input to `{ answer, … }`
+  (acceptance test 4 was red on an untouched checkout; the engine stub and the call are updated).
+- `update --mod` printed none of the mod's next steps and skipped the 0700 session fleet folder.
+- the 'bottom gauge not installed' hint suggested `init --statusline`, and the language hint `init --lang=…` — on a
+  `--private` install, following them wrote the shared `.claude/settings.json`. The non-TTY `setup` message on an
+  installed repo, the hand-edit overwrite warning and doctor's inconsistent-install hint now point at `update` too.
+- a `--private` install with no marker (every Claude instruction file tracked) forgot its language: the next `update`
+  re-rendered it in English. The `.git/info/exclude` header now carries `lang=` next to `profile=`; a header written
+  before that is read back from the language stamped into `.flightwake/hooks/state-check.mjs`.
+- the cross-repo registry followed a relative `HOME` into the repo being installed (`relhome/.flightwake/registry.json`),
+  and an empty `FLIGHTWAKE_HOME` put `registry.json` in the working directory.
+  It now uses the session fleet's base (an absolute `FLIGHTWAKE_HOME`, else an absolute `HOME`) and is skipped with a
+  notice when there is none.
+
 ## [0.15.0] — 2026-10-05
 
 ### Added
