@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#f6f2e9"/>
+  <path d="M0 515h1200" stroke="#272824" stroke-width="2"/>
+  <path d="M85 120h1030" stroke="#d8d0c1" stroke-width="2"/>
+  <text x="84" y="210" fill="#252722" font-family="Arial, sans-serif" font-size="38" font-weight="700">flightwake ✳</text>
+  <text x="84" y="335" fill="#252722" font-family="Arial, sans-serif" font-size="70" font-weight="700">Work moves forward.</text>
+  <text x="84" y="420" fill="#252722" font-family="Arial, sans-serif" font-size="70" font-weight="700">The trail stays.</text>
+  <path d="M800 520c100-135 188-68 308-209" fill="none" stroke="#ed693e" stroke-width="10" stroke-linecap="round" stroke-dasharray="1 22"/>
+  <circle cx="1108" cy="311" r="16" fill="#ed693e"/>
+  <text x="84" y="572" fill="#62665e" font-family="Arial, sans-serif" font-size="26">A flight recorder for AI coding agents</text>
+</svg>

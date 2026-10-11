@@ -1,0 +1,50 @@
+---
+interface Props { lang: 'zh-TW' | 'zh-CN' | 'en' | 'ja'; title: string; description: string; path: string; faqs?: { q: string; a: string }[] }
+const { lang, title, description, path, faqs = [] } = Astro.props;
+const site = import.meta.env.SITE || 'https://flightwake.kaiwu.com.tw';
+const absolute = new URL(path, site).toString();
+const zh = new URL('/', site).toString();
+const en = new URL('/en/', site).toString();
+const cn = new URL('/zh-CN/', site).toString();
+const ja = new URL('/ja/', site).toString();
+const isNotFound = path === '/404';
+const graph = [
+  { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'flightwake', applicationCategory: 'DeveloperApplication', operatingSystem: 'Cross-platform', description, url: zh, codeRepository: 'https://github.com/kaiwutech-TW/flightwake', downloadUrl: 'https://www.npmjs.com/package/flightwake', softwareVersion: '0.15.0', license: 'https://opensource.org/licenses/MIT', inLanguage: ['en', 'zh-TW', 'zh-CN', 'ja'] },
+  ...(faqs.length ? [{ '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faqs.map(({ q, a }) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })) }] : []),
+];
+---
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f6f2e9" />
+    <meta name="description" content={description} />
+    <meta name="robots" content={isNotFound ? 'noindex,follow' : 'index,follow,max-image-preview:large'} />
+    {!isNotFound && <link rel="canonical" href={absolute} />}
+    {!isNotFound && <link rel="alternate" hreflang="zh-TW" href={zh} />}
+    {!isNotFound && <link rel="alternate" hreflang="zh-CN" href={cn} />}
+    {!isNotFound && <link rel="alternate" hreflang="en" href={en} />}
+    {!isNotFound && <link rel="alternate" hreflang="ja" href={ja} />}
+    {!isNotFound && <link rel="alternate" hreflang="x-default" href={en} />}
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="flightwake" />
+    <meta property="og:locale" content={{ en: 'en_US', 'zh-TW': 'zh_TW', 'zh-CN': 'zh_CN', ja: 'ja_JP' }[lang]} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={absolute} />
+    <meta property="og:image" content={new URL('/og.png', site).toString()} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={new URL('/og.png', site).toString()} />
+    <script type="application/ld+json" set:html={JSON.stringify(graph)} />
+    <title>{title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  </head>
+  <body><slot /></body>
+</html>
