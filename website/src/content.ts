@@ -33,7 +33,7 @@ export const copy = {
     modIntro: '0.16.0 把選配元件帶進引導式安裝，並加入 Claude Code mod 0.2.0 的費用與 session 狀態。以下是隔離測試 repo 的實際指令輸出節錄；外框為網站排版，暫存路徑已遮蔽。',
     modScenes: [
       ['01 / SETUP', '安裝前看清楚', 'setup 將底部儀表與 mod 分開列出，標示建議選項；確認前會列出寫入路徑。'],
-      ['02 / CLAUDE CODE', '七個功能，一眼看狀態', '在 Claude Code 執行 /fw-mod，看到每個功能目前是啟用、閒置或關閉，以及原因。'],
+      ['02 / CLAUDE CODE', '七個功能，一眼看狀態', '在 Claude Code 執行 /fw-mod，確認每個功能的狀態與原因；裝了底部儀表時，mod 的橫條會避免重複顯示。'],
       ['03 / FLEET', '哪個 session 在等你', 'Fleet 終端機清單把 blocked 排前面；此畫面使用測試 session 資料，由正式 CLI 實際輸出。'],
     ],
     modCaptureNote: 'setup 由測試驅動器餵入答案並執行真實流程；/fw-mod 在 Claude Code 互動 session 執行；Fleet 由正式 CLI 讀取測試夾具。畫面為節錄，暫存路徑已遮蔽，沒有線上用戶資料。部分權限對話框與中斷接回情境仍待真機驗證。',
@@ -114,7 +114,7 @@ export const copy = {
     modIntro: 'Version 0.16.0 brings optional add-ons into guided setup and adds cost and session status to Claude Code mod 0.2.0. These are excerpts from real commands in an isolated test repo. The terminal frames are laid out for this site, and temporary paths are redacted.',
     modScenes: [
       ['01 / SETUP', 'See before installation', 'Setup lists the bottom gauge and mod separately, marks recommendations, and previews write paths before confirmation.'],
-      ['02 / CLAUDE CODE', 'Seven features, visible state', 'Run /fw-mod in Claude Code to see which features are on, idle or off, and why.'],
+      ['02 / CLAUDE CODE', 'Seven features, visible state', 'Run /fw-mod in Claude Code to see which features are on, idle or off, and why. With the bottom gauge active, the mod band avoids duplicate fields.'],
       ['03 / FLEET', 'See who is waiting', 'Fleet puts blocked sessions first. This real CLI output uses controlled test session data.'],
     ],
     modCaptureNote: 'Setup ran through the test driver with supplied answers; /fw-mod ran in an interactive Claude Code session; the released CLI read Fleet test fixtures. Excerpts are reformatted with temporary paths redacted. No live user data is shown. Some permission-dialog and crash-resume cases still need real-session verification.',
@@ -198,7 +198,7 @@ export const localized = {
     modIntro: '0.16.0 将可选组件加入交互式安装，并为 Claude Code mod 0.2.0 加入费用和会话状态。下方是隔离测试仓库中的真实命令输出节选；终端外框由网站排版，临时路径已遮蔽。',
     modScenes: [
       ['01 / SETUP', '安装前看清楚', 'setup 分别列出底部状态栏和 mod，标明推荐选项，并在确认前预览写入路径。'],
-      ['02 / CLAUDE CODE', '七个功能，一眼看到状态', '在 Claude Code 执行 /fw-mod，查看各功能是启用、闲置还是关闭，以及原因。'],
+      ['02 / CLAUDE CODE', '七个功能，一眼看到状态', '在 Claude Code 执行 /fw-mod，查看各功能状态与原因；启用底部状态栏时，mod 顶部横条会避免重复显示。'],
       ['03 / FLEET', '哪个会话在等你', 'Fleet 将 blocked 会话排在前面；这是正式 CLI 对测试会话数据的实际输出。'],
     ],
     modCaptureNote: 'setup 由测试驱动器输入答案并运行真实流程；/fw-mod 在 Claude Code 交互会话中执行；Fleet 由正式 CLI 读取测试夹具。画面经过节选与排版，临时路径已遮蔽，没有线上用户数据。部分权限对话框与异常中断后的恢复场景仍待真实会话验证。',
@@ -278,7 +278,7 @@ export const localized = {
     modIntro: '0.16.0 では任意の追加機能を対話式セットアップにまとめ、Claude Code mod 0.2.0 にコストとセッション状態を追加しました。以下は隔離したテストリポジトリで実行したコマンドの抜粋です。端末の枠はサイト用に整え、一時パスは伏せています。',
     modScenes: [
       ['01 / SETUP', '導入前に確認', 'setup は下部ステータス表示と mod を別々に示し、推奨項目と書き込み先を確認できます。'],
-      ['02 / CLAUDE CODE', '7 機能の状態を確認', 'Claude Code で /fw-mod を実行すると、各機能の有効・待機・無効と理由が見えます。'],
+      ['02 / CLAUDE CODE', '7 機能の状態を確認', 'Claude Code で /fw-mod を実行すると、各機能の状態と理由が見えます。下部ステータス表示が有効なら、mod の上部表示は重複を避けます。'],
       ['03 / FLEET', '応答待ちを先に表示', 'Fleet は応答待ちのセッションを先に表示します。実際の CLI にテスト用セッションデータを与えた出力です。'],
     ],
     modCaptureNote: 'setup はテストドライバーから回答を渡して実際の処理を実行し、/fw-mod は Claude Code の対話セッションで実行。Fleet は公開 CLI にテストデータを読み込ませました。抜粋を整形し一時パスを伏せています。実ユーザーデータは含みません。権限ダイアログと異常終了後の再開には未検証の場面があります。',
