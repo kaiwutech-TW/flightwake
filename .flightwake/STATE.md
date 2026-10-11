@@ -24,7 +24,7 @@ flightwake **v0.16.0 已發佈(2026-10-11,npm latest;直接 push main,release co
 
 # 進行中(未完成勿刪)
 
-- **mod 0.3.0 中控台真機驗證**(dogfood 副本已是最新):卡片/按鈕版面、跳過去、對不重要的閒置分頁試收尾、Codex 狀態判讀、手動關閉後下次不自動開。清單見 [[261011-fleet-console]] 未完節;驗完 health 回 green。中控台段落三語翻譯待 commit。
+- **mod 0.3.0 中控台真機驗證**(dogfood 副本已是最新):卡片/按鈕版面、跳過去、對不重要的閒置分頁試收尾、Codex 狀態判讀、手動關閉後下次不自動開。清單見 [[261011-fleet-console]] 未完節;驗完 health 回 green。(三語文件已同步,0621cd6)
 - **F7 真機驗證(需一般權限、非 bypass 的 session)**:permission 對話框 → `blocked`/儀表 `⛔`;AskUserQuestion;`/clear`;`/exit` 與 `kill -9` 後的接回 toast;`/fw-fleet` 四語;真引擎 PermissionRequest 的 `tool_input` 是否等於 `tool.check` 的 input。已驗:本 session 熱重載後狀態檔、心跳、`host.orcaTerminal`、`npx flightwake fleet`、`/fw-mod` 七開關(見 record)。
 - **spend 熱重載後「token 不明」但費用有值**:待查(record 未完節)。
 - 慣例演進採讀取端容忍(DECISIONS 2026-07-18),容忍不了時再議遷移工具;zh-CN/ja 安裝內容待 issue 需求再擴。
