@@ -1,8 +1,11 @@
 {
   "name": "flightwake-mod",
-  "version": "0.2.0",
-  "author": { "name": "kaiwutech-TW", "url": "https://github.com/kaiwutech-TW/flightwake" },
-  "description": "flightwake's Claude Code layer: STATE in the system prompt, a quiet status band, a session flight log, trap tripwires, tokens and API-equivalent cost, a session fleet (who is blocked, working, idle or resumable across sessions), and an opt-in role guard. Reads .flightwake/, git, this session's transcript and ~/.flightwake/sessions; its only write is this session's state file in ~/.flightwake/sessions, outside the repo. Never writes your records.",
+  "version": "0.3.0",
+  "author": {
+    "name": "kaiwutech-TW",
+    "url": "https://github.com/kaiwutech-TW/flightwake"
+  },
+  "description": "flightwake's Claude Code layer: STATE in the system prompt, a quiet status band, a session flight log, trap tripwires, tokens and API-equivalent cost, a session fleet (who is blocked, working, idle or resumable across sessions), an on-request side panel, and an opt-in role guard. Reads .flightwake/, git, this session's transcript and ~/.flightwake/sessions; its only writes are this session's state file in ~/.flightwake/sessions, outside the repo, and the panel's open/closed preference in its own plugin store. Never writes your records.",
   "types": "./types/index.d.ts",
   "userConfig": {
     "stateInject": {
@@ -45,6 +48,12 @@
       "type": "boolean",
       "title": "Session fleet",
       "description": "Report this session's state (working / blocked / idle / ended) to ~/.flightwake/sessions/<id>.json for /fw-fleet, the bottom gauge and `npx flightwake fleet`. Never prompt or command text.",
+      "default": true
+    },
+    "panel": {
+      "type": "boolean",
+      "title": "Side panel",
+      "description": "/fw-panel opens a pane beside the transcript with STATE, this session's flight log and cost, and the other sessions; once opened it reopens in later sessions until you close it. Never opens unless you ask.",
       "default": true
     }
   }

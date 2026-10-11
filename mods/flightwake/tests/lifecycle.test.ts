@@ -242,7 +242,7 @@ describe('lifecycle: all features side by side', () => {
     expect(w.writes).toEqual([])
   })
 
-  test('every switch off: the plugin changes nothing', { options: { stateInject: false, band: false, recorder: false, tripwire: false, roleGuard: false, spend: false, fleet: false } }, async ($, on) => {
+  test('every switch off: the plugin changes nothing', { options: { stateInject: false, band: false, recorder: false, tripwire: false, roleGuard: false, spend: false, fleet: false, panel: false } }, async ($, on) => {
     const w = installWorld(on, { files: files(), git: gitBehind(5) })
     mock.env(on, { HOME: HOME_OUT }) // a home F7 could write to, if it were on
     const p = engineBelow(on, w)

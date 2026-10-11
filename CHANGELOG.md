@@ -8,6 +8,13 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ## [Unreleased]
 
+### Added
+- **Side panel** (mod 0.3.0, feature `panel`, on by default but opens only when asked). `/fw-panel` opens a pane beside
+  the transcript with STATE (health, lag, context, the "In progress" and "Next entry points" items), this session's flight
+  log and cost, and the other live sessions (blocked first). Once opened it reopens in later sessions until you close it;
+  the choice is one yes/no in the mod's own plugin store. It exists because the band hides itself under the bottom gauge,
+  which left nothing of the mod on screen. `/fw-mod` lists it as the eighth switch.
+
 ## [0.16.0] — 2026-10-11
 
 ### Added

@@ -25,7 +25,7 @@ import {
   CLOCK_SKEW_MS, ENDED_CAP, ENDED_CAP_ALL, fleetBase, fleetFilePath, fleetReport, fmtAge, HEARTBEAT_MS, HINT_DELAY_MS,
   HINT_TOAST_MS, hintCandidates, inputPrint, isOursText, isSafeId, LIST_WINDOW_ALL_MS, LIST_WINDOW_MS, lastSeen,
   notReportingReason, parseRec, pickHint, recordText, repoMarkersOf, resumableOf, resumeCmd, rowOf, schemaMajor, selectFiles, selfAndAncestors,
-  sessionsDirOf, staleAfter, STALE_FLOOR_MS, T, targetOf, tildePath, transcriptOf, turnReason, countOthers, deriveState, SCHEMA,
+  FLEET_SINCE, sessionsDirOf, staleAfter, STALE_FLOOR_MS, T, targetOf, tildePath, transcriptOf, turnReason, countOthers, otherRows, deriveState, SCHEMA,
 } from '../lib/fleet'
 import type { Activity, BlockedKind, FleetEnv, Host, ListEntry, SessionRec } from '../lib/fleet'
 import type { FwFleet, FwFleetStatus } from '../../types/index'
@@ -421,6 +421,7 @@ async function adopt($: EngineInterface, newId: string, via: 'clear' | 'resume' 
     contested: isLiveSibling(g.existing, old.instance, now),
     hinted: old.hinted,
     others: old.others,
+    othersList: old.othersList ?? null,
   }
   await persist($)
   if (canWrite(F)) {
@@ -483,6 +484,7 @@ async function tick($: EngineInterface): Promise<void> {
     // the other sessions, with the gauge's filter (files touched within the stale floor's 4/3), for /fw-mod
     const s = await scan(io, sessionsDirOf(f.base), now, (STALE_FLOOR_MS * 4) / 3)
     f.others = countOthers(s.recs, f.sessionId, now)
+    f.othersList = otherRows(s.recs, f.sessionId, now)
     await persist($)
     schedule($)
   } catch {
@@ -556,7 +558,7 @@ async function fleetCommandText($: EngineInterface, io: FleetIo, lang: Lang, arg
     endedCap: isAll ? ENDED_CAP_ALL : ENDED_CAP,
     skipped: s.skipped,
     unreadable: s.unreadable,
-    ver: MOD_VERSION,
+    ver: FLEET_SINCE,
     notMe: notReportingReason(lang, F),
   })
 }
@@ -632,6 +634,7 @@ async function onStart($: EngineInterface, e: { cwd: string; surface: string | n
     contested: isLiveSibling(g.existing, instance, now),
     hinted: false,
     others: null,
+    othersList: null,
   }
   await persist($)
   if (!isWriting) return

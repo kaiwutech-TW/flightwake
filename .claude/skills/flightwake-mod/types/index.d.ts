@@ -1,7 +1,7 @@
 // flightwake-mod's $.state contract: every value any feature keeps for the session. Per-session values carry the
 // session id they were made for; a value with another id is stale (a /clear starts a new id) and is replaced.
-// Nothing here is kept across sessions ($.store is unused by design: no cross-session history), except F7's own
-// session file (<base>/sessions/<id>.json, outside the repo), which is not $.store and is read by other processes.
+// Nothing here is kept across sessions, except F7's own session file (<base>/sessions/<id>.json, outside the repo,
+// read by other processes) and F8's one $.store key `panelOpen` (a boolean preference, not history).
 
 export type FwHealth = 'green' | 'yellow' | 'red' | 'unknown'
 export type FwLang = 'en' | 'zh-TW' | 'zh-CN' | 'ja'
@@ -133,6 +133,36 @@ export type FwFleet = {
   hinted: boolean
   /** The other sessions' live / blocked counts from the last heartbeat, for /fw-mod; null before the first. */
   others: { live: number; blocked: number } | null
+  /** The other live sessions from the last heartbeat, blocked first, for the side panel; null before the first. */
+  othersList?: FwFleetOther[] | null
+}
+
+/** F7 — one other live session as the side panel lists it: no paths, no prompt or command text. */
+export type FwFleetOther = {
+  label: string
+  display: 'working' | 'blocked' | 'idle'
+  blockedKind: 'permission' | 'question' | 'plan' | null
+  /** How long it has been in that state, as of the heartbeat that listed it. */
+  ageMs: number
+}
+
+/** F8 — what the side panel draws from STATE; computed outside rendering (session.start, turn.complete, a commit). */
+export type FwPanelDigest = {
+  sessionId: string
+  lang: FwLang
+  health: FwHealth
+  /** STATE frontmatter `updated`; null when absent. */
+  updated: string | null
+  isUninitialized: boolean
+  /** Top-level items of the "In progress" and "Next entry points" sections, one line each, markup stripped. */
+  inProgress: string[]
+  next: string[]
+  /** Items left out by the caps, per section. */
+  moreInProgress: number
+  moreNext: number
+  /** The panel's own lag reading, taken only while the band is off (else the band's view is read); null = not taken. */
+  lag: { kind: FwBandView['lagKind']; behind: number | null } | null
+  contextPercent: number | null
 }
 
 declare module 'claude-code' {
@@ -146,6 +176,7 @@ declare module 'claude-code' {
       roleGuard: FwRoleGuard | null
       spend: FwSpend | null
       fleet: FwFleet | null
+      panelDigest: FwPanelDigest | null
     }
   }
 }

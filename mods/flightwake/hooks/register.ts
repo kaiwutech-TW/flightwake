@@ -14,9 +14,10 @@ import { registerRoleGuard } from './features/role-guard'
 import { registerStatus } from './features/status'
 import { registerSpend } from './features/spend'
 import { registerFleet } from './features/fleet'
+import { registerPanel } from './features/panel'
 
 /** userConfig field → default, mirrored from .claude-plugin/plugin.json (F5 is opt-in). */
-export const DEFAULTS = { stateInject: true, band: true, recorder: true, tripwire: true, roleGuard: false, spend: true, fleet: true } as const
+export const DEFAULTS = { stateInject: true, band: true, recorder: true, tripwire: true, roleGuard: false, spend: true, fleet: true, panel: true } as const
 
 export const isEnabled = (options: PluginOptions, key: keyof typeof DEFAULTS): boolean =>
   typeof options[key] === 'boolean' ? options[key] === true : DEFAULTS[key]
@@ -31,12 +32,19 @@ export const register: Register = (on, options) => {
   if (isEnabled(options, 'roleGuard')) try { registerRoleGuard(on) } catch {} // F5
   if (isEnabled(options, 'spend')) try { registerSpend(on) } catch {} // F6
   if (isEnabled(options, 'fleet')) try { registerFleet(on) } catch {} // F7
+  if (isEnabled(options, 'panel')) {
+    try {
+      registerPanel(on, {
+        band: isEnabled(options, 'band'), recorder: isEnabled(options, 'recorder'), spend: isEnabled(options, 'spend'), fleet: isEnabled(options, 'fleet'),
+      })
+    } catch {}
+  } // F8
   // /fw-mod: not a switch — it is how the switches are seen
   try {
     registerStatus(on, {
       stateInject: isEnabled(options, 'stateInject'), band: isEnabled(options, 'band'), recorder: isEnabled(options, 'recorder'),
       tripwire: isEnabled(options, 'tripwire'), roleGuard: isEnabled(options, 'roleGuard'), spend: isEnabled(options, 'spend'),
-      fleet: isEnabled(options, 'fleet'),
+      fleet: isEnabled(options, 'fleet'), panel: isEnabled(options, 'panel'),
     })
   } catch {}
 }

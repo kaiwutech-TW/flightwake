@@ -19,7 +19,7 @@
 
 export const PLUGIN = 'flightwake-mod' as const
 /** Mirrors .claude-plugin/plugin.json `version` (the mod cannot read its own manifest); test/smoke.sh checks they match. */
-export const MOD_VERSION = '0.2.0'
+export const MOD_VERSION = '0.3.0'
 export const FW_DIR = '.flightwake'
 export const STATE_REL = '.flightwake/STATE.md'
 export const TRAPS_REL = '.flightwake/TRAPS.md'

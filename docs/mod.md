@@ -21,8 +21,10 @@ or a folder above it; existence only), and where the repo root and `<base>/sessi
 links). No network.
 
 What it never does: write inside the repo or your records (STATE, DECISIONS, TRAPS, records, ROLES.md). Its state is
-per session, with one exception: **its only write is one file per interactive session, `<base>/sessions/<id>.json`,
-outside the repo** (the `fleet` feature; `<base>` is an absolute `FLIGHTWAKE_HOME`, else `~/.flightwake`). If `<base>`
+per session, with two exceptions: **its only file write is one file per interactive session, `<base>/sessions/<id>.json`,
+outside the repo** (the `fleet` feature; `<base>` is an absolute `FLIGHTWAKE_HOME`, else `~/.flightwake`), and the
+`panel` feature keeps one yes/no — whether you last opened or closed the side panel — in the mod's own Claude Code
+plugin store. If `<base>`
 resolves inside the session's repo, is a flightwake records folder, or lies in any git repo, nothing is written. Any error in it degrades silently, and in a folder without `.flightwake/STATE.md` it does nothing at all. Its display
 language follows the language recorded in the instruction-file marker at install time.
 
@@ -80,9 +82,10 @@ lag / context use; the band above the prompt hides those same fields while the g
 toasts once when context runs hot. Choosing the mod never removes the gauge. Without the gauge, the band is always shown
 and stands in for it; the installer's closing message says so.
 
-## The seven features — each has its own switch
+## The eight features — each has its own switch
 
-Six are on by default; the role guard is off. Switches live in Claude Code's `/config`, or in your *user* settings
+Seven are on by default; the role guard is off. (The side panel's switch only makes `/fw-panel` available; the
+panel itself never opens until you ask for it.) Switches live in Claude Code's `/config`, or in your *user* settings
 (`~/.claude/settings.json`):
 
 ```json
@@ -100,6 +103,7 @@ Project settings are not read for plugin options, so the installer cannot set th
 | `roleGuard` | off | For this folder's Claude seat role, `deny-write: [globs]` lines in the role body (ROLES.md) become blocks on the main session's `Edit` / `Write` / `NotebookEdit` into those paths, with a message naming the role, the rule and what to do instead. Only the person can release it with `/fw-role-release` (typed in the prompt) for this session; the release stays visible in the status line. Details: [the role guard section of roles.md](roles.md#optional-the-claude-code-mods-role-guard). |
 | `spend` | on | Tokens used this session and the API-equivalent cost. Cost is Claude Code's own ledger (the figure `/cost` shows, at API list prices — on a subscription it is not a bill); tokens are summed from the session transcript under `~/.claude/projects/`, one count per API response (subagents keep their own transcripts and are not included). Shown as the band's last field (`1.2M tok · ≈$4.99`) — when the bottom gauge is the effective status line the gauge shows the same field and the band stays quiet — and as a line in `/fw-mod`; `/fw-cost` prints the breakdown (uncached input / cache write / cache read / output). Refreshed after every turn. |
 | `fleet` | on | Reports this session's state — working, blocked (waiting on you), idle or ended — to `<base>/sessions/<id>.json` outside the repo, for `/fw-fleet`, `npx flightwake fleet`, a `⛔` field on the bottom gauge and a one-time `claude --resume` hint after a session stopped unexpectedly. Interactive sessions only; never prompt or command text. See [Session fleet](#session-fleet-fleet). |
+| `panel` | on | `/fw-panel` opens a pane beside the transcript gathering what the other features know: STATE (health, lag, context use, the "In progress" and "Next entry points" items), this session's flight log and cost, and the other live sessions. Opened only when you ask; once opened it reopens by itself in later sessions until you close it. See [Side panel](#side-panel-panel). |
 
 ### TRAPS fields used by the tripwire
 
@@ -113,6 +117,28 @@ commands: ["npm run migrate", "psql"]
 - `paths` — repo-relative globs. A pattern without `/` matches that file name at any depth.
 - `commands` — command prefixes, compared token by token. No regex.
 - Superseded entries are never matched.
+
+## Side panel (`panel`)
+
+The band hides itself while the bottom gauge is on, so with both installed nothing of the mod is on screen. The side
+panel puts it in one place you can keep open:
+
+- **Header:** health, STATE lag (the band's reading; the panel measures it itself only while the band is off), context
+  use, when STATE was last updated, and this session's tokens and cost.
+- **In progress / Next:** the top-level items of those two STATE sections (up to 5 and 6, with a "+n more" line),
+  matched by heading in all four template languages, Markdown reduced to plain text.
+- **This session:** the flight log's counts (files, shell-inferred files, test runs with ✓/✗, commits), the latest test
+  runs and the files changed most recently.
+- **Other sessions:** the other live sessions from the fleet heartbeat, blocked ones first (`⛔`), with how long each
+  has been in that state. Claude Code sessions with the mod only; refreshed every 30 s.
+
+**Opening and closing.** `/fw-panel` toggles it; `/fw-panel on` and `/fw-panel off` say which. It never opens unless you
+asked: once you open it, later sessions (in any repo with flightwake) open it at start, and closing it — `/fw-panel`,
+its close mark, or ctrl+x x — stops that. Where it appears is Claude Code's choice: beside the transcript in the
+fullscreen layout from 110 terminal columns, otherwise above the prompt; a pane reopened at session start on a narrower
+terminal waits undrawn until you widen it or run `/fw-panel`. On the terminal's main screen (`CLAUDE_CODE_NO_FLICKER=0`,
+or tmux by default) it always opens above the prompt. The panel reads only what the other features already keep for the
+session, plus STATE; it runs no git while drawing.
 
 ## Session fleet (`fleet`)
 
@@ -294,13 +320,13 @@ Guidance for Orca and other tools:
 
 ## Checking what it is doing: /fw-mod
 
-`/fw-mod` is read-only. It lists each of the seven features as on, off or idle, with the reason and what to do to make it
+`/fw-mod` is read-only. It lists each of the eight features as on, off or idle, with the reason and what to do to make it
 take effect. For example: the band hidden because the bottom gauge was detected; the tripwire on but idle because no
 active TRAPS entry has `paths` or `commands`; the role guard off (with how to turn it on), or on but idle because this
 folder's seat has no role or no `deny-write`; STATE injected this session, or only the "run /fw-coldstart" note because
 STATE is not initialized; this session reported as idle in `~/.flightwake/sessions/…`, or not reporting because it
 is a `-p` run or the folder would be inside the repo. It also shows the mod version, the detected language and the profile. It changes nothing, and
-it is not one of the seven switches — it is always available where flightwake is installed.
+it is not one of the eight switches — it is always available where flightwake is installed.
 
 ## Doctor
 

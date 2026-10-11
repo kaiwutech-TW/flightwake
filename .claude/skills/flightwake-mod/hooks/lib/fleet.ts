@@ -21,6 +21,8 @@ export const HINT_WINDOW_MS = 7 * 86400000
 export const LIST_WINDOW_MS = 7 * 86400000
 export const LIST_WINDOW_ALL_MS = 30 * 86400000
 export const LIST_CAP = 200
+/** The first mod version that writes session files (what the empty /fw-fleet message names as the minimum). */
+export const FLEET_SINCE = '0.2.0'
 /** /fw-fleet: ended rows shown without / with `all`. */
 export const ENDED_CAP = 10
 export const ENDED_CAP_ALL = 500
@@ -362,6 +364,25 @@ export function countOthers(recs: readonly SessionRec[], myId: string, now: numb
     if (d === 'blocked') blocked += 1
   }
   return { live, blocked }
+}
+
+/** One other live session as the side panel lists it (no paths, no prompt or command text). */
+export type OtherRow = { label: string; display: 'working' | 'blocked' | 'idle'; blockedKind: BlockedKind | null; ageMs: number }
+
+/** The other live sessions in /fw-fleet order (blocked first), at most `cap`. */
+export function otherRows(recs: readonly SessionRec[], myId: string, now: number, cap = 8): OtherRow[] {
+  const rows: { rec: SessionRec; display: Display }[] = []
+  for (const rec of recs) {
+    if (rec.sessionId === myId) continue
+    const display = displayOf(rec, now)
+    if (display === 'working' || display === 'blocked' || display === 'idle') rows.push({ rec, display })
+  }
+  return sortFleet(rows).slice(0, cap).map(({ rec, display }) => ({
+    label: repoLabel(rec),
+    display: display as OtherRow['display'],
+    blockedKind: display === 'blocked' ? rec.blocked?.kind ?? null : null,
+    ageMs: ageOf(rec, display, now),
+  }))
 }
 
 // ── resume hint ─────────────────────────────────────────────────────────────────────────────────────────────────

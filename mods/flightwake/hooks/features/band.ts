@@ -150,7 +150,8 @@ async function refresh($: EngineInterface): Promise<void> {
   }
 }
 
-function lagText(lang: Lang, v: FwBandView): string {
+/** The lag field's words; shared with the side panel (F8) so both say it the same way. */
+export function lagText(lang: Lang, v: Pick<FwBandView, 'lagKind' | 'behind'>): string {
   switch (v.lagKind) {
     case 'dirty':
       return M(lang, { en: 'STATE updating', 'zh-TW': 'STATE 更新中', 'zh-CN': 'STATE 更新中', ja: 'STATE 更新中' })

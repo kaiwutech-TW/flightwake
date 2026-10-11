@@ -1,8 +1,8 @@
 /**
- * /fw-mod — what each of the seven features is doing right now and why (2026-10-05 field feedback: the mod is
+ * /fw-mod — what each of the eight features is doing right now and why (2026-10-05 field feedback: the mod is
  * designed not to interrupt, so after installing nobody could tell whether it had loaded or which features were
  * acting). Read-only: it reads what the features themselves read (STATE, TRAPS, the instruction-file markers and the
- * seat block, settings) and the features' own $.state values; it changes nothing. Registered regardless of the seven
+ * seat block, settings) and the features' own $.state values; it changes nothing. Registered regardless of the eight
  * switches — it is how you see them — but only in a folder where flightwake is installed.
  */
 import type { EngineInterface, On } from 'claude-code'
@@ -14,8 +14,9 @@ import { parseSeatBlock } from '../lib/roles'
 import { hasMatchers, isActive, parseTraps } from '../lib/traps'
 import { fmtTokens, fmtUsd, totalTokens } from '../lib/spend'
 import { fleetModLine, T as FLEET_T } from '../lib/fleet'
+import { PANE_ID, STORE_KEY } from '../lib/panel'
 
-export type Switches = { stateInject: boolean; band: boolean; recorder: boolean; tripwire: boolean; roleGuard: boolean; spend: boolean; fleet: boolean }
+export type Switches = { stateInject: boolean; band: boolean; recorder: boolean; tripwire: boolean; roleGuard: boolean; spend: boolean; fleet: boolean; panel: boolean }
 
 // The Io closure over this file's `$` (IO_OF_TEMPLATE in hooks/lib/core.ts; `$` may not cross an import).
 function ioOf($: EngineInterface): Io {
@@ -63,6 +64,7 @@ const LABEL: Record<keyof Switches, Record<Lang, string>> = {
   roleGuard: { en: 'role guard', 'zh-TW': '角色守門', 'zh-CN': '角色守门', ja: 'ロールガード' },
   spend: { en: 'tokens and cost', 'zh-TW': 'token 與費用', 'zh-CN': 'token 与费用', ja: 'トークンとコスト' },
   fleet: FLEET_T.label,
+  panel: { en: 'side panel', 'zh-TW': '側邊面板', 'zh-CN': '侧边面板', ja: 'サイドパネル' },
 }
 const line = (lang: Lang, key: keyof Switches, state: string, why: string): string => `- **${LABEL[key][lang]}** (\`${key}\`): ${state} — ${why}`
 
@@ -181,6 +183,19 @@ async function statusText($: EngineInterface, sw: Switches): Promise<string | nu
     if (home === null) { try { home = (await $.env.get('USERPROFILE')) || null } catch { home = null } }
     const fl = fleetModLine(lang, f, home)
     out.push(line(lang, 'fleet', fl.isOn ? ON(lang) : IDLE(lang), fl.text))
+  }
+  // F8
+  if (!sw.panel) out.push(line(lang, 'panel', OFF(lang), howTo(lang, 'panel', true)))
+  else {
+    let isOpen = false
+    let isRemembered = false
+    try { isOpen = (await $.ui.panes()).some((p) => p.id === PANE_ID) } catch {}
+    try { isRemembered = (await $.store.get(STORE_KEY)) === true } catch {}
+    out.push(line(lang, 'panel', isOpen ? ON(lang) : IDLE(lang), isOpen
+      ? M(lang, { en: 'open in this session; it reopens in later sessions until you close it — /fw-panel closes it', 'zh-TW': '本 session 已開啟;之後的 session 會自動再開,直到你關掉 — /fw-panel 關閉', 'zh-CN': '本 session 已打开;之后的 session 会自动再开,直到你关掉 — /fw-panel 关闭', ja: 'このセッションで表示中。閉じるまで以後のセッションでも自動で開く — /fw-panel で閉じる' })
+      : isRemembered
+        ? M(lang, { en: 'remembered as open, but not open now (it opens at session start) — /fw-panel opens it', 'zh-TW': '記得是開著的,但目前沒開(session 開始時才自動開)— /fw-panel 開啟', 'zh-CN': '记得是开着的,但目前没开(session 开始时才自动开)— /fw-panel 打开', ja: '開いた状態を記憶しているが今は閉じている(セッション開始時に開く)— /fw-panel で開く' })
+        : M(lang, { en: 'closed; it opens only when you ask — /fw-panel opens it beside the transcript (from 110 columns)', 'zh-TW': '未開啟;只有你要求才開 — /fw-panel 在對話旁開啟(終端機 110 欄以上)', 'zh-CN': '未打开;只有你要求才开 — /fw-panel 在对话旁打开(终端 110 栏以上)', ja: '閉じている。頼まれたときだけ開く — /fw-panel で会話の横に開く(110 列以上)' })))
   }
   out.push('', M(lang, { en: 'Read-only: /fw-mod changes nothing.', 'zh-TW': '唯讀:/fw-mod 不改任何東西。', 'zh-CN': '只读:/fw-mod 不改任何东西。', ja: '読み取り専用:/fw-mod は何も変更しない。' }))
   return out.join('\n')
