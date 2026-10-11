@@ -20,28 +20,35 @@ cd your-repo
 npx flightwake setup    # 引導式安裝:問幾個問題、列出將寫入的每個路徑,你確認後才安裝
 ```
 
-`setup` 需要終端機。它先檢查 git(目錄不是 repo 時會問要不要 `git init`,預設 No,且只在最後確認後才執行),接著問語言、agent(資料夾已有 CLAUDE.md / AGENTS.md / GEMINI.md 時列出偵測結果;都沒有時直接問你用哪些工具,可複選、不預選)、選配附加項(每項預設 No:底部儀表、Claude Code mod、roles、Orca 協作;mod 這一題只在你選了 Claude Code 時才會問)與 repo 類型(code / notes),列出將寫入的所有路徑,再問「確定執行? [Y/n]」——按 Enter 即安裝;`n`、EOF 或 Ctrl-C 都不會寫入任何東西。若已安裝 flightwake,只會提供就地升級(`update`)。它與 `init` 走同一條安裝路徑,裝完跑 `doctor` 並印出下一步。命令列上給的旗標會直接回答對應的問題;`--private` 只能用旗標,從不詢問。
+`setup` 需要終端機。它先檢查 git(目錄不是 repo 時會問要不要 `git init`,預設 No,且只在最後確認後才執行),接著問語言(依終端機語系預選——先看 `LC_ALL`,再看 `LC_MESSAGES`,再看 `LANG`,三者都沒設才看作業系統語系;`C` / `POSIX` 視為英文——並標出依據)、agent(資料夾已有 CLAUDE.md / AGENTS.md / GEMINI.md 時列出偵測結果;都沒有時直接問你用哪些工具,可複選、不預選)、選配附加元件(一題清單,見下)與 repo 類型(code / notes),先印一行摘要(`lang=… · agents=… · add-ons=… · profile=…`),猜錯一眼就看得出來,再列出將寫入的所有路徑,再問「確定執行? [Y/n]」——按 Enter 即安裝;`n`、EOF 或 Ctrl-C 都不會寫入任何東西。它與 `init` 走同一條安裝路徑,裝完跑 `doctor` 並印出下一步。命令列上給的旗標會直接回答對應的問題;`--private` 只能用旗標,從不詢問。
+
+**附加元件清單**編號固定——1 底部儀表、2 Claude Code mod、3 團隊角色、4 Orca 協作(這裡不適用的不列)——你的回答就是你要的那一組:Enter = 保留標 `*` 的,輸入編號或名稱(`1 2`、`mod roles`)= 就是這些、其他都不要,`0` = 都不要。agent 裡有 Claude Code 時,mod 會預選,除非 `claude --version` 回報低於 2.1.287 的版本(mod 不會載入)。底部儀表只在你(`~/.claude/settings.json`)與這個 repo 都還沒有 status line 時才預選:它寫進會 commit 的 `.claude/settings.json`,在這個 repo 裡會取代每位隊友自己的 status line,那一列也會這樣說明。Orca 協作只在 setup 於 Orca 裡執行(有 `ORCA_*` 環境變數)時預選;只在 PATH 上找到 `orca` 程式時會列出但不標記,因為 GNOME 的螢幕閱讀器也叫 `orca`。團隊角色永不預選。已安裝的列標 `✓`,保持不動。
+
+**已經裝過 flightwake 的 repo**,setup 不改語言與 repo 類型(那是 `update --lang=… / --profile=…` 的事)。若有這裡適用、但尚未安裝的附加元件,它提供三個選擇:就地升級(等同 `npx flightwake update`)、升級並加裝附加元件(只加不減——你其他的選項與紀錄都不動;與 `update --statusline / --mod / --orca` 同一條路徑),或維持原狀(什麼都不寫,exit 0)。適用的都已安裝時,直接走就地升級。
 
 **非互動形式**——`npx flightwake init [旗標]`(直接打 `npx flightwake` 效果相同)從不提問:給自動化、agent、CI 與已經知道要什麼的進階使用者用:
 
 ```bash
 npx flightwake init --lang=zh-TW --statusline   # 繁體中文 + 底部儀表
 npx flightwake init --lang=zh-TW --statusline --agents=claude,codex,gemini   # 三家一次裝齊(Claude Code + Codex + Gemini CLI)
-npx flightwake update                           # 就地升級,沿用你裝過的選項(lang/statusline/private)
+npx flightwake update                           # 就地升級,沿用你裝過的選項(lang/statusline/private);結尾用一行列出你還沒裝的附加元件
+npx flightwake update --mod                     # 升級並加上 Claude Code mod(也可 --statusline、--orca)
 ```
 
-**選你的語言**(非互動形式;`setup` 會幫你問)— 安裝的模板、skill 與所有 CLI/儀表輸出都跟著它走。**刻意不做自動偵測**:終端的 `LANG` 與作業系統語系經常不一致(實測過:系統是 zh_TW,終端卻回報 `en_US.UTF-8`),猜錯又講得很有自信,比明講預設更糟。直接複製你要的那行:
+`update` 與 `init` 從不提問。有這裡適用、但尚未安裝的附加元件時,結尾會用一行點名,並附上 `npx flightwake setup`(先問、列出所有路徑)或直接的指令(`npx flightwake update --statusline / --mod / --orca`、`npx flightwake roles install`)。不會自動加裝,那一行也明寫要 agent 先問使用者;適用的都裝好後就不再出現。`--private` 安裝請照這些 `update` 指令,不要用 `init` 旗標:不帶 `--private` 的 `init` 會寫入共用的 `.claude/settings.json`。
+
+**選你的語言**(非互動形式;`setup` 會幫你問)— 安裝的模板、skill 與所有 CLI/儀表輸出都跟著它走。`setup` 的語言題以終端機語系為起點,並標出它讀到什麼——Enter 沿用,輸入編號改掉。`init` 從不猜:裝進去的語言是每個 clone 這個 repo 的人共用的,不該由某一個人的終端機決定。沒給 `--lang` 就裝英文;終端機語系是別的語言時,它會印出切換指令(`npx flightwake update --lang=<x>`)。直接複製你要的那行:
 
 | 語言 | 全新安裝 | 已經裝成其他語言 |
 |---|---|---|
-| 繁體中文 | `npx flightwake init --lang=zh-TW --statusline` | `npx flightwake init --lang=zh-TW --force --statusline` |
-| 简体中文 | `npx flightwake init --lang=zh-CN --statusline` | `npx flightwake init --lang=zh-CN --force --statusline` |
-| 日本語 | `npx flightwake init --lang=ja --statusline` | `npx flightwake init --lang=ja --force --statusline` |
-| English | `npx flightwake init --statusline` | `npx flightwake init --lang=en --force --statusline` |
+| 繁體中文 | `npx flightwake init --lang=zh-TW --statusline` | `npx flightwake update --lang=zh-TW` |
+| 简体中文 | `npx flightwake init --lang=zh-CN --statusline` | `npx flightwake update --lang=zh-CN` |
+| 日本語 | `npx flightwake init --lang=ja --statusline` | `npx flightwake update --lang=ja` |
+| English | `npx flightwake init --statusline` | `npx flightwake update --lang=en` |
 
-切語言是安全的:`--force` 只換框架擁有的檔案(模板、skill、hook、marker 區塊),你的 STATE / DECISIONS / TRAPS / records **完全不動**,維持你當初寫下的語言。不要儀表的話,把 `--statusline` 拿掉即可。加 `--agents=claude,codex,gemini`(可任選子集)明確指定要裝哪些 agent;不加的話,init 依既有的指令檔(CLAUDE.md / AGENTS.md / GEMINI.md)自動偵測。
+切語言是安全的:`update --lang=<x>` 只換框架擁有的檔案(模板、skill、hook、marker 區塊),並沿用你其他的選項(private、儀表、附加元件、profile);你的 STATE / DECISIONS / TRAPS / records **完全不動**,維持你當初寫下的語言。不要儀表的話,把全新安裝那一欄的 `--statusline` 拿掉即可。加 `--agents=claude,codex,gemini`(可任選子集)明確指定要裝哪些 agent;不加的話,init 依既有的指令檔(CLAUDE.md / AGENTS.md / GEMINI.md)自動偵測。
 
-**不要手動翻譯裝好的檔案。** marker 記著你裝的是哪個語言,下次 `update` 會用那個語言的來源刷新,你的修改會消失。要換語言請重跑 init 加 `--lang`;若已經手改過,現在 init/update 會逐檔列出它覆蓋了什麼。
+**不要手動翻譯裝好的檔案。** marker 記著你裝的是哪個語言,下次 `update` 會用那個語言的來源刷新,你的修改會消失。要換語言請用 `update --lang=<x>`;若已經手改過,現在 init/update 會逐檔列出它覆蓋了什麼。
 
 init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claude/skills/`、把 Stop hook 併入 `.claude/settings.json`、把觸發義務表(含 `<!-- flightwake:begin/end -->` 標記)附加到**偵測到的 agent 指令檔**(CLAUDE.md / AGENTS.md / GEMINI.md,有哪個貼哪個;全都沒有就建 AGENTS.md;`--agents=claude,codex,gemini` 可明確指定)。**偵測到的每個平台都拿到同一套 skill 與 hook,用它自己的方言**:Codex 與 Gemini CLI 從 `.agents/skills/fw-*` 讀 skill,STATE 檢查分別進 `.codex/hooks.json`(Stop)與 `.gemini/settings.json`(AfterAgent),義務表對 Codex 寫 `$fw-coldstart`、對 Claude Code 寫 `/fw-coldstart`、對 Gemini 寫裸 skill 名。Codex 首次執行會要你信任這個 repo hook 一次。**純檔案複製,零執行期依賴**(Node ≥18 只在安裝與 hook 時用)。使用者資料(STATE/DECISIONS/TRAPS)任何情況下都不覆蓋;`--force` 只更新框架擁有的檔案。
 
@@ -148,9 +155,9 @@ skill 與 hook 是各平台的便利糖衣——同一套四個 skill、同一�
 
 **`--profile=code|notes`**(預設 `code`)選擇義務表。`notes` 給非程式碼的 repo(寫作、研究、筆記):拿掉「測試綠 + typecheck 乾淨」、「prod 驗證證據」與 schema/prod 收尾觸發,保留冷啟動、決策、坑、交接、≥3 commit 收尾、破壞性操作先確認、session 結束時 STATE 誠實。安裝的檔案相同。profile 記在標記裡(`profile=notes`);`update` 會沿用,`update --profile=code` 可切回。
 
-**`--orca`**(選配;`setup` 也會問,但只在偵測到 Orca 時)在每個啟用平台的指令檔加一個標記區塊:跨 agent 討論與審查要用看得見的 Orca 分頁,不要用藏在背景的執行;並附單一寫手審查協議(被請來審查的 agent 不寫 record、不碰 STATE;提問方把採納的結論寫進自己的 record)。`uninstall` 會移除;`update` 只在已安裝處刷新。
+**`--orca`**(選配;也是 `setup` 清單的一列,只在偵測到 Orca 時列出,只在 setup 於 Orca 裡執行時預選)在每個啟用平台的指令檔加一個標記區塊:跨 agent 討論與審查要用看得見的 Orca 分頁,不要用藏在背景的執行;並附單一寫手審查協議(被請來審查的 agent 不寫 record、不碰 STATE;提問方把採納的結論寫進自己的 record)。`uninstall` 會移除;`update` 在已安裝處刷新;`update --orca` 會加上。
 
-**`--mod`**(選配;`setup` 也會問,但只在你選了 Claude Code 時)安裝 Claude Code mod(`flightwake-mod`)到 `.claude/skills/flightwake-mod/`:一組 function hook,在 session 裡注入 STATE、顯示 band、記錄飛行日誌、觸發 TRAPS 絆線,並可選配角色守門。只支援 Claude Code(需要 2.1.287+、接受資料夾信任提示、從 repo 根目錄開始);若這次沒有設定 Claude Code,會印說明並略過。`update` 只在已安裝處刷新,`uninstall` 只移除發行的檔,你在該資料夾自己加的檔會保留並列出。完整說明見 [docs/mod.zh-TW.md](docs/mod.zh-TW.md)。
+**`--mod`**(選配;也是 `setup` 清單的一列,只在你選了 Claude Code 時列出,除非你的 Claude Code 低於 2.1.287,否則預選)安裝 Claude Code mod(`flightwake-mod`)到 `.claude/skills/flightwake-mod/`:一組 function hook,在 session 裡注入 STATE、顯示 band、記錄飛行日誌、觸發 TRAPS 絆線,並可選配角色守門。只支援 Claude Code(需要 2.1.287+、接受資料夾信任提示、從 repo 根目錄開始);這個 repo 已經開著 Claude Code 的話,請結束它、從 repo 根目錄重新啟動——執行中的 session 永遠不會載入新加的 mod——再跑 `/fw-mod` 確認有載入;若這次沒有設定 Claude Code,會印說明並略過。`update` 在已安裝處刷新,`update --mod` 會加上;`uninstall` 只移除發行的檔,你在該資料夾自己加的檔會保留並列出。完整說明見 [docs/mod.zh-TW.md](docs/mod.zh-TW.md)。
 
 **`--git-init`** 讓 `init` 在目錄不是 git repo 時先建立它——只有明確給旗標才會做;沒給就停下並告知。`init` 與 `setup` 都會先檢查 git 是否已安裝,沒有則依平台給出安裝提示。
 
@@ -176,7 +183,7 @@ skill 與 hook 是各平台的便利糖衣——同一套四個 skill、同一�
 
 health 顏色(你唯一要盯的事)、STATE 落後量(與 Stop hook 同一套 rev-list 邏輯,但從「結束時提醒」變成「隨時看得到」)、context 用量。儀表還會依狀態**直接提示下一個指令**:剛開場 → `→ 開工先 /fw-coldstart`;STATE 落後 ≥3 → `→ /fw-record 收尾`;context 快滿 → `→ /fw-record → /clear → /fw-coldstart`;一切正常 → 安靜。絕不覆蓋既有 statusline(單值設定),且 repo 層設定優先於使用者層,與全域儀表工具可並存。
 
-注意:純 `npx flightwake init` **不會**裝儀表——它是選配。已經 init 過才想裝?再跑一次 `npx flightwake init --statusline` 即可,只會補上儀表(其他已裝的全部 skip),下一個 Claude Code session 就會看到 bar。
+注意:純 `npx flightwake init` **不會**裝儀表——它是選配。已經 init 過才想裝?跑 `npx flightwake update --statusline` 就會補上儀表,其他選項(包括 `--private`)沿用,下一個 Claude Code session 就會看到 bar。
 
 儀表也會在 flightwake 有新版時提示(`→ 可更新 v0.9.1:npx flightwake update`)——只在沒有更要緊的事時顯示。檢查是每 24 小時最多一次對 npm registry 的匿名 GET,快取在系統暫存目錄,永遠在背景進程執行(渲染絕不等網路)。不想要:`FLIGHTWAKE_NO_UPDATE_CHECK=1`。
 

@@ -12,7 +12,7 @@ import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import {
   LANGS, GROUPS, INSTRUCTION_CANDIDATES, HOOK_CMD, HOOK_CMD_GIT, SL_CMD, MOD_REL, MOD_MIN_CLAUDE, makeM, gitIn, gitAvailable,
-  repoState, readMarkers, detectInstall, modShipList, modSrc,
+  repoState, readMarkers, detectInstall, modShipList, modSrc, atLeast, claudeVersion,
 } from './install.mjs';
 
 /** Placeholder lines of the shipped STATE templates (every language). Only these count as "unfilled" — user
@@ -35,7 +35,7 @@ export function stateUnfilled(target, fwSrc) {
   try { return readFileSync(p, 'utf8').split('\n').some((l) => placeholders.has(l.trim())); } catch { return true; }
 }
 
-export function runDoctor({ target, fwSrc, version, lang, log }) {
+export function runDoctor({ target, fwSrc, version, lang, log, claudeVersion: readClaude = claudeVersion }) {
   const M = makeM(lang);
   const rows = [];
   const add = (level, text) => rows.push({ level, text });
@@ -116,7 +116,7 @@ export function runDoctor({ target, fwSrc, version, lang, log }) {
     const tracked = det.private && existsSync(at(file)) && isTracked(file);
     (tracked ? warn : fail)(tracked
       ? M({ en: `${ev} is installed but ${file} has no obligation table (--private skips a git-tracked ${file})`, 'zh-TW': `${ev} 已安裝,但 ${file} 沒有義務表(--private 會跳過受追蹤的 ${file})`, 'zh-CN': `${ev} 已安装,但 ${file} 没有义务表(--private 会跳过受追踪的 ${file})`, ja: `${ev} はインストール済だが ${file} に義務表がない(--private は git 管理下の ${file} を飛ばす)` })
-      : M({ en: `inconsistent install: ${ev} is installed but ${file} has no flightwake marker block — npx flightwake init --agents=… --force`, 'zh-TW': `安裝不一致:${ev} 已安裝,但 ${file} 沒有 flightwake 標記區塊 — npx flightwake init --agents=… --force`, 'zh-CN': `安装不一致:${ev} 已安装,但 ${file} 没有 flightwake 标记区块 — npx flightwake init --agents=… --force`, ja: `インストールの不整合:${ev} はあるが ${file} に flightwake のマーカーブロックがない — npx flightwake init --agents=… --force` }));
+      : M({ en: `inconsistent install: ${ev} is installed but ${file} has no flightwake marker block — npx flightwake update --agents=…`, 'zh-TW': `安裝不一致:${ev} 已安裝,但 ${file} 沒有 flightwake 標記區塊 — npx flightwake update --agents=…`, 'zh-CN': `安装不一致:${ev} 已安装,但 ${file} 没有 flightwake 标记区块 — npx flightwake update --agents=…`, ja: `インストールの不整合:${ev} はあるが ${file} に flightwake のマーカーブロックがない — npx flightwake update --agents=…` }));
   }
   const agentsSkillDirs = existsSync(at('.agents/skills')) && readdirSync(at('.agents/skills')).some((d) => d.startsWith('fw-'));
   if (agentsSkillDirs && !platforms.has('codex') && !platforms.has('gemini')) {
@@ -253,22 +253,14 @@ export function runDoctor({ target, fwSrc, version, lang, log }) {
   else ok(M({ en: 'statusline: installed', 'zh-TW': '儀表:已安裝', 'zh-CN': '仪表:已安装', ja: 'ゲージ:インストール済' }));
   info(det.roles ? M({ en: 'roles: fw-roles installed', 'zh-TW': '角色:fw-roles 已安裝', 'zh-CN': '角色:fw-roles 已安装', ja: 'ロール:fw-roles インストール済' }) : M({ en: 'roles: not installed (optional)', 'zh-TW': '角色:未安裝(選配)', 'zh-CN': '角色:未安装(选配)', ja: 'ロール:未インストール(オプション)' }));
   info(det.orca ? M({ en: 'Orca collaboration: installed', 'zh-TW': 'Orca 協作:已安裝', 'zh-CN': 'Orca 协作:已安装', ja: 'Orca 連携:インストール済' }) : M({ en: 'Orca collaboration: not installed (optional)', 'zh-TW': 'Orca 協作:未安裝(選配)', 'zh-CN': 'Orca 协作:未安装(选配)', ja: 'Orca 連携:未インストール(オプション)' }));
-  checkMod({ fwSrc, at, readJson, ok, warn, fail, info, M });
+  checkMod({ fwSrc, at, readJson, ok, warn, fail, info, M, readClaude });
   info(`profile: ${det.profile}`);
   return report(rows, log, M);
 }
 
-/** a.b.c ≥ x.y.z, numerically */
-const atLeast = (v, min) => {
-  const a = v.split('.').map(Number);
-  const b = min.split('.').map(Number);
-  for (let i = 0; i < 3; i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
-  return true;
-};
-
 // ── Claude Code mod (optional): structure, version against this package, Claude Code's version when readable, and
 //    the two things that decide whether it loads that no file can show (folder trust, starting at the repo root).
-function checkMod({ fwSrc, at, readJson, ok, warn, fail, info, M }) {
+function checkMod({ fwSrc, at, readJson, ok, warn, fail, info, M, readClaude }) {
   if (!existsSync(at(MOD_REL))) {
     info(M({ en: 'Claude Code mod: not installed (optional)', 'zh-TW': 'Claude Code mod:未安裝(選配)', 'zh-CN': 'Claude Code mod:未安装(选配)', ja: 'Claude Code mod:未インストール(オプション)' }));
     return;
@@ -309,8 +301,7 @@ function checkMod({ fwSrc, at, readJson, ok, warn, fail, info, M }) {
     }
   }
   // Claude Code's version, read-only and only when the binary answers; anything else is a hint, never a failure
-  let cc = null;
-  try { cc = /(\d+\.\d+\.\d+)/.exec(execFileSync('claude', ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }))?.[1] ?? null; } catch {}
+  const cc = readClaude();
   if (!cc) info(M({ en: `could not read the Claude Code version (claude --version) — the mod needs ${MOD_MIN_CLAUDE} or later`, 'zh-TW': `讀不到 Claude Code 版本(claude --version)— mod 需要 ${MOD_MIN_CLAUDE} 以上`, 'zh-CN': `读不到 Claude Code 版本(claude --version)— mod 需要 ${MOD_MIN_CLAUDE} 以上`, ja: `Claude Code のバージョンを読めない(claude --version)— mod には ${MOD_MIN_CLAUDE} 以上が必要` }));
   else if (atLeast(cc, MOD_MIN_CLAUDE)) ok(M({ en: `Claude Code ${cc} (the mod needs ${MOD_MIN_CLAUDE}+)`, 'zh-TW': `Claude Code ${cc}(mod 需要 ${MOD_MIN_CLAUDE} 以上)`, 'zh-CN': `Claude Code ${cc}(mod 需要 ${MOD_MIN_CLAUDE} 以上)`, ja: `Claude Code ${cc}(mod には ${MOD_MIN_CLAUDE} 以上が必要)` }));
   else warn(M({ en: `Claude Code ${cc} is older than ${MOD_MIN_CLAUDE} — the mod will not load until Claude Code is updated`, 'zh-TW': `Claude Code ${cc} 低於 ${MOD_MIN_CLAUDE} — 更新 Claude Code 之前 mod 不會載入`, 'zh-CN': `Claude Code ${cc} 低于 ${MOD_MIN_CLAUDE} — 更新 Claude Code 之前 mod 不会加载`, ja: `Claude Code ${cc} は ${MOD_MIN_CLAUDE} より古い — Claude Code を更新するまで mod は読み込まれない` }));

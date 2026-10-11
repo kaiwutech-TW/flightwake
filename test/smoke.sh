@@ -17,6 +17,12 @@ trap 'rm -rf "$TMP"' EXIT
 TMP="$(cd "$TMP" && pwd -P)"
 # Isolate the cross-repo registry — without this, every test repo below lands in the real ~/.flightwake/registry.json
 export FLIGHTWAKE_HOME="$TMP/fw-home"
+# Locale / Orca / personal Claude settings feed setup preselects, init's language hint and the add-on notice —
+# pin them so a zh_TW, Orca or personal-status-line developer machine runs the same tests as CI
+if [ -n "${LC_ALL:-}" ]; then export LC_CTYPE="$LC_ALL" LC_COLLATE="$LC_ALL"; unset LC_ALL; fi
+export LC_MESSAGES=C
+unset LANGUAGE ORCA_APP_VERSION ORCA_TERMINAL_HANDLE ORCA_WORKSPACE_ID
+export CLAUDE_CONFIG_DIR="$TMP/claude-cfg"
 
 fail() { echo "❌ FAIL: $1"; exit 1; }
 pass() { echo "  ok: $1"; }
@@ -300,6 +306,83 @@ node -e "const s=require('./.claude/settings.json'); if(!String(s.statusLine.com
   || fail "--statusline 應寫入 settings.statusLine"
 echo '{}' | node .flightwake/hooks/statusline.mjs | grep -q 'flightwake' || fail "statusline 應輸出儀表"
 echo '{}' | node .flightwake/hooks/statusline.mjs | grep -q 'fw-coldstart' || fail "剛開場應提示 /fw-coldstart"
+# 16.1 token 與 API 等值費用:費用照 stdin 的 cost.total_cost_usd 印;token 從 transcript 加總、同一 message.id 只算一次
+printf '%s\n' '{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}' \
+  '{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":1000,"cache_creation_input_tokens":200}}}' \
+  '{"type":"assistant","message":{"id":"m2","usage":{"input_tokens":5,"output_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}' > sl-transcript.jsonl
+sl_out=$(printf '{"cost":{"total_cost_usd":1.2345},"transcript_path":"%s"}' "$PWD/sl-transcript.jsonl" | node .flightwake/hooks/statusline.mjs)
+echo "$sl_out" | grep -q '1.36k tok' || fail "16.1 儀表應從 transcript 加總 token(去重後 1360 → 1.36k):$sl_out"
+echo "$sl_out" | grep -q '≈\$1.23' || fail "16.1 儀表應印 API 等值費用 ≈\$1.23:$sl_out"
+echo '{}' | node .flightwake/hooks/statusline.mjs | grep -q 'tok' && fail "16.1 沒有 transcript 與 cost 時不該印 token/費用"
+rm -f sl-transcript.jsonl
+# 16.2 session fleet 欄位(F7):別的 session 在等你(blocked ≥2s、心跳新鮮、非本 session、非 contested)→ 品牌後第二欄紅色 ⛔;
+#      symlink 不讀;120 s 內沒改過的檔不讀(so:心跳新鮮但 mtime 舊);沒有 blocked 就沒有 ⛔;四語(en 預設、zh-TW/zh-CN/ja 實裝,含 n>1);
+#      FLIGHTWAKE_HOME 空字串退回 HOME、相對路徑忽略;相對的 HOME 不用
+#      「未滿 2s 不算」用獨立資料夾、seed 後立刻量(不跟後面的安裝共用時間,慢機器也不會過 2s 而變成被算進去)
+FSEED="$TMP/fleet-seed.cjs"
+cat > "$FSEED" <<'SEED'
+// node fleet-seed.cjs <dir> <id> '<js object expr using now>' [mtimeAgoMs]
+const fs = require('fs');
+const [dir, id, expr = '({})', ago] = process.argv.slice(2);
+const now = Date.now();
+const o = new Function('now', 'return ' + expr)(now);
+const rec = {
+  schema: 'flightwake.session/1', mod: '0.2.0', sessionId: id, instance: 'seed-' + id, state: 'idle', why: 'session.start',
+  stateSince: now - 5000, seq: 1, heartbeatAt: now - 1000, heartbeatMs: 30000, startedAt: now - 600000,
+  root: '/x/' + id, repoRoot: null, launchCwd: '/x/' + id, lang: 'en', surface: 'terminal', blocked: null, activity: null,
+  inFlight: 0, turns: 2, lastTurn: null, ended: null, resume: { id, resumable: true }, transcript: null, parent: null,
+  contested: false, host: {}, ...o,
+};
+fs.mkdirSync(dir, { recursive: true });
+const p = dir + '/' + id + '.json';
+fs.writeFileSync(p, JSON.stringify(rec, null, 2) + '\n');
+if (ago) { const t = (now - Number(ago)) / 1000; fs.utimesSync(p, t, t); }
+SEED
+fseed() { node "$FSEED" "$@"; }
+BLK='state:"blocked",stateSince:now-10000,blocked:{kind:"permission",tool:"Bash",target:null,agent:false,since:now-10000}'
+GH="$TMP/gauge-home"; GS="$GH/sessions"
+fseed "$GS" sa "({$BLK,heartbeatAt:now-5000,root:'/x/orca'})"
+fseed "$GS" me "({$BLK})"
+fseed "$GS" sc "({$BLK,heartbeatAt:now-180000})"
+fseed "$GS" se "({$BLK,contested:true})"
+fseed "$GS" so "({$BLK,root:'/x/old'})" 180000
+ln -s "$GS/sa.json" "$GS/sf.json"
+fgauge() { printf '{"session_id":"me"}' | FLIGHTWAKE_HOME="${2:-$GH}" node "${1:-.flightwake/hooks/statusline.mjs}"; }
+sl_out=$(fgauge)
+echo "$sl_out" | grep -q '⛔ orca blocked' || fail "16.2 只有 sa 該算(me/心跳舊/contested/symlink/mtime 超過 120 s 都不算):$sl_out"
+GH3="$TMP/gauge-home3"
+fseed "$GH3/sessions" sd "({state:'blocked',stateSince:now-500,blocked:{kind:'question',tool:'AskUserQuestion',target:null,agent:false,since:now-500}})"
+sd_out=$(fgauge "" "$GH3")
+echo "$sd_out" | grep -q '⛔' && fail "16.2 blocked 未滿 2s 不該算:$sd_out"
+node -e 'const p=process.argv[1].split(" │ "); if(!/flightwake/.test(p[0])||!p[1].startsWith("\x1b[31m⛔")) process.exit(1)' "$sl_out" || fail "16.2 ⛔ 欄位應緊接品牌之後、紅色:$sl_out"
+fseed "$GS" sg "({$BLK,root:'/x/web'})"
+fgauge | grep -q '⛔ 2 blocked' || fail "16.2 兩個 blocked 應顯示 ⛔ 2 blocked:$(fgauge)"
+rm -f "$GS/sa.json" "$GS/sg.json" "$GS/sf.json"
+fgauge | grep -q '⛔' && fail "16.2 沒有可算的 blocked 時不該有 ⛔:$(fgauge)"
+fseed "$GS" sa "({$BLK,root:'/x/orca'})"
+for l in zh-TW zh-CN ja; do
+  case $l in
+    zh-TW) k='⛔ orca 等你回覆'; k2='⛔ 2 個 session 等你回覆';;
+    zh-CN) k='⛔ orca 等你回复'; k2='⛔ 2 个 session 等你回复';;
+    ja) k='⛔ orca が応答待ち'; k2='⛔ 2 件が応答待ち';;
+  esac
+  R="$TMP/repo8-$l"; mkdir -p "$R" && (cd "$R" && git init -q && echo "# c" > CLAUDE.md && node "$CLI" init --lang=$l --statusline >/dev/null)
+  fgauge "$R/.flightwake/hooks/statusline.mjs" | grep -q "$k" || fail "16.2 $l 儀表應印「$k」:$(fgauge "$R/.flightwake/hooks/statusline.mjs")"
+  fseed "$GS" sg "({$BLK,root:'/x/web'})"
+  fgauge "$R/.flightwake/hooks/statusline.mjs" | grep -q "$k2" || fail "16.2 $l 儀表兩個 blocked 應印「$k2」:$(fgauge "$R/.flightwake/hooks/statusline.mjs")"
+  rm -f "$GS/sg.json"
+done
+GH2="$TMP/gauge-home2"; fseed "$GH2/.flightwake/sessions" sh "({$BLK,root:'/x/home'})"
+printf '{"session_id":"me"}' | FLIGHTWAKE_HOME= HOME="$GH2" node .flightwake/hooks/statusline.mjs | grep -q '⛔ home blocked' || fail "16.2 空的 FLIGHTWAKE_HOME 應退回 HOME/.flightwake"
+fseed "$PWD/relhome/sessions" sr "({$BLK,root:'/x/rel'})"
+out=$(printf '{"session_id":"me"}' | FLIGHTWAKE_HOME=relhome HOME="$GH2" node .flightwake/hooks/statusline.mjs)
+echo "$out" | grep -q '⛔ home blocked' || fail "16.2 相對的 FLIGHTWAKE_HOME 應忽略、改用 HOME:$out"
+echo "$out" | grep -q 'rel' && fail "16.2 相對的 FLIGHTWAKE_HOME 不得被讀:$out"
+printf '{"session_id":"me"}' | FLIGHTWAKE_HOME=relhome HOME= USERPROFILE= node .flightwake/hooks/statusline.mjs | grep -q '⛔' && fail "16.2 沒有可用的 base 時不該有 ⛔"
+fseed "$PWD/relhome/.flightwake/sessions" sr2 "({$BLK,root:'/x/rel2'})"
+printf '{"session_id":"me"}' | FLIGHTWAKE_HOME= HOME=relhome USERPROFILE= node .flightwake/hooks/statusline.mjs | grep -q '⛔' && fail "16.2 相對的 HOME 不得當 base(會落在工作目錄)"
+rm -rf relhome
+pass "16.2 儀表 ⛔ 欄位:只算別的 session 的新鮮 blocked(≥2s、非 contested、不經 symlink)、緊接品牌、四語(含 n>1)、base 規則同 mod"
 node "$CLI" uninstall >/dev/null
 [ -f .claude/settings.json ] && fail "uninstall 後全 flightwake 的 settings 應已空刪除"
 [ -f .flightwake/hooks/statusline.mjs ] && fail "uninstall 應刪 statusline.mjs"
@@ -697,27 +780,33 @@ grep -q 'statusLine' .claude/settings.json && fail "全預設不得裝 statusLin
 grep -rq 'flightwake-orca' --include='*.md' . 2>/dev/null && fail "全預設不得有 Orca 區塊"
 grep -q '<!-- flightwake:begin v[0-9.]* lang=en -->' AGENTS.md || fail "全預設的 marker 應為英文且無 profile=(got: $(grep 'flightwake:begin' AGENTS.md))"
 grep -q 'profile=' AGENTS.md && fail "全預設(程式專案)marker 不得帶 profile="
-# 各附加元件單獨回 y(其餘預設)
+# 附加元件清單只選一項(取代語意:選的就是全部)
 newrepo "$TMP/sd-sl" >/dev/null; echo "# 我的" > CLAUDE.md
-node "$DRIVE" --orca=0 -- "" "" y "" "" "" y >/dev/null || fail "statusline 單選 setup 應成功"
-grep -q 'statusLine' .claude/settings.json || fail "statusline 答 y 應寫入 statusLine"
+node "$DRIVE" --orca=0 -- "" "" 1 "" y >/dev/null || fail "statusline 單選 setup 應成功"
+grep -q 'statusLine' .claude/settings.json || fail "清單選 1 應寫入 statusLine"
+[ -e .claude/skills/flightwake-mod ] && fail "只選 1 不得裝 mod"
 [ -e .claude/skills/fw-roles ] && fail "只答 statusline 不得裝 roles"
 grep -q 'flightwake-orca' CLAUDE.md && fail "只答 statusline 不得有 Orca 區塊"
 newrepo "$TMP/sd-roles" >/dev/null
-node "$DRIVE" --orca=0 -- "" 2 y "" y >/dev/null || fail "roles 單選 setup 應成功"
-[ -f .claude/skills/fw-roles/SKILL.md ] || [ -f .agents/skills/fw-roles/SKILL.md ] || fail "roles 答 y 應裝 fw-roles"
+node "$DRIVE" --orca=0 -- "" 2 3 "" y >/dev/null || fail "roles 單選 setup 應成功"
+[ -f .claude/skills/fw-roles/SKILL.md ] || [ -f .agents/skills/fw-roles/SKILL.md ] || fail "清單選 3 應裝 fw-roles"
 grep -q 'statusLine' .claude/settings.json && fail "只答 roles 不得裝 statusLine"
 grep -rq 'flightwake-orca' --include='*.md' . && fail "只答 roles 不得有 Orca 區塊"
 newrepo "$TMP/sd-orca" >/dev/null
-out=$(node "$DRIVE" --orca=1 -- "" 2 "" y "" y 2>&1) || fail "Orca 單選 setup 應成功(out: $out)"
+out=$(node "$DRIVE" --orca=1 -- "" 2 "" "" y 2>&1) || fail "Orca 單選 setup 應成功(out: $out)"
 echo "$out" | grep -q 'Orca collaboration (' || fail "--orca=1 時應出現 Orca 題目"
-grep -q 'flightwake-orca:begin' AGENTS.md || fail "Orca 答 y 應寫入 Orca 區塊"
+echo "$out" | grep -q '\[\*\] 4) Orca collaboration (' || fail "在 Orca 裡(ORCA_* env)Orca 應預選(got: $out)"
+grep -q 'flightwake-orca:begin' AGENTS.md || fail "Orca 預選 + Enter 應寫入 Orca 區塊"
 [ -e .claude/skills/fw-roles ] || [ -e .agents/skills/fw-roles ] && fail "只答 Orca 不得裝 roles"
 grep -q 'statusLine' .claude/settings.json && fail "只答 Orca 不得裝 statusLine"
-# Orca 題答 n(預設)→ 不寫區塊
+# Orca 預選但答 0 → 不寫區塊;PATH 上只有 orca 程式(可能是 GNOME 螢幕閱讀器)→ 列出但不預選
 newrepo "$TMP/sd-orca-n" >/dev/null
-node "$DRIVE" --orca=1 -- "" 2 "" "" "" y >/dev/null || fail "Orca 預設否 setup 應成功"
-grep -q 'flightwake-orca' AGENTS.md && fail "Orca 題預設否,不得寫區塊"
+node "$DRIVE" --orca=1 -- "" 2 0 "" y >/dev/null || fail "Orca 預選但答 0 的 setup 應成功"
+grep -q 'flightwake-orca' AGENTS.md && fail "Orca 預選但答 0,不得寫區塊"
+newrepo "$TMP/sd-orca-path" >/dev/null
+out=$(node "$DRIVE" --orca=path -- "" 2 "" "" y 2>&1) || fail "--orca=path 的 setup 應成功(out: $out)"
+echo "$out" | grep -q '\[ \] 4) Orca collaboration (' || fail "PATH 上只有 orca 時應列出 Orca 但不預選(got: $out)"
+grep -q 'flightwake-orca' AGENTS.md && fail "PATH 上只有 orca、Enter 不得寫 Orca 區塊"
 # repo 類型選 2 → notes
 newrepo "$TMP/sd-notes" >/dev/null
 node "$DRIVE" --orca=0 -- "" 2 "" 2 y >/dev/null || fail "筆記型 setup 應成功"
@@ -725,7 +814,7 @@ grep -q 'flightwake:begin v[0-9.]* lang=en profile=notes' AGENTS.md || fail "選
 # 旗標視為該題答案(不再提問)
 newrepo "$TMP/sd-flags" >/dev/null
 out=$(node "$DRIVE" --orca=0 --flags='{"lang":"en","agents":["codex"],"profile":"notes"}' -- "" y 2>&1) || fail "帶旗標 setup 應成功(out: $out)"
-echo "$out" | grep -q 'Language' && fail "給了 lang 旗標就不該再問語言"
+echo "$out" | grep -qF 'Language / ' && fail "給了 lang 旗標就不該再問語言"
 echo "$out" | grep -q 'What kind of repo' && fail "給了 profile 旗標就不該再問 repo 類型"
 grep -q 'profile=notes' AGENTS.md || fail "旗標 profile=notes 應生效"
 pass "setup 流程:全預設只裝核心;statusline/roles/Orca 各自單選;旗標跳題"
@@ -743,19 +832,23 @@ node "$DRIVE" --orca=0 -- y "" 2 "" "" y >/dev/null || fail "同意 git init 並
 newrepo "$TMP/sd-exist" >/dev/null
 node "$CLI" init >/dev/null
 b=$(snap)
-rc=0; out=$(node "$DRIVE" -- n 2>&1) || rc=$?
-[ "$rc" = 1 ] || fail "已安裝時確認答 n 應退出 1(got $rc)"
+rc=0; out=$(node "$DRIVE" -- 3 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "已安裝時選「維持原狀」應退出 0(got $rc: $out)"
 echo "$out" | grep -qi 'already installed' || fail "已安裝時應告知「already installed」(got: $out)"
-[ "$b" = "$(snap)" ] || fail "已安裝時確認答 n 不得改任何檔案"
-rc=0; out=$(node "$DRIVE" -- "" 2>&1) || rc=$?
+echo "$out" | grep -q 'left as it is' || fail "選「維持原狀」應說明沒有寫入(got: $out)"
+[ "$b" = "$(snap)" ] || fail "已安裝時選「維持原狀」不得改任何檔案"
+rc=0; out=$(node "$DRIVE" -- 1 n 2>&1) || rc=$?
+[ "$rc" = 1 ] || fail "已安裝時選 1 後確認答 n 應退出 1(got $rc)"
+[ "$b" = "$(snap)" ] || fail "已安裝時選 1 後確認答 n 不得改任何檔案"
+rc=0; out=$(node "$DRIVE" -- "" "" 2>&1) || rc=$?
 [ "$rc" = 0 ] || fail "已安裝時最終確認 Enter(預設是)應執行更新並退出 0(got $rc)"
 echo "$out" | grep -q '\[Y/n\]' || fail "最終確認應顯示 [Y/n]"
-echo "$out" | grep -q 'Language' && fail "已安裝時不應再問語言等題(只有最終確認)"
+echo "$out" | grep -qF 'Language / ' && fail "已安裝時不應再問語言等題(只有最終確認)"
 sed -i.bak 's/flightwake:begin v[0-9.]*/flightwake:begin v0.0.1/' AGENTS.md && rm -f AGENTS.md.bak
-rc=0; out=$(node "$DRIVE" -- y 2>&1) || rc=$?
-[ "$rc" = 0 ] || fail "已安裝時確認答 y 應成功更新(got $rc: $out)"
+rc=0; out=$(node "$DRIVE" -- 1 y 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "已安裝時選 1、確認答 y 應成功更新(got $rc: $out)"
 grep -q "flightwake:begin v$FWV lang=en" AGENTS.md || fail "setup 更新應沿用既有語言並升到目前版本(got: $(grep 'flightwake:begin' AGENTS.md))"
-pass "setup:拒絕 git init 零寫入;已安裝 y 更新 / n 不動"
+pass "setup:拒絕 git init 零寫入;已安裝:維持原狀 exit 0 不動、選 1 後 n 不動、選 1 後 y 更新"
 
 # 29. Orca 協作 add-on:init 預設不加;--orca 每個啟用的指令檔都加;uninstall 清掉且保留使用者行;update 只刷新既有
 newrepo "$TMP/or1" >/dev/null
@@ -812,7 +905,7 @@ chk_zero "agent 題 ^D" "" ^D
 chk_zero "最終確認 ^D" "" 2 "" "" ^D
 chk_zero "答案用完(隱含 EOF)" "" ""
 chk_zero "語言題 ^C" ^C
-chk_zero "roles 題 ^C(中間題)" "" 2 ^C
+chk_zero "附加元件題 ^C" "" 2 ^C
 chk_zero "repo 類型題 ^C" "" 2 "" ^C
 chk_zero "最終確認 ^C" "" 2 "" "" ^C
 mkdir -p "$TMP/int-nonrepo" && cd "$TMP/int-nonrepo"
@@ -828,6 +921,10 @@ b=$(snap); rc=0; node "$DRIVE" --orca=0 --flags='{"gitInit":true}' -- "" 2 "" ""
 newrepo "$TMP/int-exist" >/dev/null; node "$CLI" init >/dev/null
 chk_zero "已安裝:^D" ^D
 chk_zero "已安裝:^C" ^C
+chk_zero "已安裝:選 1 後 n" 1 n
+chk_zero "已安裝:加裝清單 ^D" 2 ^D
+chk_zero "已安裝:加裝後 n" 2 3 n
+chk_zero "已安裝:加裝清單 ^C" 2 ^C
 pass "中斷(n/^D/^C/答案用完)一律零寫入非零退出,含非 repo 的 git init"
 
 # 31. worktree / submodule / 一般子目錄
@@ -958,7 +1055,7 @@ pass "--private + roles:install 與 update 後 git status 皆乾淨"
 
 # 35. agent 題:偵測不到任何指令檔 → 直接問用哪些工具(可複選、不預選);偵測得到 → 維持「Enter 沿用」;最終確認預設是
 newrepo "$TMP/ag-none" >/dev/null
-out=$(node "$DRIVE" --orca=0 -- "" "" 1 "" "" "" "" "" 2>&1) || fail "無指令檔時選 claude 的 setup 應成功(out: $out)"
+out=$(node "$DRIVE" --orca=0 -- "" "" 1 0 "" "" 2>&1) || fail "無指令檔時選 claude 的 setup 應成功(out: $out)"
 echo "$out" | grep -q 'Which AI coding tools' || fail "無指令檔時應直接問用哪些工具"
 echo "$out" | grep -q 'detected:' && fail "無指令檔時不得顯示偵測結果或預選"
 echo "$out" | grep -q 'Pick at least one' || fail "無指令檔時直接 Enter 應要求至少選一個(不得預設 codex)"
@@ -966,7 +1063,7 @@ echo "$out" | grep -q 'Bottom gauge in Claude Code' || fail "選了 claude 應�
 grep -q 'flightwake:begin' CLAUDE.md || fail "選 claude 應寫入 CLAUDE.md"
 [ -e AGENTS.md ] && fail "只選 claude 不得建 AGENTS.md"
 newrepo "$TMP/ag-names" >/dev/null
-node "$DRIVE" --orca=0 -- "" "claude,gemini" "" "" "" "" "" >/dev/null || fail "以名稱複選應成功"
+node "$DRIVE" --orca=0 -- "" "claude,gemini" 0 "" "" >/dev/null || fail "以名稱複選應成功"
 grep -q 'flightwake:begin' CLAUDE.md && grep -q 'flightwake:begin' GEMINI.md || fail "複選 claude,gemini 應寫兩個指令檔"
 [ -e AGENTS.md ] && fail "未選 codex 不得建 AGENTS.md"
 newrepo "$TMP/ag-bad" >/dev/null
@@ -1091,14 +1188,14 @@ summary_vs_writes() { # $1 描述;其餘 = driver 參數(含 --);在目前目錄
   ' "$TMP/sw.before" "$TMP/sw.after" "$TMP/sw.out" || fail "36.7 $desc:摘要與實際寫入不一致"
 }
 newrepo "$TMP/ax7a" >/dev/null; echo "# 我的" > CLAUDE.md
-summary_vs_writes "新裝全選項(private+statusline+mod+roles+Orca+notes)" --orca=1 --flags='{"private":true}' -- "" "claude,codex" y y y y 2 ""
+summary_vs_writes "新裝全選項(private+statusline+mod+roles+Orca+notes)" --orca=1 --flags='{"private":true}' -- "" "claude,codex" "1 2 3 4" 2 ""
 grep -q 'flightwake-orca:begin' CLAUDE.local.md && [ -f .claude/skills/fw-roles/SKILL.md ] && [ -f .claude/skills/flightwake-mod/hooks/register.ts ] || fail "36.7 測試前提:全選項應已安裝"
 newrepo "$TMP/ax7b" >/dev/null
 summary_vs_writes "新裝全預設" --orca=0 -- "" 2 "" "" ""
 sed -i.bak 's/flightwake:begin v[0-9.]*/flightwake:begin v0.0.1/' AGENTS.md && rm -f AGENTS.md.bak
-summary_vs_writes "已安裝 → 升級" -- ""
+summary_vs_writes "已安裝 → 升級" -- "" ""
 mkdir -p "$TMP/ax7c" && cd "$TMP/ax7c"
-summary_vs_writes "非 repo:git init + 安裝" --orca=0 -- y "" 1 y "" "" "" ""
+summary_vs_writes "非 repo:git init + 安裝" --orca=0 -- y "" 1 1 "" ""
 [ -d .git ] || fail "36.7 測試前提:應已 git init"
 pass "36.7 setup 摘要與實際寫入的路徑集合一致(新裝全選項/全預設/升級/含 git init)"
 
@@ -1149,7 +1246,7 @@ rc=0; out=$(node "$CLI" roles install 2>&1) || rc=$?
 [ -f "$TMP/ay4-out/fw-roles/KEEP" ] && [ "$rc" = 1 ] || fail "37.4 roles install 也不得重建 repo 外的 fw-roles(rc=$rc: $out)"
 # setup 選 roles 時同樣:預檢就拒,外部目錄與 repo 都不被寫
 newrepo "$TMP/ay4b" >/dev/null; mkdir -p "$TMP/ay4b-out" .claude && ln -s "$TMP/ay4b-out" .claude/skills
-b=$(fsnap); rc=0; out=$(node "$DRIVE" --orca=0 -- "" 1 "" "" y "" "" 2>&1) || rc=$?
+b=$(fsnap); rc=0; out=$(node "$DRIVE" --orca=0 -- "" 1 3 "" 2>&1) || rc=$?
 [ "$rc" = 1 ] && [ -z "$(ls -A "$TMP/ay4b-out")" ] && [ "$b" = "$(fsnap)" ] || fail "37.4 setup(含 roles)遇 repo 外落點應在寫入前中止(rc=$rc: $out)"
 pass "37.4 roles 安裝/刷新走同一層防護:repo 外的 fw-roles 不被刪除或重建(update、roles install、setup)"
 
@@ -1392,8 +1489,8 @@ pass "40.5 --private:mod 進排除、update 仍乾淨、private 後補裝也排�
 
 # 40.6 安裝語言經由 marker 傳給 mod(用 mod 自己的讀取邏輯驗):setup / init、profile=notes、CLAUDE.local.md、只剩 AGENTS.md 有 marker
 newrepo "$TMP/md6a" >/dev/null
-node "$DRIVE" --orca=0 -- 2 1 "" y "" "" "" >/dev/null || fail "40.6 setup(zh-TW、claude、mod)應成功"
-[ -f $MODREL/hooks/register.ts ] || fail "40.6 setup 答 y 應裝 mod"
+node "$DRIVE" --orca=0 -- 2 1 2 "" "" >/dev/null || fail "40.6 setup(zh-TW、claude、mod)應成功"
+[ -f $MODREL/hooks/register.ts ] || fail "40.6 setup 清單選 2 應裝 mod"
 [ "$(modlang)" = zh-TW ] || fail "40.6 setup 裝 zh-TW 後 mod 讀到的語言應為 zh-TW(got $(modlang))"
 newrepo "$TMP/md6b" >/dev/null
 node "$CLI" init --agents=claude --mod --lang=ja --profile=notes >/dev/null
@@ -1411,26 +1508,30 @@ grep -q 'flightwake:begin v[0-9.]* lang=ja' AGENTS.md || fail "40.6 測試前提
 [ "$(modlang)" = ja ] || fail "40.6 只有 AGENTS.md 有 marker 時 mod 應讀到 ja(got $(modlang))"
 pass "40.6 安裝語言經 marker 傳給 mod:setup zh-TW、notes ja、CLAUDE.local.md zh-CN、只剩 AGENTS.md ja"
 
-# 40.7 setup:mod 題只在選了 Claude Code 時問、預設否;摘要含 mod 路徑;兩者都選時一句話說明橫條與儀表
+# 40.7 setup:mod 列只在選了 Claude Code 時出現、預選;摘要含 mod 路徑;兩者都選時一句話說明橫條與儀表
 newrepo "$TMP/md7a" >/dev/null
 out=$(node "$DRIVE" --orca=0 -- "" 2 "" "" "" 2>&1) || fail "40.7 只選 codex 的 setup 應成功(out: $out)"
-echo "$out" | grep -q 'Install the Claude Code mod' && fail "40.7 沒選 Claude Code 不得問 mod"
+echo "$out" | grep -q 'Claude Code mod —' && fail "40.7 沒選 Claude Code 不得列出 mod"
 newrepo "$TMP/md7b" >/dev/null; echo "# 我的" > CLAUDE.md
-out=$(node "$DRIVE" --orca=0 -- "" "" "" "" "" "" "" 2>&1) || fail "40.7 mod 題預設否的 setup 應成功(out: $out)"
-echo "$out" | grep -q 'Install the Claude Code mod' || fail "40.7 選了 Claude Code 應問 mod"
-echo "$out" | grep -A3 'Claude Code mod —' | grep -q '2.1.287' && echo "$out" | grep -A3 'Claude Code mod —' | grep -qi 'trust' || fail "40.7 mod 題應提到 2.1.287 與第一次的資料夾信任(got: $out)"
-[ -e $MODREL ] && fail "40.7 mod 題預設否,不得安裝"
+out=$(node "$DRIVE" --orca=0 -- "" "" "" "" "" 2>&1) || fail "40.7 mod 預選的 setup 應成功(out: $out)"
+echo "$out" | grep -q '\[\*\] 2) Claude Code mod —' || fail "40.7 選了 Claude Code 應列出 mod 且預選(got: $out)"
+echo "$out" | grep -A3 'Claude Code mod —' | grep -q '2.1.287' && echo "$out" | grep -A3 'Claude Code mod —' | grep -qi 'trust' || fail "40.7 mod 列應提到 2.1.287 與第一次的資料夾信任(got: $out)"
+[ -f $MODREL/hooks/register.ts ] || fail "40.7 mod 預選,Enter 應安裝"
+newrepo "$TMP/md7b2" >/dev/null; echo "# 我的" > CLAUDE.md
+node "$DRIVE" --orca=0 -- "" "" 0 "" "" >/dev/null || fail "40.7 清單答 0 的 setup 應成功"
+[ -e $MODREL ] && fail "40.7 清單答 0 不得安裝 mod"
+grep -q statusLine .claude/settings.json && fail "40.7 清單答 0 不得安裝 statusLine"
 newrepo "$TMP/md7c" >/dev/null; echo "# 我的" > CLAUDE.md
-out=$(node "$DRIVE" --orca=0 -- "" "" y y "" "" "" 2>&1) || fail "40.7 儀表 + mod 的 setup 應成功(out: $out)"
+out=$(node "$DRIVE" --orca=0 -- "" "" "1 2" "" "" 2>&1) || fail "40.7 儀表 + mod 的 setup 應成功(out: $out)"
 echo "$out" | sed -n '/These paths will be written/,/Proceed/p' | grep -q "$MODREL/" || fail "40.7 摘要應列出 $MODREL/"
 [ -f $MODREL/hooks/register.ts ] && grep -q statusLine .claude/settings.json || fail "40.7 兩者都選應都安裝(不因 mod 而不裝儀表)"
 echo "$out" | grep -qi 'band above the prompt' && echo "$out" | grep -qi 'bottom gauge' || fail "40.7 兩者都選時結尾應說明橫條與底部儀表各顯示什麼(got: $out)"
 echo "$out" | grep -q 'flightwake-mod@skills-dir' || fail "40.7 setup 裝 mod 後結尾應說明角色守門的啟用方式"
 newrepo "$TMP/md7d" >/dev/null; echo "# 我的" > CLAUDE.md
-summary_vs_writes "新裝含 mod" --orca=0 -- "" "" "" y "" "" ""
+summary_vs_writes "新裝含 mod" --orca=0 -- "" "" 2 "" ""
 [ -f $MODREL/hooks/register.ts ] || fail "40.7 測試前提:mod 應已安裝"
-summary_vs_writes "已安裝(含 mod)→ 升級" -- ""
-pass "40.7 setup:mod 題只對 Claude 問、預設否、說明版本與信任;摘要 == 實際寫入;儀表與 mod 並存說明"
+summary_vs_writes "已安裝(含 mod)→ 升級" -- "" ""
+pass "40.7 setup:mod 列只對 Claude 列出、預選(Enter 裝、0 不裝)、說明版本與信任;摘要 == 實際寫入;儀表與 mod 並存說明"
 
 # 40.8 既有防護涵蓋 mod 路徑:預檢列出 mod;symlink(資料夾連到 repo 外、內部檔指向 STATE)、hardlink、權限
 newrepo "$TMP/md8a" >/dev/null; node "$CLI" init --agents=claude --mod >/dev/null
@@ -1563,7 +1664,7 @@ if [ "$HAVE_PY" = 1 ]; then
   PY3="$(command -v python3)"
   for ln in 1 2 3 4; do
     newrepo "$TMP/tty-$ln" >/dev/null
-    rc=0; env -u ORCA_APP_VERSION -u ORCA_TERMINAL_HANDLE -u ORCA_WORKSPACE_ID PATH="$NOCL" "$PY3" "$PTYANS" 60 "$NODE_BIN" "$CLI" setup -- "$ln" 1 "" y "" "" n > "$TMP/tty-$ln.out" 2>&1 || rc=$?
+    rc=0; env -u ORCA_APP_VERSION -u ORCA_TERMINAL_HANDLE -u ORCA_WORKSPACE_ID PATH="$NOCL" "$PY3" "$PTYANS" 60 "$NODE_BIN" "$CLI" setup -- "$ln" 1 2 "" n > "$TMP/tty-$ln.out" 2>&1 || rc=$?
     [ "$rc" = 1 ] || fail "43.1 lang=$ln:最終確認答 n 應退出 1(rc=$rc)"
     node -e '
       const fs = require("fs"); const raw = fs.readFileSync(process.argv[1], "utf8"); const ln = process.argv[2];
@@ -1571,7 +1672,7 @@ if [ "$HAVE_PY" = 1 ]; then
       if (/\x1b\[/.test(raw)) bad.push("output contains cursor/erase control sequences: " + JSON.stringify(raw.match(/\x1b\[[0-9;?]*[A-Za-z]/g).slice(0, 5)));
       const lines = raw.split(/\r?\n/).map((l) => l.replace(/\r/g, "").trimEnd());
       const need = [[/\[\d\] ?(\d)$/, "language prompt with its answer", (m) => m[1] === ln],
-                    [/\[y\/N\] ?y$/, "mod question with its answer y"],
+                    [/(none|都不要|なし): ?2$/, "add-ons prompt with its answer 2"],
                     [/\[Y\/n\] ?n$/, "final confirmation with its answer n"]];
       for (const [re, what, ok = () => true] of need) if (!lines.some((l) => { const m = re.exec(l); return m && ok(m); })) bad.push("missing on screen: " + what);
       if (bad.length) { console.log(bad.join("\n") + "\n---\n" + lines.join("\n")); process.exit(1); }
@@ -1621,6 +1722,564 @@ echo "$out" | grep -q 'MINE.md' || fail "44 應列出保留的自加檔 MINE.md(
 [ ! -e .claude/skills/fw-coldstart ] && [ ! -e .claude/skills/fw-handoff ] || fail "44 沒有自加內容的 skill 資料夾應整個移除"
 [ ! -e "$MODREL/hooks/hooks.json" ] && [ ! -e "$MODREL/.claude-plugin/plugin.json" ] || fail "44 其他發行檔仍應移除"
 pass "44 uninstall:發行檔位置是目錄時保留並列出(mod / skill / fw-roles),skill 內自加檔保留並列出,其餘照常移除"
+
+# 45. F7 session fleet:`npx flightwake fleet`(唯讀清單 / --json / --prune 唯一的刪除路徑)、init --mod 建 0700 的 sessions、
+#     uninstall(含 --purge)不碰 sessions 並印「kept」、靜態檢查(fs.write 只在 fleet.ts;§8 常數三處一致)
+#     transcript 只認「該 session 自己在 <HOME>/.claude/projects/<key>/<id>.jsonl」的路徑;其他路徑(e3 的 $FH/t.jsonl)永不看
+FH="$TMP/fleet-home"; FS="$FH/sessions"; FU="$TMP/fleet-user"; mkdir -p "$FS" "$FU/.claude/projects/-x"
+TRS() { printf '%s' "$FU/.claude/projects/-x/$1.jsonl"; }
+for t in b1 s1 e1 e4; do : > "$(TRS $t)"; done; : > "$FH/t.jsonl"
+fleet() { HOME="$FU" FLIGHTWAKE_HOME="$FH" node "$CLI" fleet "$@"; }
+fsnap2() { { find "$1" | sort; find "$1" -type f -exec shasum {} + | sort -k2; find "$1" -type l -exec ls -l {} + | awk '{print $NF}' | sort; } | shasum; }
+D=86400000
+fseed "$FS" b1 "({$BLK,heartbeatAt:now-1000,root:'/x/api',transcript:'$(TRS b1)'})"
+fseed "$FS" w1 "({state:'working',stateSince:now-12000,activity:{tool:'Edit',target:'src/a.ts',agent:false,at:now},root:'/x/orca/wt',repoRoot:'/x/orca'})"
+fseed "$FS" i1 "({lastTurn:{reason:'answer',at:now-5000,durationMs:1000}})"
+fseed "$FS" s1 "({state:'working',heartbeatAt:now-3*3600000,launchCwd:\"/x/it's\",transcript:'$(TRS s1)'})" $((3*3600000))
+fseed "$FS" e1 "({state:'ended',heartbeatAt:now-$D,ended:{reason:'other',at:now-$D,stateAtEnd:'idle'},transcript:'$(TRS e1)'})" $D
+fseed "$FS" e2 "({state:'ended',heartbeatAt:now-$D,ended:{reason:'prompt_input_exit',at:now-$D,stateAtEnd:'idle'},transcript:'$(TRS e2)'})" $D
+fseed "$FS" e3 "({state:'ended',heartbeatAt:now-$D,ended:{reason:'other',at:now-$D,stateAtEnd:'idle'},transcript:'$FH/t.jsonl'})"
+fseed "$FS" e4 "({state:'ended',heartbeatAt:now-$D,ended:{reason:'prompt_input_exit',at:now-$D,stateAtEnd:'idle'},transcript:'$(TRS e4)'})" $D
+fseed "$FS" u2 "({schema:'flightwake.session/2'})"
+printf '{"schema":"flightwake.sess' > "$FS/torn.json"
+printf '{"schema":"flightwake.session/1","sess' > "$FS/oldbad.json"; touch -t 202001010000 "$FS/oldbad.json"
+printf 'garbage' > "$FS/oldjunk.json"; touch -t 202001010000 "$FS/oldjunk.json"
+printf '{"name":"my fixture","user":"x"}' > "$FS/fixture.json"; touch -t 202001010000 "$FS/fixture.json"
+fseed "$FH" outside "({state:'ended',ended:{reason:'other',at:now-$D,stateAtEnd:'idle'}})" $D
+ln -s "$FH/outside.json" "$FS/lnk.json"
+echo notes > "$FS/notes.txt"; cp "$FS/e1.json" "$FS/.hidden.json"; touch -t 202001010000 "$FS/.hidden.json"
+FN="$TMP/fleet-nonrepo"; mkdir -p "$FN" && cd "$FN"
+before=$(fsnap2 "$FH"); cwd_before=$(fsnap2 "$FN")
+rc=0; out=$(fleet 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "45 fleet 在非 repo 目錄應成功(rc=$rc: $out)"
+echo "$out" | head -1 | grep -q '^flightwake fleet — 3 live · ⛔ 1 blocked · 3 resumable — ' || fail "45 標頭摘要不對(got: $out)"
+node -e '
+  const L=process.argv[1].split("\n").slice(1); const at=(k)=>L.findIndex((l)=>l.startsWith(k));
+  const o=["⛔ blocked","● working","○ idle","◌ stale","– ended","? unknown"].map(at);
+  if (o.some((i)=>i<0) || o.some((v,i)=>i&&v<o[i-1])) process.exit(1);' "$out" || fail "45 順序應為 blocked < working < idle < stale < ended < unknown(got: $out)"
+echo "$out" | grep -q 'orca ⎇ wt' || fail "45 worktree 應顯示 repo ⎇ worktree(got: $out)"
+[ "$(echo "$out" | grep -c 'claude --resume')" = 3 ] || fail "45 只有 s1(stale)、e1(ended other)與 e4(正常 /exit)有 transcript 可接回;e2 的 transcript 不在、e3 的路徑不是它的 transcript(got: $out)"
+echo "$out" | grep -q 'claude --resume e4' || fail "45 正常 /exit(prompt_input_exit)且 transcript 在的 e4 也應可接回(got: $out)"
+echo "$out" | grep 'claude --resume' | grep -vq "cd '" && fail "45 resume 指令一律帶 cd '…'(got: $out)"
+echo "$out" | grep -qF "cd '/x/it'\\''s' && claude --resume s1" || fail "45 launchCwd 的單引號應 shell 跳脫(got: $out)"
+echo "$out" | grep -q '1 file(s) could not be read' || fail "45 torn.json 應計入讀不了(7 天外的 oldbad/oldjunk/fixture 不讀)(got: $out)"
+echo "$out" | grep -q 'unknown format' || fail "45 schema /2 應顯示 unknown(got: $out)"
+echo "$out" | grep -q 'outside\|notes\|hidden\.json' && fail "45 symlink / 非 FILE_RE 的名稱不得列出(got: $out)"
+js=$(fleet --json) || fail "45 --json 應成功"
+node -e '
+  const j=JSON.parse(process.argv[1]); const by=(id)=>j.sessions.find((s)=>s.sessionId===id);
+  const ok = j.version===1 && j.counts && j.counts.blocked===1 && j.counts.unknown===1 && j.constants.heartbeatMs===30000
+    && j.sessions.every((s)=>typeof s.display==="string" && "resumeCommand" in s && typeof s.file==="string")
+    && by("s1").display==="stale" && /^cd \x27/.test(by("s1").resumeCommand) && by("e2").resumeCommand===null && by("b1").resumeCommand===null
+    && by("e3").resumeCommand===null && /claude --resume e4$/.test(by("e4").resumeCommand)
+    && by("u2").display==="unknown" && j.unreadable.some((u)=>u.file==="torn.json") && j.hidden>=1;
+  if (!ok) { console.log(JSON.stringify(j).slice(0,400)); process.exit(1); }' "$js" || fail "45 --json 結構不對"
+fleet --lang=ja | head -1 | grep -q '稼働 3' || fail "45 --lang=ja 標頭"
+fleet --lang=zh-TW | head -1 | grep -q '3 個進行中' || fail "45 --lang=zh-TW 標頭"
+fleet --root=/x/orca | grep -q 'orca ⎇ wt' || fail "45 --root= 應以 repoRoot 也能比對"
+fleet --root=/x/orca | grep -q ' api \| s1 \| e1 ' && fail "45 --root= 應只留該 repo 的列"
+[ "$(fsnap2 "$FH")" = "$before" ] && [ "$(fsnap2 "$FN")" = "$cwd_before" ] || fail "45 fleet / --json 必須唯讀"
+rc=0; out=$(FLIGHTWAKE_HOME="$TMP/fleet-missing" node "$CLI" fleet 2>&1) || rc=$?
+[ "$rc" = 0 ] && echo "$out" | grep -q 'no session has reported yet' || fail "45 資料夾不存在 → exit 0 並說明(rc=$rc: $out)"
+FLIGHTWAKE_HOME="$TMP/fleet-missing" node "$CLI" fleet --json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8")); if(j.version!==1||j.sessions.length) process.exit(1)' || fail "45 資料夾不存在時 --json 仍是一個物件"
+[ -e "$TMP/fleet-missing" ] && fail "45 fleet 不得建立不存在的資料夾"
+rc=0; fleet --days=x >/dev/null 2>&1 || rc=$?; [ "$rc" = 1 ] || fail "45 --days=x 應 exit 1"
+rc=0; fleet --bogus >/dev/null 2>&1 || rc=$?; [ "$rc" = 1 ] || fail "45 不認得的旗標應 exit 1"
+node "$CLI" --help | grep -q '^  fleet ' || fail "45 help 應列出 fleet"
+out=$(fleet --prune --days=0 --dry-run) || fail "45 --prune --dry-run 應成功"
+echo "$out" | grep -q 'would remove  e1.json' || fail "45 --dry-run 應列出將刪除的檔(got: $out)"
+[ "$(fsnap2 "$FH")" = "$before" ] || fail "45 --prune --dry-run 不得刪任何東西"
+out=$(fleet --prune --days=0) || fail "45 --prune 應成功"
+for f in e1 e2 e4 s1 oldbad; do [ -e "$FS/$f.json" ] && fail "45 --prune --days=0 應刪除 $f.json(got: $out)"; done
+for f in b1 w1 i1 e3 u2 torn .hidden oldjunk fixture; do [ -f "$FS/$f.json" ] || fail "45 --prune 不得刪 $f.json(剛寫過 / 進行中 / 不符檔名 / 不是我們的檔)(got: $out)"; done
+[ -L "$FS/lnk.json" ] && [ -f "$FH/outside.json" ] && [ -f "$FS/notes.txt" ] && [ -d "$FS" ] || fail "45 --prune 不得碰 symlink、其目標、非 .json 檔或資料夾本身"
+echo "$out" | tail -1 | grep -q '^pruned 5 of ' || fail "45 prune 摘要(got: $out)"
+echo "$out" | grep -q 'fixture\|oldjunk' && fail "45 --prune 不得列出不是 flightwake session 的檔(got: $out)"
+# base 在某個 repo 裡:--prune 拒絕(exit 1、什麼都不刪),--dry-run 也一樣
+PR="$TMP/fl-prune-repo"; mkdir -p "$PR" && (cd "$PR" && git init -q)
+fseed "$PR/fw/sessions" old1 "({state:'ended',heartbeatAt:now-$D,ended:{reason:'other',at:now-$D,stateAtEnd:'idle'}})" $D
+for extra in "" "--dry-run"; do
+  rc=0; out=$(FLIGHTWAKE_HOME="$PR/fw" node "$CLI" fleet --prune --days=0 $extra 2>&1) || rc=$?
+  [ "$rc" = 1 ] && [ -f "$PR/fw/sessions/old1.json" ] || fail "45 base 在 repo 裡時 --prune $extra 應 exit 1 且不刪(rc=$rc: $out)"
+  echo "$out" | grep -qF "$PR/fw/sessions lies inside a repo or a flightwake records folder; nothing deleted" || fail "45 拒絕 --prune 時應說明(got: $out)"
+done
+# uninstall / --purge:sessions 位元組不變、印 kept 行
+newrepo "$TMP/fl-un" >/dev/null; FLIGHTWAKE_HOME="$FH" node "$CLI" init --agents=claude --mod >/dev/null
+before=$(fsnap2 "$FS")
+out=$(FLIGHTWAKE_HOME="$FH" node "$CLI" uninstall 2>&1) || fail "45 uninstall 應成功"
+echo "$out" | grep -qF "kept $FS — session files are shared by every repo" || fail "45 uninstall 應印 kept 行(got: $out)"
+FLIGHTWAKE_HOME="$FH" node "$CLI" init --agents=claude --mod >/dev/null
+out=$(FLIGHTWAKE_HOME="$FH" node "$CLI" uninstall --purge 2>&1) || fail "45 uninstall --purge 應成功"
+echo "$out" | grep -qF "kept $FS" || fail "45 uninstall --purge 也應印 kept 行(got: $out)"
+[ "$(fsnap2 "$FS")" = "$before" ] || fail "45 uninstall / --purge 不得改動 sessions"
+# 裝在 $HOME 的 repo(base = 它的 .flightwake 紀錄資料夾):init --mod 不在那裡建 sessions;
+# 若那裡已有 sessions(舊版或手建),--purge 繞開它刪 .flightwake 其餘內容,並印 kept 行
+HR="$TMP/fl-homerepo"; newrepo "$HR" >/dev/null
+env -u FLIGHTWAKE_HOME HOME="$HR" node "$CLI" init --agents=claude --mod >/dev/null
+[ -e "$HR/.flightwake/sessions" ] && fail "45 base 是某個 repo 的 .flightwake 時,init --mod 不得在裡面建 sessions"
+fseed "$HR/.flightwake/sessions" live1 "({})"
+out=$(env -u FLIGHTWAKE_HOME HOME="$HR" node "$CLI" uninstall --purge 2>&1) || fail "45 HOME 是 repo 時 uninstall --purge 應成功(got: $out)"
+[ -f "$HR/.flightwake/sessions/live1.json" ] || fail "45 --purge 不得刪掉位在 .flightwake 裡的 sessions(got: $out)"
+[ -e "$HR/.flightwake/STATE.md" ] && fail "45 --purge 仍應刪掉 .flightwake 其餘的使用者資料(got: $out)"
+echo "$out" | grep -qF "kept $HR/.flightwake/sessions — session files are shared by every repo" || fail "45 --purge 繞開 sessions 時應印 kept 行(got: $out)"
+cd "$TMP"
+# init --mod:sessions 不存在才建、0700;不帶 --mod 不建;既有資料夾不 chmod;base 是 symlink 不經由它建
+modeof() { node -e 'console.log((require("fs").statSync(process.argv[1]).mode & 0o777).toString(8))' "$1"; }
+newrepo "$TMP/fl-mk" >/dev/null
+FLIGHTWAKE_HOME="$TMP/fleet-mk0" node "$CLI" init --agents=claude >/dev/null
+[ -e "$TMP/fleet-mk0/sessions" ] && fail "45 init 不帶 --mod 不建 sessions"
+FLIGHTWAKE_HOME="$TMP/fleet-mk1" node "$CLI" init --agents=claude --mod --force >/dev/null
+[ "$(modeof "$TMP/fleet-mk1/sessions")" = 700 ] || fail "45 init --mod 應建 0700 的 sessions(got: $(modeof "$TMP/fleet-mk1/sessions" 2>&1))"
+mkdir -p "$TMP/fleet-mk2/sessions" && chmod 755 "$TMP/fleet-mk2/sessions"
+FLIGHTWAKE_HOME="$TMP/fleet-mk2" node "$CLI" init --agents=claude --mod --force >/dev/null
+[ "$(modeof "$TMP/fleet-mk2/sessions")" = 755 ] || fail "45 既有的 sessions 不得被 chmod"
+mkdir -p "$TMP/fleet-mk3-real" && ln -s "$TMP/fleet-mk3-real" "$TMP/fleet-mk3"
+rc=0; out=$(FLIGHTWAKE_HOME="$TMP/fleet-mk3" node "$CLI" init --agents=claude --mod --force 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "45 sessions 建不了只是提醒,不讓安裝失敗"
+[ -e "$TMP/fleet-mk3-real/sessions" ] && fail "45 base 是 symlink 時不得經由它建 sessions"
+echo "$out" | grep -qF "$TMP/fleet-mk3/sessions (or the folder holding it) is a symbolic link — not created, and the mod writes nothing through it" || fail "45 base 是 symlink 時的提醒應說明 mod 不會經由它寫入(got: $out)"
+echo "$out" | grep -q 'creates it on first use' && fail "45 base 是 symlink 時不得說 mod 會自己建(got: $out)"
+# FLIGHTWAKE_HOME 是 repo 內以 .. 開頭的子資料夾(..cache):仍算在 repo 內,不建
+rc=0; FLIGHTWAKE_HOME="$PWD/..cache" node "$CLI" init --agents=claude --mod --force >/dev/null 2>&1 || rc=$?
+[ "$rc" = 0 ] && [ ! -e "$PWD/..cache/sessions" ] || fail "45 FLIGHTWAKE_HOME=<repo>/..cache 仍在 repo 內,init --mod 不得建 sessions"
+# 靜態檢查:$.fs.write 只在 hooks/features/fleet.ts;§8 常數與 FILE_RE 三處一致(mod / CLI / 儀表)
+MODF="$SRC/mods/flightwake"
+fws=$(cd "$MODF" && grep -rl 'fs\.write' hooks | sort || true)
+[ -f "$MODF/hooks/features/fleet.ts" ] || fail "45 mods/flightwake/hooks/features/fleet.ts 不見了"
+[ "$fws" = "hooks/features/fleet.ts" ] || fail "45 \$.fs.write 只能出現在 hooks/features/fleet.ts(got: $fws)"
+for f in "$MODF/hooks/lib/fleet.ts" "$SRC/bin/fleet.mjs" "$SRC/hooks/statusline.mjs"; do
+  [ -f "$f" ] || { fail "45 $f 不見了(§8 常數三處之一)"; continue; }
+  for c in 'HEARTBEAT_MS = 30000' 'STALE_FLOOR_MS = 90000' 'STALE_FACTOR = 4' 'BLOCKED_ALERT_MS = 2000' 'CLOCK_SKEW_MS = 60000'; do
+    grep -qF "$c" "$f" || fail "45 $f 缺少與其他兩處一致的「$c」"
+  done
+  grep -qF '/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json$/' "$f" || fail "45 $f 的 FILE_RE 應與 §2 一致"
+done
+# register.ts DEFAULTS 與 plugin.json userConfig 的 default 一致(「預設開啟幾項」兩處都靠它)
+node -e '
+  const fs=require("fs"); const [reg, man]=process.argv.slice(1);
+  const m=/export const DEFAULTS = (\{[^}]*\})/.exec(fs.readFileSync(reg,"utf8")); if(!m) process.exit(2);
+  const d=new Function("return "+m[1])(); const u=JSON.parse(fs.readFileSync(man,"utf8")).userConfig;
+  const want=Object.fromEntries(Object.entries(u).map(([k,v])=>[k,v.default]));
+  if (JSON.stringify(Object.entries(d).sort())!==JSON.stringify(Object.entries(want).sort())) { console.log(JSON.stringify(d), JSON.stringify(want)); process.exit(1); }' \
+  "$MODF/hooks/register.ts" "$MODF/.claude-plugin/plugin.json" || fail "45 register.ts DEFAULTS 應與 plugin.json userConfig 的 default 一致"
+pass "45 fleet CLI 唯讀清單/--json/--prune(不碰別人的 JSON、base 在 repo 裡拒絕)、init --mod 建 0700 sessions、uninstall 保留 sessions、fs.write 與 §8 常數三處一致、DEFAULTS 對 plugin.json"
+
+# 46. 安裝/升級流程:setup 依終端機語系預選語言、附加元件一題清單(取代語意)、已安裝 repo 三選一(升級/升級並加裝/離開)、
+#     init 的語言提示指向 update --lang、init/update 結尾一行未安裝的適用附加元件(不提問、不自動加)
+# 本節所有 CLI 呼叫的 locale / Orca / 個人設定都由檔頭固定(LC_MESSAGES=C、ORCA_* unset、CLAUDE_CONFIG_DIR 指向空目錄)
+NOTICE='Optional add-ons available here but not installed'
+no_notice() { echo "$2" | grep -q "$NOTICE" && fail "46 $1 不得印未安裝附加元件的提示(got: $2)"; return 0; }
+ncli() { PATH="$NOCL" "$NODE_BIN" "$CLI" "$@"; }   # PATH 沒有 orca / claude:通知內容不受開發機影響
+markers() { grep -h 'flightwake:begin' CLAUDE.md CLAUDE.local.md AGENTS.md GEMINI.md 2>/dev/null || true; }
+
+# 46.1 detectLocale:LC_ALL → LC_MESSAGES → LANG 第一個非空值為準(C/POSIX 也算、不往下);三者皆空才看 Intl;LANGUAGE 不看
+node --input-type=module -e "
+  import { detectLocale } from '$SRC/bin/install.mjs';
+  const I = (t) => () => t, X = () => { throw 0; }, N = I(null);
+  const rows = [
+    [{LANG:'zh_TW.UTF-8'}, I('ja-JP'), 'zh-TW', 'LANG'], [{LANG:'zh_HK.UTF-8'}, N, 'zh-TW', 'LANG'], [{LANG:'zh_MO'}, N, 'zh-TW', 'LANG'],
+    [{LANG:'zh_CN.GB2312'}, N, 'zh-CN', 'LANG'], [{LANG:'zh_SG'}, N, 'zh-CN', 'LANG'], [{LANG:'zh'}, N, 'zh-CN', 'LANG'],
+    [{LANG:'ja_JP.eucJP'}, N, 'ja', 'LANG'], [{LANG:'en_US.UTF-8'}, N, 'en', 'LANG'], [{LANG:'fr_FR.UTF-8'}, N, 'en', 'LANG'],
+    [{LANG:'zh_TW.UTF-8@stroke'}, N, 'zh-TW', 'LANG'], [{LC_ALL:'ja_JP.UTF-8',LANG:'zh_TW.UTF-8'}, N, 'ja', 'LC_ALL'],
+    [{LC_ALL:'',LC_MESSAGES:'zh_CN.UTF-8',LANG:'en_US.UTF-8'}, N, 'zh-CN', 'LC_MESSAGES'],
+    [{LC_ALL:'C',LANG:'zh_TW.UTF-8'}, I('zh-Hant-TW'), 'en', 'LC_ALL'], [{LANG:'C.UTF-8'}, I('zh-TW'), 'en', 'LANG'], [{LANG:'POSIX'}, N, 'en', 'LANG'],
+    [{}, I('zh-Hant-TW'), 'zh-TW', 'Intl'], [{}, I('zh-Hans-HK'), 'zh-CN', 'Intl'], [{}, I('ja-JP'), 'ja', 'Intl'], [{}, I('und'), 'en', 'Intl'],
+    [{}, X, 'en', null], [{LANGUAGE:'ja',LANG:'en_US.UTF-8'}, N, 'en', 'LANG'],
+  ];
+  const bad = rows.map(([env, intl, lang, source]) => [JSON.stringify(env), lang, source, detectLocale(env, intl)])
+    .filter(([, lang, source, got]) => got.lang !== lang || got.source !== source);
+  if (bad.length) { for (const [e, l, s, g] of bad) console.log(e, 'want', l, s, 'got', JSON.stringify(g)); process.exit(1); }
+" || fail "46.1 detectLocale 的優先順序 / 對應表不對"
+pass "46.1 detectLocale:POSIX 優先順序(C/POSIX 停止)、Intl 只在三者皆空時、zh 的 script 優先於 region、LANGUAGE 不看(21 列)"
+
+# 46.1b userStatusline(真的函式,不經 setup-drive 的替身):CLAUDE_CONFIG_DIR 優先於 HOME/.claude、儀表本身不算、壞 JSON / 沒檔 = false
+US="$TMP/us"; mkdir -p "$US/cfg-mine" "$US/cfg-gauge" "$US/cfg-empty" "$US/cfg-bad" "$US/h/.claude"
+echo '{"statusLine":{"type":"command","command":"my-sl"}}' > "$US/cfg-mine/settings.json"
+echo '{"statusLine":{"type":"command","command":"node .flightwake/hooks/statusline.mjs"}}' > "$US/cfg-gauge/settings.json"
+echo '{"statusLine":' > "$US/cfg-bad/settings.json"
+cp "$US/cfg-mine/settings.json" "$US/h/.claude/settings.json"
+node --input-type=module -e "
+  import { userStatusline } from '$SRC/bin/install.mjs';
+  const U = '$US';
+  const rows = [
+    [{ CLAUDE_CONFIG_DIR: U + '/cfg-mine' }, true], [{ CLAUDE_CONFIG_DIR: U + '/cfg-gauge' }, false],
+    [{ HOME: U + '/h' }, true], [{ CLAUDE_CONFIG_DIR: U + '/cfg-empty', HOME: U + '/h' }, false],
+    [{ CLAUDE_CONFIG_DIR: U + '/cfg-bad' }, false], [{ CLAUDE_CONFIG_DIR: U + '/missing' }, false],
+  ];
+  const bad = rows.filter(([env, want]) => userStatusline(env) !== want);
+  if (bad.length) { for (const [e, w] of bad) console.log(JSON.stringify(e), 'want', w); process.exit(1); }
+" || fail "46.1b userStatusline 的讀取位置 / 判斷不對"
+pass "46.1b userStatusline:CLAUDE_CONFIG_DIR 優先於 HOME/.claude、儀表的 statusline.mjs 不算、壞 JSON 與沒檔 = false(6 列)"
+
+# 46.2 setup 的語言題以 locale 預選(只是預選:Enter 沿用、號碼可改);旗標與既有安裝不問語言
+newrepo "$TMP/lc-tw" >/dev/null
+out=$(node "$DRIVE" --locale='{"LANG":"zh_TW.UTF-8"}' -- "" 2 "" "" "" 2>&1) || fail "46.2 LANG=zh_TW 的 setup 應成功(out: $out)"
+echo "$out" | grep -q '^\[2\] $' || fail "46.2 LANG=zh_TW 時語言題預設應為 [2](got: $out)"
+echo "$out" | grep -qF 'LANG=zh_TW.UTF-8' && echo "$out" | grep -q '整個團隊共用' || fail "46.2 題下應以繁中說明依據(LANG=zh_TW.UTF-8)與全隊共用(got: $out)"
+grep -q 'flightwake:begin v[0-9.]* lang=zh-TW' AGENTS.md || fail "46.2 Enter 沿用預選應裝 zh-TW(got: $(markers))"
+echo "$out" | grep -q '  lang=zh-TW · ' || fail "46.2 路徑清單前應重述 lang=zh-TW(got: $out)"
+no_notice "setup(新裝)" "$out"
+newrepo "$TMP/lc-c" >/dev/null
+out=$(node "$DRIVE" --locale='{"LANG":"C"}' -- "" 2 "" "" "" 2>&1) || fail "46.2 LANG=C 的 setup 應成功(out: $out)"
+echo "$out" | grep -q '^\[1\] $' || fail "46.2 LANG=C 時語言題預設應為 [1](got: $out)"
+echo "$out" | grep -q '預選' && fail "46.2 en 時題下不得多印說明(got: $out)"
+grep -q 'flightwake:begin v[0-9.]* lang=en' AGENTS.md || fail "46.2 LANG=C 應裝 en(got: $(markers))"
+newrepo "$TMP/lc-intl" >/dev/null
+out=$(node "$DRIVE" --intl=zh-Hant-TW -- "" 2 "" "" "" 2>&1) || fail "46.2 Intl=zh-Hant-TW 的 setup 應成功(out: $out)"
+echo "$out" | grep -q '^\[2\] $' && echo "$out" | grep -q '系統語系 zh-Hant-TW' || fail "46.2 只有 Intl 時應預選 [2] 並註明系統語系(got: $out)"
+newrepo "$TMP/lc-flag" >/dev/null
+out=$(node "$DRIVE" --flags='{"lang":"ja"}' --locale='{"LANG":"zh_TW.UTF-8"}' -- 2 "" "" "" 2>&1) || fail "46.2 帶 lang 旗標的 setup 應成功(out: $out)"
+echo "$out" | grep -qF 'Language / ' && fail "46.2 給了 lang 旗標就不問語言(got: $out)"
+grep -q 'flightwake:begin v[0-9.]* lang=ja' AGENTS.md || fail "46.2 lang 旗標優先於 locale(got: $(markers))"
+newrepo "$TMP/lc-exist" >/dev/null; node "$CLI" init >/dev/null
+rc=0; out=$(node "$DRIVE" --locale='{"LANG":"ja_JP.UTF-8"}' -- 3 2>&1) || rc=$?
+[ "$rc" = 0 ] && echo "$out" | grep -q 'already installed' || fail "46.2 已安裝 + 離開應 exit 0 並說明已安裝(rc=$rc: $out)"
+echo "$out" | grep -qF 'Language / ' && fail "46.2 已安裝時不問語言(got: $out)"
+grep -q 'flightwake:begin v[0-9.]* lang=en' AGENTS.md || fail "46.2 已安裝的語言不因 locale 改變(got: $(markers))"
+pass "46.2 setup 語言題:LANG=zh_TW 預選 [2] 並以繁中說明依據、C → [1] 無說明、Intl 註明系統語系;旗標優先;已安裝不問"
+
+# 46.3 init 不猜語言:只點名偵測到的 locale 與 update --lang=(不是 init --lang)
+newrepo "$TMP/lh1" >/dev/null
+out=$(LC_MESSAGES=zh_TW.UTF-8 node "$CLI" init 2>&1) || fail "46.3 init 應成功"
+echo "$out" | grep -qF 'npx flightwake update --lang=zh-TW' && echo "$out" | grep -q '已安裝英文版' && echo "$out" | grep -qF 'LC_MESSAGES=zh_TW.UTF-8' \
+  || fail "46.3 locale 是 zh_TW 時 init 應點名依據並給 update --lang=zh-TW(got: $out)"
+grep -q 'flightwake:begin v[0-9.]* lang=en' AGENTS.md || fail "46.3 init 一律裝 en(got: $(markers))"
+grep -q '現在在哪' .flightwake/STATE.md && fail "46.3 偵測不得改變寫入的語言(STATE 應是英文模板)"
+newrepo "$TMP/lh2" >/dev/null
+out=$(node "$CLI" init 2>&1) || fail "46.3 預設 locale 的 init 應成功"
+echo "$out" | grep -q 'Other languages' && echo "$out" | grep -qF 'update --lang=zh-TW' || fail "46.3 一般提示應指向 update --lang=(got: $out)"
+echo "$out" | grep -q 'Your terminal locale' && fail "46.3 locale 是 C 時不得說終端機語系指向別的語言(got: $out)"
+echo "$out" | grep -qF 'init --lang=' && fail "46.3 提示不得再建議 init --lang=(got: $out)"
+newrepo "$TMP/lh3" >/dev/null
+out=$(node "$CLI" init --lang=en 2>&1) || fail "46.3 init --lang=en 應成功"
+echo "$out" | grep -q 'Installed in English' && fail "46.3 明確給了 --lang 不印語言提示(got: $out)"
+out=$(node "$CLI" init 2>&1) || fail "46.3 第二次 init 應成功"
+echo "$out" | grep -q 'Installed in English' && fail "46.3 已有 marker 時不印語言提示(got: $out)"
+newrepo "$TMP/lh4" >/dev/null; echo x > README; git add README; git commit -qm i
+out=$(LC_MESSAGES=ja_JP.UTF-8 node "$CLI" init --private 2>&1) || fail "46.3 init --private 應成功"
+echo "$out" | grep -qF 'update --lang=ja' || fail "46.3 private + ja locale 應提示 update --lang=ja(got: $out)"
+echo "$out" | grep -qF 'init --lang' && fail "46.3 private 時不得建議 init --lang(會丟掉 --private)(got: $out)"
+node "$CLI" update --lang=ja >/dev/null || fail "46.3 照提示 update --lang=ja 應成功"
+markers | grep -q 'lang=ja' || fail "46.3 update --lang=ja 後 marker 應為 ja(got: $(markers))"
+[ -z "$(git --no-optional-locks status --porcelain)" ] || fail "46.3 照提示切換語言後 private 安裝仍不得出現在 git status(got: $(git --no-optional-locks status --porcelain))"
+pass "46.3 init:偵測到 zh_TW 只印依據與 update --lang=zh-TW、仍裝 en;C 時一般提示;--lang / 既有 marker 不印;private 照提示切換仍乾淨"
+
+# 46.4 新裝的附加元件清單(claude repo;--orca 預設 0)
+cl_repo() { newrepo "$TMP/$1" >/dev/null; echo "# 我的" > CLAUDE.md; }
+has_sl() { grep -q statusLine .claude/settings.json 2>/dev/null; }
+has_mod() { [ -f $MODREL/hooks/register.ts ]; }
+has_roles() { [ -e .claude/skills/fw-roles ]; }
+cl_repo ck-def
+out=$(node "$DRIVE" -- "" "" "" "" "" 2>&1) || fail "46.4 清單 Enter 的 setup 應成功(out: $out)"
+has_sl && has_mod || fail "46.4 Enter 應裝預選的儀表與 mod(got: $out)"
+has_roles && fail "46.4 roles 永不預選"
+for s in '[*] 1) Bottom gauge in Claude Code' '[*] 2) Claude Code mod —' '[ ] 3) Team roles' 'teammates see it' \
+         '→ add-ons: bottom gauge, Claude Code mod' 'add-ons=gauge,mod'; do
+  echo "$out" | grep -qF -- "$s" || fail "46.4 清單 Enter:輸出缺「$s」(got: $out)"
+done
+echo "$out" | grep -qF '] 4) ' && fail "46.4 不在 Orca 裡不得列出附加元件 4)(got: $out)"
+no_notice "setup(清單 Enter)" "$out"
+cl_repo ck-0
+out=$(node "$DRIVE" -- "" "" 0 "" "" 2>&1) || fail "46.4 清單 0 的 setup 應成功(out: $out)"
+has_sl || has_mod || has_roles && fail "46.4 清單 0 只裝核心"
+[ -f .flightwake/STATE.md ] && echo "$out" | grep -qF '→ no add-ons (the core only)' || fail "46.4 清單 0 應裝核心並說明(got: $out)"
+cl_repo ck-3
+node "$DRIVE" -- "" "" 3 "" "" >/dev/null || fail "46.4 清單 3 的 setup 應成功"
+has_roles && ! has_sl && ! has_mod || fail "46.4 清單 3 = 只有 roles(取代語意,不含預選的儀表與 mod)"
+cl_repo ck-names
+node "$DRIVE" -- "" "" "mod roles" "" "" >/dev/null || fail "46.4 清單以名稱作答應成功"
+has_mod && has_roles && ! has_sl || fail "46.4 清單「mod roles」= mod + roles、沒有儀表"
+cl_repo ck-comma
+node "$DRIVE" -- "" "" "1,3" "" "" >/dev/null || fail "46.4 清單以逗號作答應成功"
+has_sl && has_roles && ! has_mod || fail "46.4 清單「1,3」= 儀表 + roles、沒有 mod"
+cl_repo ck-bad5
+out=$(node "$DRIVE" -- "" "" 5 2 "" "" 2>&1) || fail "46.4 清單答 5 後重答應成功(out: $out)"
+echo "$out" | grep -qF 'Not an option: 5' && has_mod && ! has_sl && ! has_roles || fail "46.4 清單答 5 應指出並重問,重答 2 = 只有 mod(got: $out)"
+cl_repo ck-bady
+out=$(node "$DRIVE" -- "" "" y 0 "" "" 2>&1) || fail "46.4 清單答 y 後重答應成功(out: $out)"
+echo "$out" | grep -qF 'Not an option: y' || fail "46.4 清單答 y 應指出不是選項(got: $out)"
+cl_repo ck-bad01
+out=$(node "$DRIVE" -- "" "" "0 1" 0 "" "" 2>&1) || fail "46.4 清單答「0 1」後重答應成功(out: $out)"
+echo "$out" | grep -qF 'Not an option: 0' || fail "46.4 0 與其他編號混用應指出(got: $out)"
+has_sl || has_mod && fail "46.4 清單「0 1」被拒、重答 0 → 只裝核心"
+newrepo "$TMP/ck-codex" >/dev/null
+out=$(node "$DRIVE" -- "" 2 "" "" "" 2>&1) || fail "46.4 只選 codex 的 setup 應成功(out: $out)"
+echo "$out" | grep -qF '[ ] 3) Team roles' && echo "$out" | grep -qF 'Enter = none' || fail "46.4 只選 codex:只列 roles(不預選),Enter = none(got: $out)"
+echo "$out" | grep -q '1) Bottom gauge' && fail "46.4 只選 codex 不得列出儀表(got: $out)"
+newrepo "$TMP/ck-orca" >/dev/null
+out=$(node "$DRIVE" --orca=1 -- "" 2 "" "" "" 2>&1) || fail "46.4 在 Orca 裡的 setup 應成功(out: $out)"
+echo "$out" | grep -qF '[*] 4) Orca collaboration (' && grep -q 'flightwake-orca:begin' AGENTS.md || fail "46.4 在 Orca 裡 Orca 應預選、Enter 寫入區塊(got: $out)"
+newrepo "$TMP/ck-orcapath" >/dev/null
+out=$(node "$DRIVE" --orca=path -- "" 2 "" "" "" 2>&1) || fail "46.4 PATH 上只有 orca 的 setup 應成功(out: $out)"
+echo "$out" | grep -qF '[ ] 4) Orca collaboration (' && echo "$out" | grep -q 'not running inside Orca' || fail "46.4 PATH 上只有 orca:列出、說明、不預選(got: $out)"
+grep -q 'flightwake-orca' AGENTS.md && fail "46.4 PATH 上只有 orca,Enter 不得寫 Orca 區塊"
+cl_repo ck-flagmod
+out=$(node "$DRIVE" --flags='{"mod":true}' -- "" "" 0 "" "" 2>&1) || fail "46.4 帶 --mod 旗標的 setup 應成功(out: $out)"
+echo "$out" | grep -qF '[+] 2) Claude Code mod (--mod)' && has_mod && ! has_sl || fail "46.4 --mod 旗標鎖定 mod 列;0 只拿掉其他 → mod、沒有儀表(got: $out)"
+cl_repo ck-foreign; mkdir -p .claude && echo '{"statusLine":{"type":"command","command":"my-sl"}}' > .claude/settings.json
+out=$(node "$DRIVE" -- "" "" "" "" "" 2>&1) || fail "46.4 repo 已有別的 statusLine 的 setup 應成功(out: $out)"
+echo "$out" | grep -qF '[-] 1) Bottom gauge' && echo "$out" | grep -q 'not available' || fail "46.4 repo 已有別的 statusLine:儀表列標 - 並說明不可用(got: $out)"
+[ "$(node -e 'console.log(require("./.claude/settings.json").statusLine.command)')" = my-sl ] || fail "46.4 repo 原有的 statusLine 不得被取代"
+has_mod || fail "46.4 儀表不可用時 Enter 仍裝預選的 mod"
+cl_repo ck-foreign-pick; mkdir -p .claude && echo '{"statusLine":{"type":"command","command":"my-sl"}}' > .claude/settings.json
+out=$(node "$DRIVE" -- "" "" 1 "" "" "" 2>&1) || fail "46.4 選了不可用的儀表後重答應成功(out: $out)"
+echo "$out" | grep -qF 'Not available here: 1) bottom gauge' || fail "46.4 選不可用的列應說明並重問(got: $out)"
+[ "$(echo "$out" | grep -c 'Enter = the \* ones')" = 2 ] || fail "46.4 不可用時應重問附加元件題一次(got: $out)"
+[ "$(node -e 'console.log(require("./.claude/settings.json").statusLine.command)')" = my-sl ] && has_mod || fail "46.4 不可用重問後 Enter = mod、原 statusLine 不動"
+cl_repo ck-foreign-flag; mkdir -p .claude && echo '{"statusLine":{"type":"command","command":"my-sl"}}' > .claude/settings.json
+out=$(node "$DRIVE" --flags='{"statusline":true}' -- "" "" "" "" "" 2>&1) || fail "46.4 別的 statusLine + --statusline 的 setup 應成功(out: $out)"
+echo "$out" | grep -qF 'already has another statusLine — not overwriting' || fail "46.4 --statusline 遇到別的 statusLine 不得默默丟掉,應印 install 的原因(got: $out)"
+[ "$(node -e 'console.log(require("./.claude/settings.json").statusLine.command)')" = my-sl ] || fail "46.4 --statusline 也不得取代 repo 原有的 statusLine"
+newrepo "$TMP/ck-codex-sl" >/dev/null
+out=$(node "$DRIVE" --flags='{"statusline":true,"agents":["codex"]}' -- "" "" "" "" 2>&1) || fail "46.4 codex + --statusline 的 setup 應成功(out: $out)"
+echo "$out" | grep -qF '[+] 1) bottom gauge (--statusline)' && echo "$out" | grep -qF 'add-ons=gauge' && has_sl || fail "46.4 codex + --statusline:旗標列鎖定並安裝儀表(同 init --statusline --agents=codex)(got: $out)"
+newrepo "$TMP/ck-codex-mod" >/dev/null
+out=$(node "$DRIVE" --flags='{"mod":true,"agents":["codex"]}' -- "" "" "" "" 2>&1) || fail "46.4 codex + --mod 的 setup 應成功(out: $out)"
+echo "$out" | grep -qF 'skip flightwake-mod' && ! has_mod || fail "46.4 codex + --mod:install 應說明 mod 只給 Claude Code 並略過(got: $out)"
+echo "$out" | grep -qF 'add-ons=-' || fail "46.4 codex + --mod:摘要不得列出不會安裝的 mod(got: $out)"
+cl_repo ck-usersl
+out=$(node "$DRIVE" --user-statusline=1 -- "" "" "" "" "" 2>&1) || fail "46.4 使用者已有 status line 的 setup 應成功(out: $out)"
+echo "$out" | grep -qF '[ ] 1) Bottom gauge' && echo "$out" | grep -q 'your own status line' || fail "46.4 使用者已有 status line:儀表不預選並說明(got: $out)"
+! has_sl && has_mod || fail "46.4 使用者已有 status line:Enter = 只有 mod"
+cl_repo ck-oldcl
+out=$(node "$DRIVE" --claude=2.1.100 -- "" "" "" "" "" 2>&1) || fail "46.4 舊版 Claude Code 的 setup 應成功(out: $out)"
+echo "$out" | grep -qF '[ ] 2) Claude Code mod —' && echo "$out" | grep -qF '2.1.100' || fail "46.4 Claude Code 太舊:mod 不預選並說明版本(got: $out)"
+! has_mod && has_sl || fail "46.4 Claude Code 太舊:Enter = 只有儀表"
+cl_repo ck-newcl
+out=$(node "$DRIVE" --claude=2.1.300 -- "" "" "" "" "" 2>&1) || fail "46.4 新版 Claude Code 的 setup 應成功(out: $out)"
+echo "$out" | grep -qF '[*] 2) Claude Code mod —' || fail "46.4 Claude Code 夠新:mod 預選(got: $out)"
+cl_repo ck-priv; git add CLAUDE.md; git commit -qm base
+out=$(node "$DRIVE" --flags='{"private":true}' -- "" "" "" "" "" 2>&1) || fail "46.4 private 的 setup 應成功(out: $out)"
+echo "$out" | grep -q 'teammates see it' && fail "46.4 private 時不得說儀表寫進會 commit 的 settings.json(got: $out)"
+grep -q statusLine .claude/settings.local.json && [ ! -e .claude/settings.json ] || fail "46.4 private 的儀表應寫進 settings.local.json"
+[ -z "$(git --no-optional-locks status --porcelain)" ] || fail "46.4 private 安裝後 git status 應乾淨(got: $(git --no-optional-locks status --porcelain))"
+cl_repo ck-sw
+summary_vs_writes "新裝:清單預設(gauge+mod)" -- "" "" "" "" ""
+has_sl && has_mod || fail "46.4 測試前提:清單預設應裝儀表與 mod"
+pass "46.4 附加元件清單:預選(儀表+mod,roles 不)、0 / 編號 / 名稱 / 逗號取代語意、錯誤重問、codex / Orca(env 預選、PATH 不預選)、--mod 鎖定、別的 statusLine 不可選、個人 status line 與舊版 Claude 不預選、private、摘要 == 寫入"
+
+# 46.5 已安裝 repo:升級並加裝(只加不減、使用者資料不動)、全裝好 → 原流程、codex、旗標預設選 2、private、sessions 0700
+newrepo "$TMP/ad1" >/dev/null; echo "# 我的" > CLAUDE.md; node "$CLI" init --agents=claude >/dev/null
+for f in STATE DECISIONS TRAPS; do echo "SENTINEL-$f" >> .flightwake/$f.md; done
+echo MINE > .claude/skills/fw-record/MINE.md
+jedit .claude/settings.json 'j.mine=1'
+sums() { shasum .flightwake/STATE.md .flightwake/DECISIONS.md .flightwake/TRAPS.md; }
+before=$(sums)
+sed -i.bak 's/flightwake:begin v[0-9.]*/flightwake:begin v0.0.1/' CLAUDE.md && rm -f CLAUDE.md.bak
+rc=0; out=$(node "$DRIVE" -- 2 "" "" 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "46.5 升級並加裝應 exit 0(rc=$rc: $out)"
+echo "$out" | grep -qF 'Upgrade and add add-ons (not installed yet: bottom gauge, Claude Code mod, team roles)' || fail "46.5 選項 2 應列出尚未安裝的附加元件(got: $out)"
+has_mod && has_sl || fail "46.5 加裝預選的儀表與 mod"
+has_roles && fail "46.5 roles 未選不得安裝"
+[ "$before" = "$(sums)" ] || fail "46.5 加裝不得改 STATE / DECISIONS / TRAPS"
+[ "$(cat .claude/skills/fw-record/MINE.md 2>/dev/null)" = MINE ] || fail "46.5 skill 資料夾裡的自加檔應保留"
+[ "$(node -e 'console.log(require("./.claude/settings.json").mine)')" = 1 ] || fail "46.5 settings.json 裡使用者的 key 應保留"
+grep -q "flightwake:begin v$FWV lang=en" CLAUDE.md || fail "46.5 加裝也一併升級到 v$FWV、語言不變(got: $(markers))"
+for s in 'quit it and start Claude Code again' '/fw-mod' 'flightwake-mod@skills-dir' 'added: bottom gauge, Claude Code mod' 'commit the new files'; do
+  echo "$out" | grep -qF -- "$s" || fail "46.5 加裝結尾缺「$s」(got: $out)"
+done
+no_notice "setup(加裝)" "$out"
+node "$CLI" doctor >/dev/null 2>&1 || fail "46.5 加裝後 doctor 應 0"
+rc=0; out=$(node "$DRIVE" -- 2 3 "" 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "46.5 第二次加裝(roles)應成功(rc=$rc: $out)"
+for s in '(not installed yet: team roles)' '[✓] 1) bottom gauge (installed)' '[✓] 2) Claude Code mod (installed)' '[ ] 3) Team roles' 'Roles: ask your agent'; do
+  echo "$out" | grep -qF -- "$s" || fail "46.5 第二次加裝缺「$s」(got: $out)"
+done
+has_roles || fail "46.5 第二次加裝選 3 應裝 fw-roles"
+no_notice "setup(加裝 roles)" "$out"
+rc=0; out=$(node "$DRIVE" -- "" 2>&1) || rc=$?
+[ "$rc" = 0 ] && echo "$out" | grep -qF 'All add-ons that apply here are installed.' || fail "46.5 全部裝好時應說明並走原本的升級流程(rc=$rc: $out)"
+echo "$out" | grep -q 'What would you like to do?' && fail "46.5 全部裝好時不得出三選一(got: $out)"
+no_notice "setup(全裝好)" "$out"
+newrepo "$TMP/ad-codex" >/dev/null; node "$CLI" init >/dev/null
+rc=0; out=$(node "$DRIVE" -- 2 0 "" 2>&1) || rc=$?
+[ "$rc" = 0 ] && echo "$out" | grep -qF '→ no add-ons; upgrade only' || fail "46.5 codex:選 2 後答 0 = 只升級(rc=$rc: $out)"
+[ -e .agents/skills/fw-roles ] || [ -e .claude/skills/fw-roles ] && fail "46.5 codex:答 0 不得裝 fw-roles"
+newrepo "$TMP/ad-codex-sl" >/dev/null; node "$CLI" init >/dev/null
+out=$(node "$DRIVE" --flags='{"statusline":true}' -- 2 "" "" 2>&1) || fail "46.5 codex + --statusline 選 2 應成功(out: $out)"
+echo "$out" | grep -qF '(not installed yet: bottom gauge, team roles)' && has_sl || fail "46.5 codex + --statusline:選 2 也應裝儀表(與選 1 一致)(got: $out)"
+newrepo "$TMP/ad-codex-sl1" >/dev/null; node "$CLI" init >/dev/null
+node "$DRIVE" --flags='{"statusline":true}' -- 1 "" >/dev/null 2>&1 && has_sl || fail "46.5 codex + --statusline:選 1 應裝儀表"
+newrepo "$TMP/ad-orcaflag" >/dev/null; echo "# 我的" > CLAUDE.md; node "$CLI" init --agents=claude --statusline --mod >/dev/null && node "$CLI" roles install >/dev/null
+out=$(node "$DRIVE" --flags='{"orca":true}' -- "" "" 2>&1) || fail "46.5 全裝好 + --orca(不在 Orca 裡)應成功(out: $out)"
+echo "$out" | grep -qF 'All add-ons that apply here are installed.' && fail "46.5 --orca 還有東西要加時不得說都已安裝(got: $out)"
+echo "$out" | grep -qF '(not installed yet: Orca collaboration)' && echo "$out" | grep -qF 'added: Orca collaboration.' && grep -q 'flightwake-orca:begin' CLAUDE.md || fail "46.5 --orca:三選一列出 Orca、結尾點名加裝的 Orca(got: $out)"
+newrepo "$TMP/ad-flag" >/dev/null; echo "# 我的" > CLAUDE.md; node "$CLI" init --agents=claude >/dev/null
+out=$(node "$DRIVE" --flags='{"mod":true}' -- "" "" "" 2>&1) || fail "46.5 帶 --mod 旗標的已安裝 setup 應成功(out: $out)"
+echo "$out" | grep -q '^\[2\] $' && echo "$out" | grep -qF '[+] 2) Claude Code mod (--mod)' && has_mod || fail "46.5 旗標的附加元件未安裝時預設選 2,mod 列鎖定並安裝(got: $out)"
+newrepo "$TMP/ad-sw" >/dev/null; echo "# 我的" > CLAUDE.md; node "$CLI" init --agents=claude >/dev/null
+summary_vs_writes "已安裝 → 加裝 mod+roles" -- 2 "2 3" ""
+has_mod && has_roles && ! has_sl || fail "46.5 測試前提:應加裝 mod 與 roles、沒有儀表"
+newrepo "$TMP/ad-priv" >/dev/null; echo x > README; git add README; git commit -qm i
+node "$CLI" init --private --agents=claude >/dev/null
+rc=0; out=$(node "$DRIVE" -- 2 2 "" 2>&1) || rc=$?
+[ "$rc" = 0 ] && has_mod || fail "46.5 private:加裝 mod 應成功(rc=$rc: $out)"
+[ -z "$(git --no-optional-locks status --porcelain)" ] || fail "46.5 private:加裝後 git status 應乾淨(got: $(git --no-optional-locks status --porcelain))"
+grep -q 'flightwake-mod' .git/info/exclude || fail "46.5 private:mod 資料夾應進排除清單"
+echo "$out" | grep -q 'commit the new files' && fail "46.5 private 不得叫人 commit 新檔(got: $out)"
+[ -e .claude/settings.json ] && fail "46.5 private 加裝不得建共用的 .claude/settings.json"
+newrepo "$TMP/ad-fleet" >/dev/null; echo "# 我的" > CLAUDE.md; node "$CLI" init --agents=claude >/dev/null
+out=$(FLIGHTWAKE_HOME="$TMP/fleet-sa" node "$DRIVE" -- 2 2 "" 2>&1) || fail "46.5 setup 加裝 mod 應成功(out: $out)"
+[ "$(modeof "$TMP/fleet-sa/sessions")" = 700 ] || fail "46.5 setup 加裝 mod 也應建 0700 的 sessions(got: $(modeof "$TMP/fleet-sa/sessions" 2>&1))"
+echo "$out" | sed -n '/These paths will be written:/,/Proceed?/p' | grep -qxF "  $TMP/fleet-sa/sessions/" || fail "46.5 確認前的路徑清單應列出 repo 外要建的 sessions 資料夾(got: $out)"
+newrepo "$TMP/ad-flag1" >/dev/null; echo "# 我的" > CLAUDE.md; node "$CLI" init --agents=claude >/dev/null
+rc=0; out=$(node "$DRIVE" --flags='{"mod":true}' -- 1 "" 2>&1) || rc=$?
+[ "$rc" = 0 ] && has_mod || fail "46.5 --mod + 選 1 應加裝 mod(rc=$rc: $out)"
+for s in '(same as `npx flightwake update --mod`)' 'added: Claude Code mod.'; do echo "$out" | grep -qF -- "$s" || fail "46.5 --mod + 選 1 缺「$s」(got: $out)"; done
+echo "$out" | grep -qF 'keeping these options' && fail "46.5 --mod + 選 1 的標籤不得說沿用原選項(got: $out)"
+newrepo "$TMP/ad-lang" >/dev/null; echo "# 我的" > CLAUDE.md; node "$CLI" init --agents=claude >/dev/null
+out=$(node "$DRIVE" --flags='{"lang":"ja"}' -- 1 n 2>&1) || true
+for s in 'lang:en → ja(--lang で切り替え)' '`npx flightwake update --lang=ja` と同じ' 'lang=ja · agents=claude'; do echo "$out" | grep -qF -- "$s" || fail "46.5 --lang=ja 的已安裝 setup 缺「$s」(got: $out)"; done
+echo "$out" | grep -qF -e 'ここでは変えません' -e 'このオプションのまま' && fail "46.5 --lang 有切換時不得說語言不變 / 沿用選項(got: $out)"
+grep -q "flightwake:begin v$FWV lang=en" CLAUDE.md || fail "46.5 答 n 不得切換語言(got: $(markers))"
+newrepo "$TMP/ad-orcanm" >/dev/null; echo "# 共用" > CLAUDE.md; echo "# 本地" > CLAUDE.local.md; git add -A; git commit -qm base
+node "$CLI" init --private --agents=claude >/dev/null
+[ -z "$(markers)" ] || fail "46.5 測試前提:沒有 marker(got: $(markers))"
+rc=0; out=$(node "$DRIVE" --flags='{"orca":true}' -- 2 0 "" 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "46.5 無 marker 的 private + --orca 應成功(rc=$rc: $out)"
+echo "$out" | grep -qF -e '[+] 4) Orca' -e 'added: Orca' -e 'orca ·' && fail "46.5 無 marker 時 --orca 裝不上,不得列出、不得進摘要、不得說加裝(got: $out)"
+echo "$out" | grep -q '^\[1\] ' || fail "46.5 無 marker 時 --orca 不得把預設改成選 2(got: $out)"
+grep -q orca CLAUDE.md CLAUDE.local.md && fail "46.5 無 marker 時不得寫 Orca 區塊"
+pass "46.5 已安裝:升級並加裝(只加、使用者資料與自加檔/設定 key 不動、版本升級、mod 重開說明、commit 提示)、第二次只剩 roles、全裝好走原流程、codex 答 0、旗標預設選 2、摘要 == 寫入、private 乾淨、sessions 0700 且確認前列出;選 1 + --mod 標籤與結尾點名;--lang 切換照實說;無 marker 的 --orca 不列不說"
+
+# 46.6 init/update 結尾一行未安裝的適用附加元件:建議 setup 或 update --flag / roles install(不建議 init 旗標);不提問、不自動加
+newrepo "$TMP/nt1" >/dev/null; echo "# 我的" > CLAUDE.md
+out=$(ncli init 2>&1) || fail "46.6 init 應成功"
+[ "$(echo "$out" | grep -c "$NOTICE")" = 1 ] || fail "46.6 init 結尾應恰好一行附加元件提示(got: $out)"
+echo "$out" | grep "$NOTICE" | grep -qF 'not installed: bottom gauge, Claude Code mod, team roles.' || fail "46.6 提示應依序點名儀表、mod、roles(got: $out)"
+echo "$out" | grep -qF 'npx flightwake update --statusline --mod · npx flightwake roles install' && echo "$out" | grep -qF 'npx flightwake setup' || fail "46.6 提示應給 setup 與 update --statusline --mod / roles install(got: $out)"
+echo "$out" | grep -q 'Orca' && fail "46.6 不在 Orca 裡不得提 Orca(got: $out)"
+echo "$out" | grep -q 'Bottom gauge not installed' && fail "46.6 舊的「儀表未安裝」提示應已刪除(got: $out)"
+[ -e $MODREL ] && fail "46.6 提示不得自動安裝 mod"
+grep -q statusLine .claude/settings.json && fail "46.6 提示不得自動安裝儀表"
+out=$(ncli update 2>&1) || fail "46.6 update 應成功"
+[ "$(echo "$out" | grep -c "$NOTICE")" = 1 ] || fail "46.6 update 結尾應恰好一行附加元件提示(got: $out)"
+out=$(ORCA_APP_VERSION=1 ncli update 2>&1) || fail "46.6 在 Orca 裡的 update 應成功"
+echo "$out" | grep "$NOTICE" | grep -q 'Orca collaboration' && echo "$out" | grep -qF -- 'update --statusline --mod --orca' || fail "46.6 在 Orca 裡提示應含 Orca 與 --orca(got: $out)"
+grep -q 'flightwake-orca' CLAUDE.md && fail "46.6 update 不得自動加 Orca 區塊"
+newrepo "$TMP/nt-codex" >/dev/null; ncli init >/dev/null
+out=$(ncli update 2>&1) || fail "46.6 codex 的 update 應成功"
+echo "$out" | grep "$NOTICE" | grep -qF 'not installed: team roles.' && echo "$out" | grep -qF 'or directly: npx flightwake roles install' || fail "46.6 只有 codex:提示只點名 roles,指令只有 roles install(got: $out)"
+echo "$out" | grep -qF -- '--mod' && fail "46.6 只有 codex 不得建議 --mod(got: $out)"
+newrepo "$TMP/nt-foreign" >/dev/null; mkdir -p .claude && echo '{"statusLine":{"type":"command","command":"my-sl"}}' > .claude/settings.json
+out=$(ncli init --agents=claude 2>&1) || fail "46.6 repo 已有別的 statusLine 的 init 應成功"
+echo "$out" | grep "$NOTICE" | grep -q 'bottom gauge' && fail "46.6 repo 已有別的 statusLine 時提示不得點名儀表(got: $out)"
+echo "$out" | grep -q "$NOTICE" || fail "46.6 repo 已有別的 statusLine 時仍應提示 mod / roles(got: $out)"
+for l in en zh-TW zh-CN ja; do
+  case $l in en) k='available here but not installed';; zh-TW) k='尚未安裝的選配附加元件';; zh-CN) k='尚未安装的选配附加组件';; ja) k='未インストールのオプション';; esac
+  newrepo "$TMP/nt-$l" >/dev/null
+  out=$(ncli init --lang=$l --agents=claude 2>&1) || fail "46.6 $l init 應成功"
+  echo "$out" | grep -qF "$k" || fail "46.6 $l 的提示應有「$k」(got: $out)"
+  echo "$out" | grep -q 'undefined' && fail "46.6 $l 的輸出不得有 undefined(got: $out)"
+done
+newrepo "$TMP/nt-all" >/dev/null; echo "# 我的" > CLAUDE.md
+ncli init --agents=claude --statusline --mod >/dev/null && ncli roles install >/dev/null || fail "46.6 全裝的前提應成功"
+out=$(ncli update 2>&1) || fail "46.6 全裝後 update 應成功"
+[ "$(echo "$out" | grep -c "$NOTICE")" = 0 ] || fail "46.6 適用的附加元件都裝了就不印提示(got: $out)"
+newrepo "$TMP/nt-quiet" >/dev/null; echo "# 我的" > CLAUDE.md; ncli init --agents=claude >/dev/null
+out=$(ncli doctor 2>&1); no_notice "doctor" "$out"
+out=$(echo '{}' | PATH="$NOCL" "$NODE_BIN" .flightwake/hooks/statusline.mjs 2>&1); no_notice "儀表" "$out"
+out=$(PATH="$NOCL" "$NODE_BIN" .flightwake/hooks/state-check.mjs </dev/null 2>&1); no_notice "state-check hook" "$out"
+newrepo "$TMP/nt-refused" >/dev/null; ncli init >/dev/null
+rm .flightwake/hooks/state-check.mjs && ln -s ../STATE.md .flightwake/hooks/state-check.mjs
+rc=0; out=$(ncli update 2>&1) || rc=$?
+[ "$rc" = 1 ] || fail "46.6 拒寫的 update 應 exit 1(rc=$rc: $out)"
+no_notice "拒寫的 update" "$out"
+newrepo "$TMP/nt-markerless" >/dev/null; echo "# 共用" > CLAUDE.md; echo "# 本地" > CLAUDE.local.md; git add -A; git commit -qm base
+ncli init --private --agents=claude >/dev/null || fail "46.6 無 marker 的 private 安裝前提應成功"
+[ -z "$(markers)" ] || fail "46.6 測試前提:兩個 Claude 指令檔都受追蹤 → 沒有 marker(got: $(markers))"
+out=$(ORCA_APP_VERSION=1 ncli update 2>&1) || fail "46.6 無 marker 的 private update 應成功(got: $out)"
+echo "$out" | grep "$NOTICE" | grep -qF 'not installed: bottom gauge, Claude Code mod, team roles' || fail "46.6 無 marker 的 private update 仍應提示其他附加元件(got: $out)"
+echo "$out" | grep "$NOTICE" | grep -q 'Orca' && fail "46.6 沒有 marker 可掛 Orca 區塊時不得建議 Orca(got: $out)"
+FAKEORCA="$TMP/fake-orca-bin"; mkdir -p "$FAKEORCA"; printf '#!/bin/sh\nexit 0\n' > "$FAKEORCA/orca"; chmod +x "$FAKEORCA/orca"
+newrepo "$TMP/nt-orcapath" >/dev/null; echo "# 我的" > CLAUDE.md
+out=$(PATH="$NOCL:$FAKEORCA" "$NODE_BIN" "$CLI" init --agents=claude 2>&1) || fail "46.6 PATH 上只有 orca 的 init 應成功"
+echo "$out" | grep "$NOTICE" | grep -q 'Orca' && fail "46.6 PATH 上只有 orca(可能是 GNOME 螢幕閱讀器)時 init 提示不得提 Orca(got: $out)"
+out=$(PATH="$NOCL:$FAKEORCA" "$NODE_BIN" "$CLI" update 2>&1) || fail "46.6 PATH 上只有 orca 的 update 應成功"
+echo "$out" | grep -q "$NOTICE" && ! echo "$out" | grep -qF -- '--orca' || fail "46.6 PATH 上只有 orca 時 update 提示不得提 Orca / --orca(got: $out)"
+ncli update --statusline --mod >/dev/null && ncli roles install >/dev/null || fail "46.6 PATH-only orca 全裝前提應成功"
+out=$(node "$DRIVE" --orca=path -- "" 2>&1) || fail "46.6 PATH 上只有 orca、其他全裝好的 setup 應成功(out: $out)"
+echo "$out" | grep -qF 'All add-ons that apply here are installed.' || fail "46.6 PATH 上只有 orca 不得逼出三選一(got: $out)"
+newrepo "$TMP/nt-privhint" >/dev/null; echo x > README; git add README; git commit -qm i
+ncli init --private --agents=claude >/dev/null || fail "46.6 private 前提應成功"
+rc=0; out=$(ncli setup </dev/null 2>&1) || rc=$?
+[ "$rc" = 1 ] && echo "$out" | grep -qF 'npx flightwake update' || fail "46.6 已安裝時非 TTY 的 setup 應指向 update(rc=$rc: $out)"
+echo "$out" | grep -qF 'init --' && fail "46.6 private 安裝上非 TTY 的 setup 不得建議 init 旗標(會丟掉 --private)(got: $out)"
+echo "# 手改" >> .claude/skills/fw-record/SKILL.md
+out=$(ncli update 2>&1) || fail "46.6 private 有手改框架檔的 update 應成功"
+echo "$out" | grep -qF 'npx flightwake update --lang=<lang>' || fail "46.6 覆蓋手改的警告應建議 update --lang=(got: $out)"
+echo "$out" | grep -qF 'init --lang=' && fail "46.6 private 上任何輸出都不得建議 init --lang=(got: $out)"
+echo "$out" | grep -q 'init --agents=.* --force' && fail "46.6 private 上任何輸出都不得建議 init --agents=… --force(got: $out)"
+[ -z "$(git --no-optional-locks status --porcelain)" ] || fail "46.6 private 的 update 後 git status 應乾淨(got: $(git --no-optional-locks status --porcelain))"
+pass "46.6 init/update 結尾一行未安裝提示(點名、update --flag / roles install / setup、四語、Orca 只在 Orca 裡、別的 statusLine 不提儀表、全裝好不印);doctor / 儀表 / hook / setup / 拒寫不印;無 marker 不提 Orca"
+
+# 46.7 update 的加裝/切換路徑:update --mod 印重開說明並建 0700 sessions;bare update 不加;private 下 --statusline / --lang 仍乾淨
+newrepo "$TMP/up1" >/dev/null; echo "# 我的" > CLAUDE.md; ncli init --agents=claude >/dev/null
+out=$(FLIGHTWAKE_HOME="$TMP/fleet-u1" ncli update --mod 2>&1) || fail "46.7 update --mod 應成功"
+has_mod || fail "46.7 update --mod 應加裝 mod"
+for s in 'quit it and start Claude Code again' '/fw-mod' 'trust'; do echo "$out" | grep -qF -- "$s" || fail "46.7 update --mod 應印「$s」(got: $out)"; done
+[ "$(modeof "$TMP/fleet-u1/sessions")" = 700 ] || fail "46.7 update --mod 應建 0700 的 sessions(got: $(modeof "$TMP/fleet-u1/sessions" 2>&1))"
+echo "$out" | grep "$NOTICE" | grep -q 'Claude Code mod' && fail "46.7 mod 裝好後提示不得再點名 mod(got: $out)"
+newrepo "$TMP/up2" >/dev/null; echo "# 我的" > CLAUDE.md; ncli init --agents=claude >/dev/null
+FLIGHTWAKE_HOME="$TMP/fleet-u2" ncli update >/dev/null || fail "46.7 bare update 應成功"
+[ -e "$TMP/fleet-u2/sessions" ] && fail "46.7 bare update 不加 mod,也不建 sessions"
+has_mod && fail "46.7 bare update 不得加 mod"
+newrepo "$TMP/up3" >/dev/null; echo x > README; git add README; git commit -qm i
+ncli init --private --agents=claude >/dev/null && ncli update --statusline >/dev/null || fail "46.7 private 的 update --statusline 應成功"
+grep -q statusLine .claude/settings.local.json && [ ! -e .claude/settings.json ] || fail "46.7 private 的 update --statusline 應寫進 settings.local.json"
+[ -z "$(git --no-optional-locks status --porcelain)" ] || fail "46.7 private 的 update --statusline 後 git status 應乾淨(got: $(git --no-optional-locks status --porcelain))"
+newrepo "$TMP/up4" >/dev/null; echo x > README; git add README; git commit -qm i
+ncli init --private --agents=claude --statusline --mod >/dev/null || fail "46.7 private + 儀表 + mod 的 init 應成功"
+st=$(shasum < .flightwake/STATE.md)
+ncli update --lang=zh-TW >/dev/null || fail "46.7 private 的 update --lang=zh-TW 應成功"
+markers | grep -q 'lang=zh-TW' || fail "46.7 update --lang=zh-TW 後 marker 應為 zh-TW(got: $(markers))"
+grep -q statusLine .claude/settings.local.json && has_mod || fail "46.7 update --lang 應保留儀表與 mod"
+[ "$st" = "$(shasum < .flightwake/STATE.md)" ] || fail "46.7 update --lang 不得改 STATE"
+[ -z "$(git --no-optional-locks status --porcelain)" ] || fail "46.7 private 的 update --lang 後 git status 應乾淨(got: $(git --no-optional-locks status --porcelain))"
+newrepo "$TMP/up5" >/dev/null; echo "# 共用" > CLAUDE.md; echo "# 本地" > CLAUDE.local.md; git add -A; git commit -qm base
+ncli init --private --agents=claude --lang=ja >/dev/null || fail "46.7 無 marker 的 private ja 前提應成功"
+[ -z "$(markers)" ] || fail "46.7 測試前提:沒有 marker(got: $(markers))"
+grep -q '^# flightwake:begin v[0-9.]* lang=ja' .git/info/exclude || fail "46.7 無 marker 時 exclude 標頭應記 lang=ja(got: $(grep 'flightwake:begin' .git/info/exclude))"
+out=$(ncli update --statusline 2>&1) || fail "46.7 無 marker 的 private ja 的 update --statusline 應成功"
+grep -q '締め' .claude/skills/fw-record/SKILL.md || fail "46.7 照提示 update --statusline 不得把 ja 安裝換成英文(got: $(grep -m1 description .claude/skills/fw-record/SKILL.md))"
+echo "$out" | grep -q 'v[0-9.]* に更新しました' || fail "46.7 無 marker 的 ja 安裝,update 輸出應為 ja(got: $out)"
+ncli update >/dev/null && grep -q '締め' .claude/skills/fw-record/SKILL.md || fail "46.7 再一次 bare update 仍應是 ja"
+[ -z "$(git --no-optional-locks status --porcelain)" ] || fail "46.7 無 marker private 的 update 後 git status 應乾淨(got: $(git --no-optional-locks status --porcelain))"
+newrepo "$TMP/up6" >/dev/null; echo "# 共用" > CLAUDE.md; echo "# 本地" > CLAUDE.local.md; git add -A; git commit -qm base
+ncli init --private --agents=claude --lang=zh-TW >/dev/null || fail "46.7 無 marker 的 private zh-TW 前提應成功"
+python3 -c "import sys; p=sys.argv[1]; s=open(p, encoding='utf-8').read(); open(p, 'w', encoding='utf-8').write(s.replace(' lang=zh-TW', ''))" .git/info/exclude
+grep -q 'lang=' .git/info/exclude && fail "46.7 測試前提:exclude 標頭應像 0.15.0 一樣沒有 lang="
+st=$(shasum < .flightwake/STATE.md)
+ncli update >/dev/null || fail "46.7 舊標頭(無 lang=)的無 marker private 的 update 應成功"
+grep -q '^# flightwake:begin v[0-9.]* lang=zh-TW' .git/info/exclude || fail "46.7 舊標頭時應從 state-check.mjs 取回 zh-TW(got: $(grep 'flightwake:begin' .git/info/exclude))"
+grep -q "^const LANG = 'zh-TW';" .flightwake/hooks/state-check.mjs || fail "46.7 舊標頭的 update 不得把 hook 換成英文"
+[ "$st" = "$(shasum < .flightwake/STATE.md)" ] || fail "46.7 舊標頭的 update 不得改 STATE"
+newrepo "$TMP/up7" >/dev/null; echo "# 我的" > CLAUDE.md
+out=$(HOME=relhome FLIGHTWAKE_HOME= ncli init --agents=claude --mod 2>&1) || fail "46.7 相對 HOME 的 init 應成功(registry 是盡力而為)(out: $out)"
+[ -e relhome ] && fail "46.7 相對 HOME 時不得把 registry.json 寫進 repo 裡(got: $(git --no-optional-locks status --porcelain))"
+echo "$out" | grep -qF 'cross-repo registry skipped' || fail "46.7 相對 HOME 時應說明略過跨 repo 登記(got: $out)"
+pass "46.7 update --mod 印重開 / trust / /fw-mod 並建 0700 sessions;bare update 不加;private 的 update --statusline / --lang 寫 local、保留附加元件與 STATE、git status 乾淨;舊標頭從 hook 取回語言;相對 HOME 不寫 registry 進 repo"
+
+# 46.8 真的 pty 下 locale 接到 setup:LC_MESSAGES=zh_TW → 語言題預設 [2]、說明依據;不送游標/清除序列
+if [ "$HAVE_PY" = 1 ]; then
+  PTYANS="$SRC/test/pty-answers.py"; PY3="$(command -v python3)"
+  newrepo "$TMP/lc-pty" >/dev/null
+  rc=0; env LC_MESSAGES=zh_TW.UTF-8 PATH="$NOCL" "$PY3" "$PTYANS" 60 "$NODE_BIN" "$CLI" setup -- "" 1 "" "" n > "$TMP/lc-pty.out" 2>&1 || rc=$?
+  [ "$rc" = 1 ] || fail "46.8 最終確認答 n 應退出 1(rc=$rc)"
+  node -e '
+    const raw = require("fs").readFileSync(process.argv[1], "utf8"); const bad = [];
+    if (/\x1b\[/.test(raw)) bad.push("output contains cursor/erase control sequences");
+    const lines = raw.split(/\r?\n/).map((l) => l.replace(/\r/g, "").trimEnd());
+    if (!raw.includes("LC_MESSAGES=zh_TW.UTF-8")) bad.push("missing: the locale the guess came from");
+    if (!lines.some((l) => /\[2\] ?$/.test(l))) bad.push("missing: language prompt preselected [2] answered with Enter");
+    if (!raw.includes("你在這裡用哪些 AI coding 工具")) bad.push("missing: the agents question in zh-TW");
+    if (bad.length) { console.log(bad.join("\n") + "\n---\n" + lines.join("\n")); process.exit(1); }
+  ' "$TMP/lc-pty.out" || fail "46.8 pty 下 locale 預選與畫面不對($(head -c 300 "$TMP/lc-pty.out" | tr -d '\033'))"
+  [ ! -e .flightwake ] || fail "46.8 取消後不得寫入"
+  pass "46.8 pty:LC_MESSAGES=zh_TW 預選 [2]、說明依據、後續題目變繁中;無控制序列;取消零寫入"
+else
+  echo "  skip: 沒有 python3,略過 46.8(pty)"
+fi
 
 echo ""
 echo "✅ smoke 全過"

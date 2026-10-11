@@ -10,6 +10,7 @@ import { join, dirname, basename, isAbsolute, relative, sep, delimiter } from 'n
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { refreshRolesSkill } from './roles.mjs';
+import { fleetBase, fleetDirInRepo } from './fleet.mjs';
 
 export const LANGS = ['en', 'zh-TW', 'zh-CN', 'ja'];
 export const PROFILES = ['code', 'notes'];
@@ -59,6 +60,38 @@ export const noJunk = (src) => !/(^|[\\/])\.(DS_Store|AppleDouble)$/.test(src);
 // M(): localized CLI output, keyed by language. Keyed rather than positional — with four languages, positional
 // args silently swap on edit. A missing key falls back to English rather than printing undefined.
 export const makeM = (lang) => (m) => m[lang] ?? m.en;
+
+// ── Locale → language: setup's language preselect and init's switch hint. Never decides an install on its own.
+/** A POSIX locale (zh_TW.UTF-8@stroke) or BCP 47 tag (zh-Hant-TW) → one of LANGS. For Chinese the script beats the
+ *  region (zh-Hans-HK → zh-CN); without a script, TW/HK/MO → zh-TW and every other region or bare zh → zh-CN (CLDR
+ *  likely subtags). Empty, C, POSIX, und and every other language → en. Pure. */
+export function localeToLang(tag) {
+  const t = String(tag ?? '').split(/[.@]/)[0].replace(/_/g, '-').toLowerCase();
+  if (!t || t === 'c' || t === 'posix' || t === 'und') return 'en';
+  const [l, ...rest] = t.split('-');
+  if (l === 'ja') return 'ja';
+  if (l === 'zh') {
+    if (rest.includes('hant')) return 'zh-TW';
+    if (rest.includes('hans')) return 'zh-CN';
+    if (rest.some((x) => ['tw', 'hk', 'mo'].includes(x))) return 'zh-TW';
+    return 'zh-CN';
+  }
+  return 'en';
+}
+/** The message locale as POSIX resolves it: the first NON-EMPTY of LC_ALL, LC_MESSAGES, LANG wins and stops the lookup
+ *  (an explicit C/POSIX means English, not "keep looking"); LANGUAGE is ignored. Intl is asked only when all three are
+ *  empty — on macOS/Linux it mirrors the POSIX env (unset → en-US, empty string → und, C → en-US; TRAPS
+ *  intl-locale-mirrors-posix-env), so it only adds a signal on Windows.
+ *  → { lang, source: 'LC_ALL' | 'LC_MESSAGES' | 'LANG' | 'Intl' | null, raw } */
+export function detectLocale(env = process.env, intl = () => Intl.DateTimeFormat().resolvedOptions().locale) {
+  for (const k of ['LC_ALL', 'LC_MESSAGES', 'LANG']) {
+    const raw = env[k];
+    if (raw) return { lang: localeToLang(raw), source: k, raw };
+  }
+  let raw = null;
+  try { raw = intl() ?? null; } catch {}
+  return raw ? { lang: localeToLang(raw), source: 'Intl', raw } : { lang: 'en', source: null, raw: null };
+}
 
 // ── git ──────────────────────────────────────────────────────────────────────────────────────────────────────
 export const gitIn = (target) => (...a) => execFileSync('git', a, { cwd: target, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
@@ -156,7 +189,15 @@ const readExcludeHeader = (target) => {
     const ep = excludePath(target);
     if (!existsSync(ep)) return null;
     const line = /# flightwake:begin([^\n]*)/.exec(readFileSync(ep, 'utf8'));
-    return line ? { profile: /profile=([\w-]+)/.exec(line[1])?.[1] ?? null } : null;
+    return line ? { profile: /profile=([\w-]+)/.exec(line[1])?.[1] ?? null, lang: /lang=([\w-]+)/.exec(line[1])?.[1] ?? null } : null;
+  } catch { return null; }
+};
+// The language the installer stamped into the repo's state-check hook (`const LANG = '…';`) — the last place a markerless
+// --private install made before the exclude header carried lang= still records it. Read-only; anything else → null.
+const stampedLang = (target) => {
+  try {
+    const l = /^const LANG = '([\w-]+)';/m.exec(readFileSync(join(target, '.flightwake', 'hooks', 'state-check.mjs'), 'utf8'))?.[1];
+    return LANGS.includes(l) ? l : null;
   } catch { return null; }
 };
 export function detectInstall(target) {
@@ -164,18 +205,29 @@ export function detectInstall(target) {
   const marker = markers[0] ?? null; // first in INSTRUCTION_CANDIDATES order wins when markers disagree (doctor flags it)
   const exclude = readExcludeHeader(target);
   let statusline = false;
+  let statuslineOther = false; // a statusLine that is not the gauge: flightwake never replaces it
   for (const rel of ['.claude/settings.json', '.claude/settings.local.json']) {
     const p = join(target, ...rel.split('/'));
-    try { if (existsSync(p) && JSON.stringify(JSON.parse(readFileSync(p, 'utf8')).statusLine ?? null).includes('statusline.mjs')) statusline = true; } catch {}
+    try {
+      if (!existsSync(p)) continue;
+      const sl = JSON.parse(readFileSync(p, 'utf8')).statusLine;
+      if (sl === undefined || sl === null) continue;
+      if (JSON.stringify(sl).includes('statusline.mjs')) statusline = true;
+      else statuslineOther = true;
+    } catch {}
   }
   return {
     marker,
     markers,
     statusline,
+    statuslineOther,
     private: !!exclude,
     // Profile lives in the marker; a --private install can end up with no marker at all (every instruction
     // file tracked → skipped), so the exclude block's header carries it too
     profile: marker ? marker.profile : (exclude?.profile ?? 'code'),
+    // Language the same way: the marker's, else the exclude header's (a markerless private install), else the language
+    // stamped into state-check.mjs (a markerless private install whose header predates lang=); null = unknown
+    lang: marker?.lang ?? exclude?.lang ?? (marker || exclude ? stampedLang(target) : null) ?? null,
     orca: readMarkers(target).some((m) => m.orca || m.orphanOrca),
     roles: ['.claude/skills', '.agents/skills'].some((b) => existsSync(join(target, ...b.split('/'), 'fw-roles'))),
     mod: existsSync(join(target, ...MOD_REL.split('/'))),
@@ -195,22 +247,122 @@ export function defaultAgents(target) {
   const found = detectedAgents(target);
   return found.length ? found : ['codex'];
 }
+/** Where Orca shows up: 'env' = the environment Orca exports to its terminals is set (running inside Orca); 'path' =
+ *  only an `orca` program on PATH — which may be GNOME's screen reader (/usr/bin/orca), so it never preselects on its
+ *  own; null = neither. Never executes anything. */
+export function detectOrcaSource(env = process.env) {
+  if (['ORCA_APP_VERSION', 'ORCA_TERMINAL_HANDLE', 'ORCA_WORKSPACE_ID'].some((k) => env[k])) return 'env';
+  const names = process.platform === 'win32' ? ['orca.exe', 'orca.cmd', 'orca.bat'] : ['orca'];
+  return (env.PATH ?? '').split(delimiter).filter(Boolean).some((d) => names.some((n) => existsSync(join(d, n)))) ? 'path' : null;
+}
 /** Orca present = its CLI is on PATH or the environment Orca exports to its terminals is set. Never executes it. */
 export function detectOrca(env = process.env) {
-  if (['ORCA_APP_VERSION', 'ORCA_TERMINAL_HANDLE', 'ORCA_WORKSPACE_ID'].some((k) => env[k])) return true;
-  const names = process.platform === 'win32' ? ['orca.exe', 'orca.cmd', 'orca.bat'] : ['orca'];
-  return (env.PATH ?? '').split(delimiter).filter(Boolean).some((d) => names.some((n) => existsSync(join(d, n))));
+  return detectOrcaSource(env) !== null;
+}
+/** This person already has their own Claude Code status line: the user settings ($CLAUDE_CONFIG_DIR/settings.json,
+ *  else ~/.claude/settings.json) carry a statusLine that is not flightwake's gauge. Read-only; any error → false. */
+export function userStatusline(env = process.env) {
+  try {
+    const sl = JSON.parse(readFileSync(join(env.CLAUDE_CONFIG_DIR || join(env.HOME || homedir(), '.claude'), 'settings.json'), 'utf8')).statusLine;
+    return sl !== undefined && sl !== null && !JSON.stringify(sl).includes('statusline.mjs');
+  } catch { return false; }
+}
+/** a.b.c ≥ x.y.z, numerically */
+export const atLeast = (v, min) => {
+  const a = v.split('.').map(Number);
+  const b = min.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  return true;
+};
+/** Claude Code's version (x.y.z) from `claude --version`, or null when it is missing, prints no version or hangs (5 s
+ *  timeout). Spawned at most once per process; read-only. */
+let claudeVersionMemo;
+export function claudeVersion() {
+  if (claudeVersionMemo !== undefined) return claudeVersionMemo;
+  let v = null;
+  try { v = /(\d+\.\d+\.\d+)/.exec(execFileSync('claude', ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }))?.[1] ?? null; } catch {}
+  return (claudeVersionMemo = v);
+}
+
+// ── Optional add-ons: one status table shared by setup's list, the installed-repo menu and the update/init notice.
+// Fixed numbering (n = index + 1) so the same number means the same add-on on every machine; state is derived from
+// files (detectInstall), never recorded in the marker.
+export const ADDON_KEYS = ['gauge', 'mod', 'roles', 'orca'];
+export const ADDON_FLAG = { gauge: '--statusline', mod: '--mod', orca: '--orca' }; // roles has no flag: `roles install`
+const ADDON_NAMES = {
+  gauge: { en: 'bottom gauge', 'zh-TW': '底部儀表', 'zh-CN': '底部仪表', ja: '下部ゲージ' },
+  mod: { en: 'Claude Code mod' },
+  roles: { en: 'team roles', 'zh-TW': '團隊角色', 'zh-CN': '团队角色', ja: 'チームロール' },
+  orca: { en: 'Orca collaboration', 'zh-TW': 'Orca 協作', 'zh-CN': 'Orca 协作', ja: 'Orca 連携' },
+};
+export function addonShortName(lang, key) {
+  return makeM(lang)(ADDON_NAMES[key]);
+}
+export const joinNames = (lang, arr) => arr.join(lang === 'en' ? ', ' : '、');
+/**
+ * One row per add-on, in ADDON_KEYS order: { key, n, applicable, installed, blocked, recommended, oldClaude, userSL,
+ * orcaPathOnly }. det = detectInstall(); claude = Claude Code is (or will be) a target; orca = detectOrcaSource();
+ * userStatusline = this person has their own status line; claudeVersion = a readable `claude --version`, or null.
+ * - gauge: only with Claude Code; blocked when the repo's .claude settings hold another status line (never replaced);
+ *   recommended only when neither the repo nor this person has a status line (a committed one replaces teammates' own).
+ * - mod: only with Claude Code; recommended unless Claude Code is known to be older than MOD_MIN_CLAUDE.
+ * - roles: always applies, never recommended (DECISIONS 2026-09-27: opt-in).
+ * - orca: only when Orca shows up; the block attaches to a marker, so a markerless (private) install cannot take it;
+ *   recommended only inside Orca (an `orca` on PATH alone may be the GNOME screen reader).
+ */
+export function addonStatus({ det, claude, orca, userStatusline: userSL = false, claudeVersion: cv = null }) {
+  const row = (key, f) => ({ key, n: ADDON_KEYS.indexOf(key) + 1, applicable: false, installed: false, blocked: false,
+    recommended: false, oldClaude: null, userSL: false, orcaPathOnly: false, ...f });
+  const gInstalled = !!det.statusline;
+  const gBlocked = !gInstalled && !!det.statuslineOther;
+  const oldClaude = cv && !atLeast(cv, MOD_MIN_CLAUDE) ? cv : null;
+  return [
+    row('gauge', { applicable: !!claude, installed: gInstalled, blocked: gBlocked, userSL: !!userSL,
+      recommended: !!claude && !gInstalled && !gBlocked && !userSL }),
+    row('mod', { applicable: !!claude, installed: !!det.mod, oldClaude, recommended: !!claude && !oldClaude }),
+    row('roles', { applicable: true, installed: !!det.roles }),
+    row('orca', { applicable: !!orca && (!!det.marker || !det.installed), installed: !!det.orca,
+      orcaPathOnly: orca === 'path', recommended: orca === 'env' }),
+  ];
+}
+// An `orca` found only on PATH (maybe GNOME's screen reader) is listed in setup but never counts as missing: it must not
+// put Orca in every update notice or force setup's installed-repo menu
+export const missingAddons = (rows) => rows.filter((r) => r.applicable && !r.installed && !r.blocked && !r.orcaPathOnly).map((r) => r.key);
+/** The one-time line after init/update naming applicable add-ons that are not installed (prints nothing when none).
+ *  It points at setup or the add-only `update --<flag>` / `roles install` — never at init flags, which drop --private
+ *  (TRAPS init-flags-on-private-install-drop-private) — and tells an agent reading the output to ask the person first. */
+export function printAddonNotice({ lang, rows, log }) {
+  const missing = missingAddons(rows);
+  if (!missing.length) return;
+  const M = makeM(lang);
+  const names = joinNames(lang, missing.map((k) => addonShortName(lang, k)));
+  const flags = ['gauge', 'mod', 'orca'].filter((k) => missing.includes(k)).map((k) => ADDON_FLAG[k]);
+  const cmds = [
+    ...(flags.length ? [`npx flightwake update ${flags.join(' ')}`] : []),
+    ...(missing.includes('roles') ? ['npx flightwake roles install'] : []),
+  ].join(' · ');
+  log(M({
+    en: `   ℹ️  Optional add-ons available here but not installed: ${names}. Nothing was added — ask the person before adding any.
+       To choose: npx flightwake setup (asks first, lists every path) — or directly: ${cmds}`,
+    'zh-TW': `   ℹ️  這裡可用、但尚未安裝的選配附加元件:${names}。沒有自動加裝 — 要加之前先問使用者。
+       要挑選:npx flightwake setup(先問、列出所有路徑)— 或直接:${cmds}`,
+    'zh-CN': `   ℹ️  这里可用、但尚未安装的选配附加组件:${names}。没有自动加装 — 要加之前先问用户。
+       要挑选:npx flightwake setup(先问、列出所有路径)— 或直接:${cmds}`,
+    ja: `   ℹ️  ここで使えるが未インストールのオプション:${names}。自動では追加していません — 追加する前に使う人に確認を。
+       選ぶには:npx flightwake setup(先に質問し、書き込むパスを全部表示)— または直接:${cmds}`,
+  }));
 }
 
 /**
  * Resolve install options for init/update from flags + the detected install. Explicit flag > existing install >
- * default. update keeps lang/statusline/private/profile; orca, roles and the mod are refreshed only where already installed.
+ * default. update keeps lang/statusline/private/profile; installed add-ons are refreshed; `--statusline/--mod/--orca`
+ * add that add-on on update too (bare update never adds); roles only via `roles install`.
  */
 export function resolveOptions({ update, flags, det }) {
   return {
     update,
     force: flags.force || update,
-    lang: flags.lang ?? det.marker?.lang ?? 'en',
+    lang: flags.lang ?? det.lang ?? 'en',
     private: flags.private || (update && det.private),
     statusline: flags.statusline || (update && det.statusline),
     agents: flags.agents ?? null,
@@ -223,9 +375,14 @@ export function resolveOptions({ update, flags, det }) {
 // ── Cross-repo registry (~/.flightwake/registry.json) — read-only query layers discover installed repos through
 // it. Best-effort by contract: a registry problem must never fail an install, and a corrupt registry is left in
 // place for inspection rather than clobbered.
-export const registryPath = () => join(process.env.FLIGHTWAKE_HOME ?? join(homedir(), '.flightwake'), 'registry.json');
-const readRegistry = () => {
-  const REGISTRY = registryPath();
+// The base is fleetBase's (bin/fleet.mjs): an absolute FLIGHTWAKE_HOME, else an absolute HOME + /.flightwake, else none —
+// an empty or relative value would put registry.json in the working directory, i.e. inside the repo being installed.
+// null = no usable base: the registry step is skipped with a notice (best-effort, like every registry problem).
+export const registryPath = () => {
+  const fb = fleetBase(process.env);
+  return fb === null ? null : join(fb, 'registry.json');
+};
+const readRegistry = (REGISTRY = registryPath()) => {
   if (!existsSync(REGISTRY)) return { version: 1, repos: {} };
   const reg = JSON.parse(readFileSync(REGISTRY, 'utf8'));
   if (!reg || typeof reg.repos !== 'object' || Array.isArray(reg.repos)) throw new Error('unexpected shape');
@@ -234,8 +391,9 @@ const readRegistry = () => {
 export function unregisterRepo(target, log, dry = false) {
   try {
     const REGISTRY = registryPath();
+    if (REGISTRY === null) return; // no absolute home: no registry to remove the entry from
     if (lstatSync(REGISTRY).isSymbolicLink()) return; // best-effort: never write through a symlink
-    const reg = readRegistry();
+    const reg = readRegistry(REGISTRY);
     if (!(target in reg.repos)) return;
     delete reg.repos[target];
     if (dry) return;
@@ -756,7 +914,7 @@ export function install(o) {
   }
 
   // 5b. Orca collaboration add-on (opt-in): a marked block next to each platform's obligation table.
-  //     --orca adds it where missing; --force/update refreshes blocks that already exist (update never adds).
+  //     --orca adds it where missing; --force/update refreshes blocks that already exist (bare update never adds; `update --orca` adds).
   {
     const src = join(FW_SRC, 'addons', 'orca', LANG, 'orca-snippet.md');
     const block = `${ORCA_BEGIN} v${VERSION} lang=${LANG} -->\n${readFileSync(src, 'utf8').replace(/^<!--[\s\S]*?-->\n?/, '').trimEnd()}\n${ORCA_END}\n`;
@@ -791,6 +949,7 @@ export function install(o) {
   //     it says so and skips — not an error); --force/update refresh a mod folder that already exists (update never
   //     adds). Shipped files are replaced one by one, so files the user (or the engine) added in that folder stay.
   let modResult = null;
+  let modHere = false; // the mod folder is in this repo after this run (drives the sessions-folder mkdir below)
   {
     const dst = join(TARGET, ...MOD_REL.split('/'));
     const existed = existsSync(dst) || isLink(dst);
@@ -812,6 +971,7 @@ export function install(o) {
     }
     // Private: the mod folder joins the exclude block like every other artifact (a tracked one is refused in step 6).
     // A plain run on an install that is already private (init --mod after init --private) adds it to that block too.
+    modHere = !!modResult || (existed && ACTIVE.has('claude'));
     if (existed || modResult) {
       if (privateExcludes) privateExcludes.push(`${MOD_REL}/`);
       else if (modResult === 'added') addPrivateExcludes(TARGET, [`${MOD_REL}/`], W);
@@ -819,7 +979,7 @@ export function install(o) {
   }
 
   // 6. --private: entries written to .git/info/exclude (purely local, never in the repo; worktrees resolved via git).
-  //    The header carries profile=notes so a private install with no marker anywhere still remembers its profile.
+  //    The header carries profile=notes and lang= so a private install with no marker anywhere still remembers both.
   if (privateExcludes) {
     const entries = [...new Set(privateExcludes)];
     // Privacy is the point of --private, so its requirements are refusals, not warnings: a tracked artifact can't be
@@ -828,7 +988,7 @@ export function install(o) {
       const rel = e.replace(/\/$/, '');
       if (isTracked(rel)) W.refuse(join(TARGET, ...rel.split('/')), 'tracked', rel);
     }
-    const exBlock = `# flightwake:begin v${VERSION}${NOTES ? ' profile=notes' : ''}\n${entries.join('\n')}\n# flightwake:end\n`;
+    const exBlock = `# flightwake:begin v${VERSION}${NOTES ? ' profile=notes' : ''} lang=${LANG}\n${entries.join('\n')}\n# flightwake:end\n`;
     const ep = excludePath(TARGET);
     if (W.check(ep, false, 'file')) {
       try {
@@ -853,26 +1013,68 @@ export function install(o) {
       ja: `${clobbered.length} 個のフレームワークファイルにローカルの変更があり、上書きしました(フレームワークファイルは flightwake の管理下。STATE/DECISIONS/TRAPS/records には触れていません)。戻したい場合は git diff を:`,
     })}\n     ${clobbered.join('\n     ')}`);
     log(`     ${M({
-      en: 'Want a different language? Reinstall with --lang instead of hand-editing: npx flightwake init --lang=<lang> --force',
-      'zh-TW': '想換語言的話,用 --lang 重裝而不是手改:npx flightwake init --lang=<語言> --force',
-      'zh-CN': '想换语言的话,用 --lang 重装而不是手改:npx flightwake init --lang=<语言> --force',
-      ja: '言語を変えたい場合は手で書き換えず --lang で入れ直す:npx flightwake init --lang=<言語> --force',
+      en: 'Want a different language? Switch with --lang instead of hand-editing: npx flightwake update --lang=<lang>',
+      'zh-TW': '想換語言的話,用 --lang 切換而不是手改:npx flightwake update --lang=<語言>',
+      'zh-CN': '想换语言的话,用 --lang 切换而不是手改:npx flightwake update --lang=<语言>',
+      ja: '言語を変えたい場合は手で書き換えず --lang で切り替える:npx flightwake update --lang=<言語>',
     })}`);
   }
 
   // 7. Cross-repo registry: init and update both register (existing installs enroll on their next update)
-  {
-    const REGISTRY = registryPath();
+  const REGISTRY = registryPath();
+  if (REGISTRY === null) {
+    log(`  ⚠️  ${M({
+      en: 'no absolute home folder (HOME / FLIGHTWAKE_HOME) — cross-repo registry skipped (cross-repo tools won\'t see this repo)',
+      'zh-TW': '沒有絕對路徑的家目錄(HOME / FLIGHTWAKE_HOME)— 略過跨 repo 登記(跨 repo 工具看不到這個 repo)',
+      'zh-CN': '没有绝对路径的主目录(HOME / FLIGHTWAKE_HOME)— 略过跨 repo 登记(跨 repo 工具看不到这个 repo)',
+      ja: '絶対パスのホームフォルダがない(HOME / FLIGHTWAKE_HOME)— クロス repo 登録をスキップ(クロス repo ツールからこの repo は見えない)',
+    })}`);
+  } else {
     try {
       // Best-effort contract: a registry problem (here, a symlinked registry.json) is a notice, never an install failure,
       // and never a reason to write through the symlink
       if (isLink(REGISTRY)) throw new Error('symlink');
-      const reg = readRegistry();
+      const reg = readRegistry(REGISTRY);
       const today = new Date().toISOString().slice(0, 10);
       reg.repos[TARGET] = { ...(reg.repos[TARGET] ?? { registered: today }), fw_version: VERSION };
       W.mkdir(dirname(REGISTRY), false, false);
       if (W.write(REGISTRY, JSON.stringify(reg, null, 2) + '\n', false)) log(`  reg  ${REGISTRY}${M({ en: ' ← repo registered (cross-repo index)', 'zh-TW': ' ← 已登記(跨 repo 索引)', 'zh-CN': ' ← 已登记(跨 repo 索引)', ja: ' ← 登録済(クロス repo インデックス)' })}`);
     } catch { log(`  ⚠️  ${REGISTRY} could not be updated — skipped (cross-repo tools won't see this repo)`); }
+  }
+
+  // 8. --mod (init, update --mod, setup's add path): the session fleet folder (<base>/sessions, F7) is created 0700 when absent — the mod's $.fs.write
+  //    cannot set modes, so a folder it creates first lands at the umask. Never chmods an existing folder, never goes
+  //    through a symlink, never inside this repo or any other repo / records folder (the mod refuses those bases too);
+  //    best-effort, never fails the install. Same base rule as the mod, the gauge and `fleet` (bin/fleet.mjs
+  //    fleetBase: absolute FLIGHTWAKE_HOME, else HOME), and the mod's guard (hooks/lib/fleet.ts repoMarkersOf).
+  //    A dry run lists the folder among the writes (setup's path list, --dry-run) and creates nothing.
+  if (o.mod && modHere) {
+    let sdir = null;
+    try {
+      const fb = fleetBase(process.env);
+      sdir = fb === null ? null : `${fb}/sessions`;
+      const present = (p) => { try { lstatSync(p); return true; } catch { return false; } };
+      if (sdir !== null && !fleetDirInRepo(TARGET, fb) && !present(sdir)) {
+        if (isLink(fb)) throw new Error('symlink');
+        writes.push(`${sdir}/`);
+        if (!dry) {
+          mkdirSync(sdir, { recursive: true, mode: 0o700 });
+          log(`  add  ${sdir}/${M({ en: ' (0700; session fleet)', 'zh-TW': '(0700;session 狀態回報)', 'zh-CN': '(0700;session 状态上报)', ja: '(0700;セッション状態の報告)' })}`);
+        }
+      } else if (sdir !== null && isLink(sdir)) throw new Error('symlink');
+    } catch (e) {
+      log(`  ⚠️  ${e?.message === 'symlink' ? M({
+        en: `${sdir} (or the folder holding it) is a symbolic link — not created, and the mod writes nothing through it (/fw-mod shows the reason)`,
+        'zh-TW': `${sdir}(或它所在的資料夾)是符號連結——不建立,mod 也不會透過它寫入(/fw-mod 會說明原因)`,
+        'zh-CN': `${sdir}(或它所在的文件夹)是符号链接——不创建,mod 也不会通过它写入(/fw-mod 会说明原因)`,
+        ja: `${sdir}(またはその親フォルダ)はシンボリックリンク——作成せず、mod もそれを経由して書き込まない(理由は /fw-mod に表示)`,
+      }) : M({
+        en: 'the session fleet folder could not be created (not writable) — skipped; the mod creates it on first use',
+        'zh-TW': 'session 狀態資料夾建不起來(不可寫)— 略過;mod 第一次用到時會自己建',
+        'zh-CN': 'session 状态文件夹建不起来(不可写)— 略过;mod 第一次用到时会自己建',
+        ja: 'セッション状態フォルダを作れなかった(書き込み不可)— スキップ。mod が初回使用時に作成',
+      })}`);
+    }
   }
 
   const gauge = STATUSLINE || (!dry && detectInstall(TARGET).statusline);
@@ -881,8 +1083,10 @@ export function install(o) {
 
 /** The closing message of a fresh (non-update) install: what to do next, and the opt-ins not taken. */
 /** fresh: STATE is still the unfilled template (computed by the caller with doctor's stateUnfilled) — only then is
- *  "run fw-coldstart, it writes the first STATE" the next step; on an initialized STATE the next step is the commit. */
-export function printNext({ lang, private: PRIVATE, statusline: STATUSLINE, langExplicit, marker, fresh = true, log }, { active, agentsSkills, mod, gauge }) {
+ *  "run fw-coldstart, it writes the first STATE" the next step; on an initialized STATE the next step is the commit.
+ *  locale: detectLocale() — only names the detected language in the hint, never picks it (null → the generic hint).
+ *  addons: addonStatus() rows → the not-installed notice (null → none; setup passes null, it already asked). */
+export function printNext({ lang, private: PRIVATE, statusline: STATUSLINE, langExplicit, marker, fresh = true, log, locale = null, addons = null }, { active, agentsSkills, mod, gauge }) {
   const M = makeM(lang);
   const addPaths = ['.flightwake', '.claude',
     ...(agentsSkills ? ['.agents'] : []),
@@ -933,22 +1137,31 @@ export function printNext({ lang, private: PRIVATE, statusline: STATUSLINE, lang
    1. この repo で agent セッションを開いて fw-coldstart を実行 — repo の現状から最初の STATE を書きます
    2. git add ${addPaths} && git commit` : ` git add ${addPaths} && git commit`}`,
   }));
-  // Language was never chosen — English is the documented default, but the alternatives have to be discoverable.
-  // No auto-detection on purpose: terminal LANG and the OS locale routinely disagree, and a confident wrong
-  // guess is worse than a stated default (field-verified 2026-07-27: LANG=en_US.UTF-8 on a zh_TW machine).
-  if (!langExplicit && !marker) log(`   ℹ️  Installed in English. Other languages: ${LANGS.filter((l) => l !== 'en').join(', ')} — e.g. npx flightwake init --lang=zh-TW${STATUSLINE ? ' --statusline' : ''}
-       已安裝英文版,要中文/日文請加 --lang(繁中 zh-TW・简中 zh-CN・日本語 ja);已裝好也能改:同指令加 --force`);
+  // Language was never chosen. init never picks the language from the locale (team-shared content, agents/CI run
+  // init); it only names the detected locale and the `update --lang=` switch — update keeps private / gauge / profile,
+  // where `init --lang` without --force changes nothing and init without --private breaks a private install.
+  if (!langExplicit && !marker) {
+    const L = locale?.lang;
+    if (L && L !== 'en') {
+      const src = locale.source === 'Intl' ? `system locale ${locale.raw}` : `${locale.source}=${locale.raw}`;
+      log(`   ℹ️  Installed in English (the default). Your terminal locale (${src}) points to ${L} — to switch this install: npx flightwake update --lang=${L} (the STATE / DECISIONS / TRAPS files already created stay as they are)
+${makeM(L)({
+    'zh-TW': `       已安裝英文版(預設)。終端機語系(${src})是繁體中文 — 要改:npx flightwake update --lang=zh-TW(已建立的 STATE/DECISIONS/TRAPS 維持原樣)`,
+    'zh-CN': `       已安装英文版(默认)。终端语系(${src})是简体中文 — 要改:npx flightwake update --lang=zh-CN(已建立的 STATE/DECISIONS/TRAPS 维持原样)`,
+    ja: `       英語版をインストールしました(既定)。端末のロケール(${src})は日本語 — 切り替えるには:npx flightwake update --lang=ja(作成済みの STATE / DECISIONS / TRAPS はそのまま)`,
+  })}`);
+    } else {
+      log(`   ℹ️  Installed in English. Other languages: ${LANGS.filter((l) => l !== 'en').join(', ')} — to switch: npx flightwake update --lang=zh-TW
+       已安裝英文版;要改中文/日文:npx flightwake update --lang=zh-TW(繁中)・zh-CN(简中)・ja(日本語)`);
+    }
+  }
   if (mod === 'added') printModNotes({ lang, gauge, log });
-  if (!STATUSLINE) log(M({
-    en: '   ℹ️  Bottom gauge not installed (opt-in) — if you want it: npx flightwake init --statusline (health / STATE lag / context usage)',
-    'zh-TW': '   ℹ️  底部儀表未裝(選配)— 要的話:npx flightwake init --statusline(health/STATE 落後/context 用量)',
-    'zh-CN': '   ℹ️  底部仪表未装(选配)— 要的话:npx flightwake init --statusline(health/STATE 落后/context 用量)',
-    ja: '   ℹ️  下部ゲージは未インストール(オプトイン)— 欲しい場合:npx flightwake init --statusline(health / STATE の遅れ / context 使用量)',
-  }));
+  if (addons) printAddonNotice({ lang, rows: addons, log });
 }
 
 /**
- * After the mod is added: what has to happen in Claude Code before it loads, how to turn the role guard on (plugin
+ * After the mod is added (init --mod, update --mod, setup): what has to happen in Claude Code before it loads — start
+ * at the repo root, accept trust, and restart a session that is already open (mods load at process start) — how to turn the role guard on (plugin
  * options are not read from project settings, so the installer cannot — TRAPS mod-options-not-read-from-project-settings),
  * and, when the bottom gauge is on too, what each of the two shows.
  */
@@ -958,28 +1171,32 @@ export function printModNotes({ lang, gauge, log }) {
   log(M({
     en: `   ℹ️  Claude Code mod installed in ${MOD_REL}/ — it needs Claude Code ${MOD_MIN_CLAUDE} or later.
        Start Claude Code from the repo root; the first time, it asks you to trust this folder — the mod loads only after you accept.
-       To check it loaded and what each feature is doing, run /fw-mod in Claude Code.
+       Already have Claude Code open in this repo? That session cannot see the mod — quit it and start Claude Code again from the repo root.
+       Then run /fw-mod in Claude Code to confirm it loaded and see what each feature is doing.
        Role guard (off by default): the installer cannot switch it on, because plugin options are not read from project settings.
        Turn it on yourself in Claude Code's /config, or in your user settings (~/.claude/settings.json):
          ${key}
        It is not a security boundary: it only stops the main session's Edit/Write into the deny-write paths of your role; Bash and aliases of a path still get through.`,
     'zh-TW': `   ℹ️  Claude Code mod 已安裝在 ${MOD_REL}/ — 需要 Claude Code ${MOD_MIN_CLAUDE} 以上。
        請從 repo 根目錄啟動 Claude Code;第一次會問你是否信任這個資料夾 — 接受之後 mod 才會載入。
-       要確認有載入、各功能在做什麼,在 Claude Code 裡跑 /fw-mod。
+       這個 repo 已經開著 Claude Code?那個 session 看不到 mod — 請結束它,從 repo 根目錄重新啟動 Claude Code。
+       接著在 Claude Code 裡跑 /fw-mod,確認有載入、看各功能在做什麼。
        角色守門(預設關閉):安裝器無法替你開啟,因為外掛選項不會從專案設定讀取。
        請自己在 Claude Code 的 /config 開啟,或寫進你的使用者設定(~/.claude/settings.json):
          ${key}
        它不是安全邊界:只擋主 session 用 Edit/Write 寫入你角色的 deny-write 路徑;Bash 與同一路徑的別名仍然寫得進去。`,
     'zh-CN': `   ℹ️  Claude Code mod 已安装在 ${MOD_REL}/ — 需要 Claude Code ${MOD_MIN_CLAUDE} 以上。
        请从 repo 根目录启动 Claude Code;第一次会问你是否信任这个文件夹 — 接受之后 mod 才会加载。
-       要确认有加载、各功能在做什么,在 Claude Code 里跑 /fw-mod。
+       这个 repo 已经开着 Claude Code?那个 session 看不到 mod — 请结束它,从 repo 根目录重新启动 Claude Code。
+       接着在 Claude Code 里跑 /fw-mod,确认有加载、看各功能在做什么。
        角色守门(默认关闭):安装器无法替你开启,因为插件选项不会从项目设置读取。
        请自己在 Claude Code 的 /config 开启,或写进你的用户设置(~/.claude/settings.json):
          ${key}
        它不是安全边界:只挡主 session 用 Edit/Write 写入你角色的 deny-write 路径;Bash 与同一路径的别名仍然写得进去。`,
     ja: `   ℹ️  Claude Code mod を ${MOD_REL}/ にインストールしました — Claude Code ${MOD_MIN_CLAUDE} 以上が必要です。
        Claude Code は repo のルートから起動してください。初回はこのフォルダを信頼するか聞かれます — 承認して初めて mod が読み込まれます。
-       読み込まれたか、各機能が何をしているかは Claude Code で /fw-mod を実行すると分かります。
+       この repo で Claude Code を開いたまま?そのセッションからは mod が見えません — 終了して、repo のルートから Claude Code を起動し直してください。
+       続けて Claude Code で /fw-mod を実行し、読み込まれたか・各機能が何をしているかを確認。
        ロールガード(既定はオフ):プラグインのオプションはプロジェクト設定から読まれないため、インストーラーではオンにできません。
        Claude Code の /config か、ユーザー設定(~/.claude/settings.json)でご自分でオンに:
          ${key}

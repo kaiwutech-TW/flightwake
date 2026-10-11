@@ -20,28 +20,35 @@ cd your-repo
 npx flightwake setup    # 対話式インストール:いくつか質問し、書き込む全パスを表示し、確認後にインストール
 ```
 
-`setup` は端末が必要。最初に git を確認し(ディレクトリが repo でなければ `git init` を提案;既定は No で、最終確認の後にのみ実行)、続いて言語、agent(フォルダに CLAUDE.md / AGENTS.md / GEMINI.md があれば検出結果を提示;どれも無ければ使うツールを直接尋ねる——複数選択可・事前選択なし)、任意のアドオン(各項目の既定は No:下部ゲージ、Claude Code mod、roles、Orca 連携;mod の質問は Claude Code を選んだ時だけ尋ねる)、repo の種類(code / notes)を尋ね、書き込む全パスを一覧表示してから「実行しますか? [Y/n]」と尋ねる——Enter でインストール;`n`・EOF・Ctrl-C では何も書き込まれない。既に flightwake が入っている場合は、その場での更新(`update`)だけを提案する。インストールは `init` と同じ経路で行い、終わったら `doctor` を実行して次のステップを表示する。コマンドラインで渡したフラグは対応する質問への答えになる;`--private` はフラグ専用で、質問されることはない。
+`setup` は端末が必要。最初に git を確認し(ディレクトリが repo でなければ `git init` を提案;既定は No で、最終確認の後にのみ実行)、続いて言語(端末のロケールから事前選択——`LC_ALL`、次に `LC_MESSAGES`、次に `LANG`、どれも未設定のときだけ OS のロケール;`C` / `POSIX` は英語——し、どこから読んだかも表示)、agent(フォルダに CLAUDE.md / AGENTS.md / GEMINI.md があれば検出結果を提示;どれも無ければ使うツールを直接尋ねる——複数選択可・事前選択なし)、任意のアドオン(1 つの一覧。下記)、repo の種類(code / notes)を尋ね、推測違いにすぐ気づけるよう要約を 1 行(`lang=… · agents=… · add-ons=… · profile=…`)表示し、書き込む全パスを一覧表示してから「実行しますか? [Y/n]」と尋ねる——Enter でインストール;`n`・EOF・Ctrl-C では何も書き込まれない。インストールは `init` と同じ経路で行い、終わったら `doctor` を実行して次のステップを表示する。コマンドラインで渡したフラグは対応する質問への答えになる;`--private` はフラグ専用で、質問されることはない。
+
+**アドオンの一覧**は番号が固定——1 下部ゲージ、2 Claude Code mod、3 チームロール、4 Orca 連携(ここで当てはまらない行は表示しない)——で、答えは欲しいものの集合そのもの:Enter = `*` の付いたもの、番号か名前(`1 2`、`mod roles`)= それだけ(ほかは入れない)、`0` = なし。agent に Claude Code が含まれていれば mod は事前選択される。ただし `claude --version` が 2.1.287 より古いバージョンを返したときは除く(mod が読み込まれないため)。下部ゲージは、あなた(`~/.claude/settings.json`)にもこの repo にもまだ status line がないときだけ事前選択される:commit される `.claude/settings.json` に書き込まれるので、この repo ではチームメイト全員の自分の status line に取って代わる。行にもそう書いてある。Orca 連携は setup を Orca の中で実行しているとき(`ORCA_*` 環境変数がある)だけ事前選択される。PATH に `orca` があるだけなら行は表示するが印は付けない——GNOME のスクリーンリーダーも `orca` という名前だから。チームロールは事前選択しない。インストール済みの行は `✓` で表示され、そのまま残る。
+
+**すでに flightwake が入っている repo** では、setup は言語も repo の種類も変えない(それは `update --lang=… / --profile=…` の役目)。ここで使えるのに未インストールのアドオンがあれば、3 つの選択肢を出す:その場で更新(`npx flightwake update` と同じ)、更新してアドオンを追加(追加するだけ——ほかのオプションと記録には触れない;`update --statusline / --mod / --orca` と同じ経路)、何もしないで終了(何も書き込まず exit 0)。当てはまるものがすべてインストール済みなら、そのままその場での更新に進む。
 
 **非対話形式**——`npx flightwake init [フラグ]`(`npx flightwake` だけでも同じ)は何も質問しない:自動化、agent、CI、やりたいことが決まっている上級者向け:
 
 ```bash
 npx flightwake init --lang=ja --statusline   # 日本語 + 下部ゲージ
 npx flightwake init --lang=ja --statusline --agents=claude,codex,gemini   # 3 つの agent を一度に(Claude Code + Codex + Gemini CLI)
-npx flightwake update                        # その場で更新。インストール時のオプション(lang/statusline/private)を引き継ぐ
+npx flightwake update                        # その場で更新。インストール時のオプション(lang/statusline/private)を引き継ぐ。最後に未インストールのアドオンを 1 行で知らせる
+npx flightwake update --mod                  # 更新して Claude Code mod を追加(--statusline、--orca も同様)
 ```
 
-**言語を選ぶ**(非対話形式;`setup` は代わりに尋ねてくれる)— インストールされるテンプレート、skill、CLI/ゲージの出力すべてがこれに従う。**自動検出はあえてしない**:ターミナルの `LANG` と OS のロケールは日常的に食い違い(実測:OS は zh_TW なのにターミナルは `en_US.UTF-8` を報告)、自信たっぷりに間違えるほうが、既定を明示するより悪い。使いたい行をコピーしてください:
+`update` と `init` は何も尋ねない。ここで使えるのに未インストールのアドオンがあれば、最後に 1 行でそれを挙げ、`npx flightwake setup`(先に質問し、書き込むパスを全部表示)か直接のコマンド(`npx flightwake update --statusline / --mod / --orca`、`npx flightwake roles install`)を示す。自動では何も追加せず、その行には「追加する前に使う人に確認を」と agent 向けに書いてある。当てはまるものがすべて入れば表示されなくなる。`--private` のインストールでは `init` のフラグではなくこれらの `update` コマンドを使うこと:`--private` なしの `init` は共有の `.claude/settings.json` に書き込んでしまう。
+
+**言語を選ぶ**(非対話形式;`setup` は代わりに尋ねてくれる)— インストールされるテンプレート、skill、CLI/ゲージの出力すべてがこれに従う。`setup` は言語の質問を端末のロケールから始め、何を読んだかを表示する——Enter でそのまま、番号で変更。`init` は推測しない:インストールした言語は repo を clone する全員が共有するので、1 人の端末で決めてはいけないから。`--lang` を渡さなければ英語を入れ、端末のロケールが別の言語なら切り替えコマンド(`npx flightwake update --lang=<x>`)を表示する。使いたい行をコピーしてください:
 
 | 言語 | 新規インストール | 既に別の言語で入れている場合 |
 |---|---|---|
-| 日本語 | `npx flightwake init --lang=ja --statusline` | `npx flightwake init --lang=ja --force --statusline` |
-| English | `npx flightwake init --statusline` | `npx flightwake init --lang=en --force --statusline` |
-| 繁體中文 | `npx flightwake init --lang=zh-TW --statusline` | `npx flightwake init --lang=zh-TW --force --statusline` |
-| 简体中文 | `npx flightwake init --lang=zh-CN --statusline` | `npx flightwake init --lang=zh-CN --force --statusline` |
+| 日本語 | `npx flightwake init --lang=ja --statusline` | `npx flightwake update --lang=ja` |
+| English | `npx flightwake init --statusline` | `npx flightwake update --lang=en` |
+| 繁體中文 | `npx flightwake init --lang=zh-TW --statusline` | `npx flightwake update --lang=zh-TW` |
+| 简体中文 | `npx flightwake init --lang=zh-CN --statusline` | `npx flightwake update --lang=zh-CN` |
 
-言語の切り替えは安全:`--force` が置き換えるのはフレームワーク所有のファイル(テンプレート、skill、hook、マーカーブロック)だけ。あなたの STATE / DECISIONS / TRAPS / records には**一切触れない**——書いたときの言語のまま残る。ゲージが不要なら `--statusline` を外すだけ。`--agents=claude,codex,gemini`(部分指定も可)を付けると、その agent 向けに明示的にインストールする。付けなければ init は既にある指示ファイル(CLAUDE.md / AGENTS.md / GEMINI.md)から自動検出する。
+言語の切り替えは安全:`update --lang=<x>` が置き換えるのはフレームワーク所有のファイル(テンプレート、skill、hook、マーカーブロック)だけで、ほかのオプション(private、ゲージ、アドオン、profile)は引き継ぐ。あなたの STATE / DECISIONS / TRAPS / records には**一切触れない**——書いたときの言語のまま残る。ゲージが不要なら新規インストールの行から `--statusline` を外すだけ。`--agents=claude,codex,gemini`(部分指定も可)を付けると、その agent 向けに明示的にインストールする。付けなければ init は既にある指示ファイル(CLAUDE.md / AGENTS.md / GEMINI.md)から自動検出する。
 
-**インストールされたファイルを手で翻訳しないこと。** マーカーがどの言語で入れたかを記録しているため、次の `update` はその言語のソースから refresh し、手の入った箇所は消える。言語を変えたいときは `--lang` を付けて init を実行し直す。既に手で書き換えてしまった場合、init/update が上書きしたファイルを 1 つずつ名前で知らせるようになった。
+**インストールされたファイルを手で翻訳しないこと。** マーカーがどの言語で入れたかを記録しているため、次の `update` はその言語のソースから refresh し、手の入った箇所は消える。言語を変えたいときは `update --lang=<x>` を使う。既に手で書き換えてしまった場合、init/update が上書きしたファイルを 1 つずつ名前で知らせるようになった。
 
 init が行うこと:`.flightwake/` の作成(テンプレート + Stop hook)、4 つの skill を `.claude/skills/` にコピー、Stop hook を `.claude/settings.json` にマージ、トリガー義務表(`<!-- flightwake:begin/end -->` マーカー付き)を**検出した agent 指示ファイル**(CLAUDE.md / AGENTS.md / GEMINI.md — 存在するものに追記;どれも無ければ AGENTS.md を作成;`--agents=claude,codex,gemini` で明示指定可)に追記。**検出した各プラットフォームは同じ skill と hook を、それぞれの方言で受け取る**:Codex と Gemini CLI は skill を `.agents/skills/fw-*` から読み、STATE チェックは `.codex/hooks.json`(Stop)/ `.gemini/settings.json`(AfterAgent)に入り、義務表は Codex には `$fw-coldstart`、Claude Code には `/fw-coldstart`、Gemini には skill 名だけで書かれる。Codex は初回実行時にこの repo hook の信頼確認を一度求める。**純粋なファイルコピー、ランタイム依存ゼロ**(Node ≥18 はインストール時と hook のみ)。ユーザーデータ(STATE/DECISIONS/TRAPS)はいかなる場合も上書きしない;`--force` はフレームワーク所有ファイルのみ更新する。
 
@@ -149,9 +156,9 @@ skill と hook はプラットフォームごとの便利な糖衣——同じ 4
 
 **`--profile=code|notes`**(既定は `code`)は義務表を選ぶ。`notes` はコードではない repo(執筆、調査、ノート)向け:「テスト green + typecheck クリーン」、「prod 検証の証拠」、schema/prod の締めトリガーを外し、コールドスタート、決定、罠、引き継ぎ、3 コミット以上での締め、破壊的操作の事前確認、セッション終了時の STATE の正直さは残す。インストールされるファイルは同じ。profile はマーカーに記録される(`profile=notes`);`update` は引き継ぎ、`update --profile=code` で戻せる。
 
-**`--orca`**(任意;`setup` でも尋ねるが、Orca を検出した時のみ)は、有効な各プラットフォームの指示ファイルにマーカーブロックを追加する:agent 間の議論やレビューには、見えない背景実行ではなく、見える Orca タブを使うこと。加えて単一ライターのレビュー規約(レビューを頼まれた agent は record を書かず STATE にも触れない;依頼した側が採用した結論を自分の record に書く)。`uninstall` で削除され、`update` はインストール済みの場所だけ refresh する。
+**`--orca`**(任意;`setup` の一覧の 1 行でもある。Orca を検出した時だけ表示し、setup を Orca の中で実行している時だけ事前選択)は、有効な各プラットフォームの指示ファイルにマーカーブロックを追加する:agent 間の議論やレビューには、見えない背景実行ではなく、見える Orca タブを使うこと。加えて単一ライターのレビュー規約(レビューを頼まれた agent は record を書かず STATE にも触れない;依頼した側が採用した結論を自分の record に書く)。`uninstall` で削除され、`update` はインストール済みの場所で refresh し、`update --orca` で追加する。
 
-**`--mod`**(任意;`setup` でも尋ねるが、Claude Code を選んだ時のみ)は、Claude Code 専用のプラグイン(mod)`flightwake-mod` を `.claude/skills/flightwake-mod/` にインストールする:STATE のセッション開始時の注入、プロンプト上の帯、セッションのフライトログ、TRAPS の tripwire、オプションのロールガード。Claude Code 2.1.287 以降が必要で、そのフォルダーのワークスペース信頼プロンプトを承認し、repo のルートから session を始めたときだけ読み込まれる。Claude Code が設定対象の agent に含まれていなければ、メモを表示して mod をスキップする(エラーではない);フォルダーが既にあれば `--force` を付けない限りスキップする。`update` はインストール済みの場所だけ refresh し、新たに追加はしない。`uninstall` は配布したファイルだけを削除し、そのフォルダーに自分で足したファイルは残して一覧を出す。詳細:[docs/mod.ja.md](docs/mod.ja.md)。
+**`--mod`**(任意;`setup` の一覧の 1 行でもある。Claude Code を選んだ時だけ表示し、Claude Code が 2.1.287 より古くなければ事前選択)は、Claude Code 専用のプラグイン(mod)`flightwake-mod` を `.claude/skills/flightwake-mod/` にインストールする:STATE のセッション開始時の注入、プロンプト上の帯、セッションのフライトログ、TRAPS の tripwire、オプションのロールガード。Claude Code 2.1.287 以降が必要で、そのフォルダーのワークスペース信頼プロンプトを承認し、repo のルートから session を始めたときだけ読み込まれる。この repo で Claude Code を開いたままなら、終了して repo のルートから起動し直すこと——実行中のセッションは新しく追加された mod を読み込まない——そのあと `/fw-mod` で読み込まれたか確認する。Claude Code が設定対象の agent に含まれていなければ、メモを表示して mod をスキップする(エラーではない);フォルダーが既にあれば `--force` を付けない限りスキップする。`update` はインストール済みの場所で refresh し、`update --mod` で追加する。`uninstall` は配布したファイルだけを削除し、そのフォルダーに自分で足したファイルは残して一覧を出す。詳細:[docs/mod.ja.md](docs/mod.ja.md)。
 
 **`--git-init`** は、ディレクトリが git repo でないとき `init` が先に repo を作る——明示的にフラグを付けた時のみ;無ければ止まって知らせる。`init` も `setup` も最初に git がインストールされているかを確認し、無ければプラットフォーム別のインストール案内を表示する。
 
@@ -177,7 +184,7 @@ skill と hook はプラットフォームごとの便利な糖衣——同じ 4
 
 health の色(あなたが見張る唯一のもの)、STATE の遅れ(Stop hook と同じ rev-list ロジックを「終了時の催促」から「常時表示」に)、context 使用量。ゲージは状態に応じて**次のコマンドを直接提示**する——セッション開始直後 → `→ まず /fw-coldstart`;STATE が 3 コミット以上遅れ → `→ /fw-record`;context が満杯間近 → `→ /fw-record → /clear → /fw-coldstart`;すべて正常 → 沈黙。既存の statusline は決して上書きせず(単一値設定)、repo 層の設定がユーザー層より優先されるため、グローバルなゲージツールとも共存できる。
 
-注意:素の `npx flightwake init` ではゲージは**入らない**——オプトインだ。init 済みで後から欲しくなったら `npx flightwake init --statusline` をもう一度実行するだけ(既に入っているものはすべて skip され、ゲージだけ追加される)。次の Claude Code セッションから bar が表示される。
+注意:素の `npx flightwake init` ではゲージは**入らない**——オプトインだ。init 済みで後から欲しくなったら `npx flightwake update --statusline` でゲージが追加され、ほかのオプション(`--private` を含む)は引き継がれる。次の Claude Code セッションから bar が表示される。
 
 ゲージは flightwake の新バージョンも知らせる(`→ v0.9.1 available: npx flightwake update`)——他に急ぎがないときだけ表示。チェックは 24 時間に最大 1 回の npm registry への匿名 GET で、OS の一時ディレクトリにキャッシュされ、常にバックグラウンドプロセスで実行(描画がネットワークを待つことはない)。無効化:`FLIGHTWAKE_NO_UPDATE_CHECK=1`。
 

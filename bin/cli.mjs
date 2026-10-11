@@ -8,7 +8,9 @@
  * Codex → .agents/skills + .codex/hooks.json (`$fw-…`); Gemini CLI → .agents/skills + .gemini/settings.json.
  * Pure file copying, cross-platform (Node ≥18). User data (STATE/DECISIONS/TRAPS) is never overwritten;
  * framework-owned files (skills/hooks/TEMPLATE/CLAUDE.md snippet) are not overwritten by default — --force updates them.
- * `update` = re-detect the existing install's options (lang/statusline/private/profile) and force-refresh framework files.
+ * `update` = re-detect the existing install's options (lang/statusline/private/profile) and force-refresh framework files;
+ * installed add-ons are refreshed, --statusline/--mod/--orca add one (a bare update never adds), and it ends with one
+ * line naming the applicable add-ons that are not installed (printAddonNotice; printed only here, never asks).
  * The install itself lives in install.mjs (one code path for init, update and setup); setup.mjs only resolves
  * options by asking; doctor.mjs is read-only.
  */
@@ -18,10 +20,12 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { runRoles, removeRoleArtifacts } from './roles.mjs';
 import { removeShippedTree } from './remove.mjs';
+import { runFleet, fleetBase, isWithin, realish } from './fleet.mjs';
 import {
   LANGS, PROFILES, GROUPS, isAgentName, INSTRUCTION_CANDIDATES, ORCA_BLOCK_RE, MOD_REL, modShips, modSrc, noJunk, makeM, gitAvailable, repoState, excludePath,
   addPrivateExcludes, gitMissingMessage, monorepoMessage, notRepoMessage, detectInstall, resolveOptions, install,
-  printNext, unregisterRepo, createWriter, refusalReport, incompleteReport,
+  printNext, unregisterRepo, createWriter, refusalReport, incompleteReport, readMarkers,
+  detectLocale, detectOrcaSource, addonStatus, printAddonNotice, printModNotes,
 } from './install.mjs';
 import { runDoctor, stateUnfilled } from './doctor.mjs';
 import { runSetup, readlineIO, realContext } from './setup.mjs';
@@ -31,7 +35,7 @@ const TARGET = process.cwd();
 const args = process.argv.slice(2);
 const cmd = args.find((a) => !a.startsWith('-')) ?? 'init';
 const VERSION = JSON.parse(readFileSync(join(FW_SRC, 'package.json'), 'utf8')).version;
-const COMMANDS = ['init', 'update', 'uninstall', 'roles', 'doctor', 'setup'];
+const COMMANDS = ['init', 'update', 'uninstall', 'roles', 'doctor', 'setup', 'fleet'];
 
 const log = (s) => console.log(s);
 
@@ -40,23 +44,37 @@ if (!COMMANDS.includes(cmd) || args.includes('--help') || args.includes('-h')) {
   npx flightwake setup [flags]     guided install: asks a few questions, shows every path it will write, then installs
   npx flightwake init [flags]      non-interactive install (a bare \`npx flightwake\` does the same; never asks anything)
   npx flightwake update | doctor | uninstall [--purge] | roles [install|apply [--dry-run]|card <id>|assign <repo>:<vendor> <id> [--add] [--dry-run]|remove]
+  npx flightwake fleet [--json] [--all] [--root=<path>] [--prune [--days=N] [--dry-run]]   (runs anywhere; needs no repo)
   Run at the target repo root.
-  setup       interactive (needs a terminal); flags given on the command line answer their question; --private is flag-only
+  setup       interactive (needs a terminal): the language question starts on your terminal locale (LC_ALL / LC_MESSAGES / LANG);
+              add-ons are one list with the recommended ones marked * (Enter keeps them, numbers pick exactly those, 0 = none);
+              on an installed repo: upgrade in place, upgrade and add add-ons, or leave. Flags answer their question; --private is flag-only
   init        flags: --force updates existing skills/hooks/snippets; --lang=en|zh-TW|zh-CN|ja picks the language of installed
-              content and CLI output (default en); --private keeps records local, out of git (.git/info/exclude + settings.local.json);
+              content and CLI output (default en — never guessed; init prints the switch command when your terminal locale is another language);
+              --private keeps records local, out of git (.git/info/exclude + settings.local.json);
               --statusline installs the bottom gauge (health / STATE lag / context usage; never overwrites an existing statusline);
               --agents=claude,codex,gemini picks which platform instruction files get the obligation table (auto-detected by default);
               --profile=code|notes picks the obligation table (notes drops the tests/typecheck and schema/prod duties; default code);
               --orca adds the Orca collaboration block (opt-in add-on); --git-init creates the git repo first when there is none;
               --mod installs the Claude Code mod into .claude/skills/flightwake-mod (opt-in; needs Claude Code 2.1.287+; skipped without claude)
-  update      re-install with the options detected from the existing install (lang / statusline / private / profile) — the in-place upgrade;
-              add-ons (roles, Orca, the mod) are refreshed only where already installed
+  update      re-install with the options detected from the existing install (lang / statusline / private / profile) — the in-place upgrade; never asks.
+              Installed add-ons are refreshed; --statusline / --mod / --orca add that add-on, --lang=… / --profile=… switch it
+              (roles: npx flightwake roles install). Ends with one line naming add-ons that apply here but are not installed
   doctor      read-only check of the install structure (git, STATE, markers, skills, hooks, private excludes, add-ons); exit 1 on any failure
   uninstall   reverse-remove framework files and marker blocks; keeps .flightwake/ user data unless --purge
   roles       opt-in add-on: install the fw-roles skill; apply renders .flightwake/ROLES.md — seats into CLAUDE.md/AGENTS.md/GEMINI.md,
               on-call (unseated) roles into native agents (.claude/agents, .codex/agents); card prints a dispatch card; assign changes a seat;
-              remove strips this repo's role output (ROLES.md kept). Roles are guidance, not permissions`);
+              remove strips this repo's role output (ROLES.md kept). Roles are guidance, not permissions
+  fleet       read-only list of Claude Code sessions reporting to ~/.flightwake/sessions (blocked first); --json for tools; --all; --root=<path>; --prune [--days=N] [--dry-run] deletes ended/stale files older than N days (default 7)`);
   process.exit([...COMMANDS, 'help'].includes(cmd) ? 0 : 1);
+}
+
+// ── fleet: read-only (bin/fleet.mjs); dispatched before any git or repo detection, so it runs from any folder.
+//    Language: --lang= (checked by fleet.mjs) > the cwd's install marker (files only, no git) > English ──
+if (cmd === 'fleet') {
+  let markerLang = null;
+  try { markerLang = readMarkers(TARGET).find((m) => !m.orphanOrca)?.lang ?? null; } catch {}
+  process.exit(await runFleet({ args, lang: markerLang ?? 'en' }));
 }
 
 const flagValue = (name) => args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -91,13 +109,21 @@ const flags = {
 // Reading the existing install needs no git (files only; the exclude lookup falls back to .git/info/exclude)
 const det = detectInstall(TARGET);
 // Language: explicit flag > existing install's language > English
-const LANG = langArg ?? det.marker?.lang ?? 'en';
+const LANG = langArg ?? det.lang ?? 'en';
 const M = makeM(LANG);
 
 // ── setup: interactive only. No TTY → explain and fail, never guess answers (agents/CI use init + flags) ──
 if (cmd === 'setup') {
   if (!process.stdin.isTTY) {
-    log(M({
+    // An installed repo gets the add-only update form: init flags would drop --private (resolveOptions inherits it on
+    // update only) and write the shared .claude/settings.json
+    if (det.installed) log(M({
+      en: '⚠️  setup is interactive and needs a terminal (stdin is not a TTY).\n    flightwake is already installed here. For scripts, agents and CI: npx flightwake update (in-place upgrade; add an add-on with --statusline / --mod / --orca, roles: npx flightwake roles install) — it keeps your current options, --private included',
+      'zh-TW': '⚠️  setup 是互動式,需要終端機(stdin 不是 TTY)。\n    這裡已經安裝了 flightwake。腳本、agent 與 CI 請用:npx flightwake update(就地升級;加裝附加元件用 --statusline / --mod / --orca,角色:npx flightwake roles install)— 會沿用現有選項,包含 --private',
+      'zh-CN': '⚠️  setup 是交互式,需要终端(stdin 不是 TTY)。\n    这里已经安装了 flightwake。脚本、agent 与 CI 请用:npx flightwake update(就地升级;加装附加组件用 --statusline / --mod / --orca,角色:npx flightwake roles install)— 会沿用现有选项,包含 --private',
+      ja: '⚠️  setup は対話式で、端末が必要です(stdin が TTY ではありません)。\n    ここには flightwake がインストール済です。スクリプト・agent・CI では:npx flightwake update(その場で更新。アドオンの追加は --statusline / --mod / --orca、ロールは npx flightwake roles install)— 今のオプションは --private も含めてそのまま',
+    }));
+    else log(M({
       en: '⚠️  setup is interactive and needs a terminal (stdin is not a TTY).\n    For scripts, agents and CI use the non-interactive form, e.g.: npx flightwake init --lang=en --statusline',
       'zh-TW': '⚠️  setup 是互動式,需要終端機(stdin 不是 TTY)。\n    腳本、agent 與 CI 請改用非互動的 init 加旗標,例如:npx flightwake init --lang=zh-TW --statusline',
       'zh-CN': '⚠️  setup 是交互式,需要终端(stdin 不是 TTY)。\n    脚本、agent 与 CI 请改用非交互的 init 加旗标,例如:npx flightwake init --lang=zh-CN --statusline',
@@ -243,8 +269,22 @@ if (cmd === 'uninstall') {
     } catch {}
     // 5. Remove now-empty directories
     for (const rel of ['.claude/skills', '.claude', '.agents/skills', '.agents', '.codex', '.gemini']) rmdirQuiet(rel);
-    // 6. User data only on --purge
-    if (PURGE) rm('.flightwake');
+    // 6. User data only on --purge. The session fleet folder is never part of it, even when it lies in here (a repo
+    //    installed at $HOME, or FLIGHTWAKE_HOME=<this repo>/.flightwake): then .flightwake goes entry by entry around it
+    if (PURGE) {
+      const fb = fleetBase(process.env);
+      const keep = fb === null ? null : realish(`${fb}/sessions`);
+      const rmAround = (rel) => {
+        const p = join(TARGET, ...rel.split('/'));
+        const real = realish(p);
+        if (keep === null || !isWithin(real, keep)) return rm(rel);
+        if (real === keep || isLink(p)) return;
+        let names = [];
+        try { names = readdirSync(p); } catch { return; }
+        for (const n of names) rmAround(`${rel}/${n}`);
+      };
+      rmAround('.flightwake');
+    }
   };
   const pre = createWriter({ target: TARGET, dry: true, M });
   run(pre.W, () => {}, true);
@@ -255,6 +295,20 @@ if (cmd === 'uninstall') {
   if (real.refused.length) { log(incompleteReport(M, real.refused.map((r) => r.path).join(', '))); process.exit(1); }
   // Cross-repo registry entry (best-effort)
   unregisterRepo(TARGET, log);
+  // The session fleet folder (<base>/sessions, F7) is shared by every repo: never touched here, --purge included —
+  // `npx flightwake fleet --prune` is its only delete path
+  try {
+    const fb = fleetBase(process.env);
+    const sdir = fb === null ? null : `${fb}/sessions`;
+    if (sdir && lstatSync(sdir).isDirectory()) {
+      log(`  ${M({
+        en: `kept ${sdir} — session files are shared by every repo; \`npx flightwake fleet --prune\` removes old ones`,
+        'zh-TW': `保留 ${sdir}——session 檔由所有 repo 共用;\`npx flightwake fleet --prune\` 可刪舊檔`,
+        'zh-CN': `保留 ${sdir}——session 文件由所有 repo 共用;\`npx flightwake fleet --prune\` 可删旧文件`,
+        ja: `${sdir} は残す——セッションファイルは全リポジトリ共有。古いものは \`npx flightwake fleet --prune\` で削除`,
+      })}`);
+    }
+  } catch {}
   if (PURGE) {
     log('\n✅ uninstall done (--purge). User data (STATE/DECISIONS/TRAPS/records) deleted too; anything ever committed is still recoverable from git history.');
   } else {
@@ -284,6 +338,9 @@ try {
 }
 // Something the preflight could not foresee (the tree changed in between): not done, and the exit code says so
 if (result.refused.length) { log(incompleteReport(M, result.refused.map((r) => r.path).join(', '))); process.exit(1); }
+// The add-on notice: derived from the files as they are after this run (no marker attribute, no state), printed once
+// here and nowhere else (setup/doctor/gauge/hooks never print it); the refused/incomplete paths above exit before it
+const addons = addonStatus({ det: detectInstall(TARGET), claude: result.active.has('claude'), orca: detectOrcaSource(process.env) });
 if (IS_UPDATE) {
   log(M({
     en: `\n✅ updated to v${VERSION}.`,
@@ -291,6 +348,10 @@ if (IS_UPDATE) {
     'zh-CN': `\n✅ 已更新到 v${VERSION}。`,
     ja: `\n✅ v${VERSION} に更新しました。`,
   }));
+  // `update --mod` adds the mod: the same next steps as init/setup (restart an open session, trust, /fw-mod)
+  if (result.mod === 'added') printModNotes({ lang: opts.lang, gauge: result.gauge, log });
+  printAddonNotice({ lang: opts.lang, rows: addons, log });
 } else {
-  printNext({ ...opts, langExplicit: !!langArg, marker: det.marker, fresh: stateUnfilled(TARGET, FW_SRC), log }, result);
+  printNext({ ...opts, langExplicit: !!langArg || !!det.lang, marker: det.marker, fresh: stateUnfilled(TARGET, FW_SRC), log,
+    locale: detectLocale(process.env), addons }, result);
 }

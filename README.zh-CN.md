@@ -20,28 +20,35 @@ cd your-repo
 npx flightwake setup    # 引导式安装:问几个问题、列出将写入的每个路径,你确认后才安装
 ```
 
-`setup` 需要终端。它先检查 git(目录不是 repo 时会问要不要 `git init`,默认 No,且只在最后确认后才执行),接着问语言、agent(文件夹已有 CLAUDE.md / AGENTS.md / GEMINI.md 时列出检测结果;都没有时直接问你用哪些工具,可多选、不预选)、可选附加项(每项默认 No:底部仪表、Claude Code mod、roles、Orca 协作;mod 这个问题只在选了 Claude Code 时才会问)与 repo 类型(code / notes),列出将写入的所有路径,再问「确定执行? [Y/n]」——按 Enter 即安装;`n`、EOF 或 Ctrl-C 都不会写入任何东西。若已安装 flightwake,只会提供就地升级(`update`)。它与 `init` 走同一条安装路径,装完跑 `doctor` 并打印下一步。命令行上给的旗标会直接回答对应的问题;`--private` 只能用旗标,从不询问。
+`setup` 需要终端。它先检查 git(目录不是 repo 时会问要不要 `git init`,默认 No,且只在最后确认后才执行),接着问语言(依终端语系预选——先看 `LC_ALL`,再看 `LC_MESSAGES`,再看 `LANG`,三者都没设才看操作系统语系;`C` / `POSIX` 视为英文——并标出依据)、agent(文件夹已有 CLAUDE.md / AGENTS.md / GEMINI.md 时列出检测结果;都没有时直接问你用哪些工具,可多选、不预选)、可选附加组件(一题清单,见下)与 repo 类型(code / notes),先打印一行摘要(`lang=… · agents=… · add-ons=… · profile=…`),猜错一眼就看得出来,再列出将写入的所有路径,再问「确定执行? [Y/n]」——按 Enter 即安装;`n`、EOF 或 Ctrl-C 都不会写入任何东西。它与 `init` 走同一条安装路径,装完跑 `doctor` 并打印下一步。命令行上给的旗标会直接回答对应的问题;`--private` 只能用旗标,从不询问。
+
+**附加组件清单**编号固定——1 底部仪表、2 Claude Code mod、3 团队角色、4 Orca 协作(这里不适用的不列)——你的回答就是你要的那一组:Enter = 保留标 `*` 的,输入编号或名称(`1 2`、`mod roles`)= 就是这些、其他都不要,`0` = 都不要。agent 里有 Claude Code 时,mod 会预选,除非 `claude --version` 报告低于 2.1.287 的版本(mod 不会加载)。底部仪表只在你(`~/.claude/settings.json`)与这个 repo 都还没有 status line 时才预选:它写进会 commit 的 `.claude/settings.json`,在这个 repo 里会取代每位队友自己的 status line,那一行也会这样说明。Orca 协作只在 setup 于 Orca 里运行(有 `ORCA_*` 环境变量)时预选;只在 PATH 上找到 `orca` 程序时会列出但不标记,因为 GNOME 的屏幕阅读器也叫 `orca`。团队角色永不预选。已安装的行标 `✓`,保持不动。
+
+**已经装过 flightwake 的 repo**,setup 不改语言与 repo 类型(那是 `update --lang=… / --profile=…` 的事)。若有这里适用、但尚未安装的附加组件,它提供三个选择:就地升级(等同 `npx flightwake update`)、升级并加装附加组件(只加不减——你其他的选项与记录都不动;与 `update --statusline / --mod / --orca` 同一条路径),或维持原状(什么都不写,exit 0)。适用的都已安装时,直接走就地升级。
 
 **非交互形式**——`npx flightwake init [旗标]`(直接敲 `npx flightwake` 效果相同)从不提问:给自动化、agent、CI 与已经知道要什么的高级用户用:
 
 ```bash
 npx flightwake init --lang=zh-CN --statusline   # 简体中文 + 底部仪表
 npx flightwake init --lang=zh-CN --statusline --agents=claude,codex,gemini   # 三家一次装齐(Claude Code + Codex + Gemini CLI)
-npx flightwake update                           # 就地升级,沿用你装过的选项(lang/statusline/private)
+npx flightwake update                           # 就地升级,沿用你装过的选项(lang/statusline/private);结尾用一行列出你还没装的附加组件
+npx flightwake update --mod                     # 升级并加上 Claude Code mod(也可 --statusline、--orca)
 ```
 
-**选你的语言**(非交互形式;`setup` 会帮你问)— 安装的模板、skill 与所有 CLI/仪表输出都跟着它走。**刻意不做自动检测**:终端的 `LANG` 与操作系统语系经常不一致(实测过:系统是 zh_TW,终端却报 `en_US.UTF-8`),猜错又讲得很有自信,比明讲默认更糟。直接复制你要的那行:
+`update` 与 `init` 从不提问。有这里适用、但尚未安装的附加组件时,结尾会用一行点名,并附上 `npx flightwake setup`(先问、列出所有路径)或直接的命令(`npx flightwake update --statusline / --mod / --orca`、`npx flightwake roles install`)。不会自动加装,那一行也明写要 agent 先问用户;适用的都装好后就不再出现。`--private` 安装请照这些 `update` 命令,不要用 `init` 旗标:不带 `--private` 的 `init` 会写入共用的 `.claude/settings.json`。
+
+**选你的语言**(非交互形式;`setup` 会帮你问)— 安装的模板、skill 与所有 CLI/仪表输出都跟着它走。`setup` 的语言题以终端语系为起点,并标出它读到什么——Enter 沿用,输入编号改掉。`init` 从不猜:装进去的语言是每个 clone 这个 repo 的人共用的,不该由某一个人的终端决定。没给 `--lang` 就装英文;终端语系是别的语言时,它会打印切换命令(`npx flightwake update --lang=<x>`)。直接复制你要的那行:
 
 | 语言 | 全新安装 | 已经装成其他语言 |
 |---|---|---|
-| 简体中文 | `npx flightwake init --lang=zh-CN --statusline` | `npx flightwake init --lang=zh-CN --force --statusline` |
-| 繁體中文 | `npx flightwake init --lang=zh-TW --statusline` | `npx flightwake init --lang=zh-TW --force --statusline` |
-| 日本語 | `npx flightwake init --lang=ja --statusline` | `npx flightwake init --lang=ja --force --statusline` |
-| English | `npx flightwake init --statusline` | `npx flightwake init --lang=en --force --statusline` |
+| 简体中文 | `npx flightwake init --lang=zh-CN --statusline` | `npx flightwake update --lang=zh-CN` |
+| 繁體中文 | `npx flightwake init --lang=zh-TW --statusline` | `npx flightwake update --lang=zh-TW` |
+| 日本語 | `npx flightwake init --lang=ja --statusline` | `npx flightwake update --lang=ja` |
+| English | `npx flightwake init --statusline` | `npx flightwake update --lang=en` |
 
-切语言是安全的:`--force` 只换框架拥有的文件(模板、skill、hook、marker 区块),你的 STATE / DECISIONS / TRAPS / records **完全不动**,维持你当初写下的语言。不要仪表的话,把 `--statusline` 拿掉即可。加 `--agents=claude,codex,gemini`(可任选子集)明确指定要装哪些 agent;不加的话,init 依既有的指令文件(CLAUDE.md / AGENTS.md / GEMINI.md)自动检测。
+切语言是安全的:`update --lang=<x>` 只换框架拥有的文件(模板、skill、hook、marker 区块),并沿用你其他的选项(private、仪表、附加组件、profile);你的 STATE / DECISIONS / TRAPS / records **完全不动**,维持你当初写下的语言。不要仪表的话,把全新安装那一栏的 `--statusline` 拿掉即可。加 `--agents=claude,codex,gemini`(可任选子集)明确指定要装哪些 agent;不加的话,init 依既有的指令文件(CLAUDE.md / AGENTS.md / GEMINI.md)自动检测。
 
-**不要手动翻译装好的文件。** marker 记着你装的是哪个语言,下次 `update` 会用那个语言的来源刷新,你的修改会消失。要换语言请重跑 init 加 `--lang`;若已经手改过,现在 init/update 会逐档列出它覆盖了什么。
+**不要手动翻译装好的文件。** marker 记着你装的是哪个语言,下次 `update` 会用那个语言的来源刷新,你的修改会消失。要换语言请用 `update --lang=<x>`;若已经手改过,现在 init/update 会逐档列出它覆盖了什么。
 
 init 会:建 `.flightwake/`(模板 + Stop hook)、复制 4 个 skill 到 `.claude/skills/`、把 Stop hook 并入 `.claude/settings.json`、把触发义务表(含 `<!-- flightwake:begin/end -->` 标记)追加到**检测到的 agent 指令文件**(CLAUDE.md / AGENTS.md / GEMINI.md,有哪个贴哪个;全都没有就建 AGENTS.md;`--agents=claude,codex,gemini` 可明确指定)。**检测到的每个平台都拿到同一套 skill 与 hook,用它自己的方言**:Codex 与 Gemini CLI 从 `.agents/skills/fw-*` 读 skill,STATE 检查分别进 `.codex/hooks.json`(Stop)与 `.gemini/settings.json`(AfterAgent),义务表对 Codex 写 `$fw-coldstart`、对 Claude Code 写 `/fw-coldstart`、对 Gemini 写裸 skill 名。Codex 首次执行会要你信任这个 repo hook 一次。**纯文件复制,零运行期依赖**(Node ≥18 只在安装与 hook 时用)。用户数据(STATE/DECISIONS/TRAPS)任何情况下都不覆盖;`--force` 只更新框架拥有的文件。
 
@@ -148,9 +155,9 @@ skill 与 hook 是各平台的便利糖衣——同一套四个 skill、同一�
 
 **`--profile=code|notes`**(默认 `code`)选择义务表。`notes` 给非代码的 repo(写作、研究、笔记):去掉「测试绿 + typecheck 干净」、「prod 验证证据」与 schema/prod 收尾触发,保留冷启动、决策、坑、交接、≥3 commit 收尾、破坏性操作先确认、session 结束时 STATE 诚实。安装的文件相同。profile 记在标记里(`profile=notes`);`update` 会沿用,`update --profile=code` 可切回。
 
-**`--orca`**(可选;`setup` 也会问,但只在检测到 Orca 时)在每个启用平台的指令文件加一个标记区块:跨 agent 讨论与评审要用看得见的 Orca 标签页,不要用藏在后台的运行;并附单一写手评审协议(被请来评审的 agent 不写 record、不碰 STATE;提问方把采纳的结论写进自己的 record)。`uninstall` 会移除;`update` 只在已安装处刷新。
+**`--orca`**(可选;也是 `setup` 清单的一行,只在检测到 Orca 时列出,只在 setup 于 Orca 里运行时预选)在每个启用平台的指令文件加一个标记区块:跨 agent 讨论与评审要用看得见的 Orca 标签页,不要用藏在后台的运行;并附单一写手评审协议(被请来评审的 agent 不写 record、不碰 STATE;提问方把采纳的结论写进自己的 record)。`uninstall` 会移除;`update` 在已安装处刷新;`update --orca` 会加上。
 
-**`--mod`**(可选;`setup` 也会问,但只在选了 Claude Code 时)安装 Claude Code mod `flightwake-mod`,放在 `.claude/skills/flightwake-mod/`(只复制 manifest、`hooks/`、`types/`):session 开始时注入 STATE、输入框上方的提示行、session 飞行日志(`/fw-log`)、TRAPS 触发提醒,以及默认关闭的角色守门。需要 Claude Code 2.1.287+,接受文件夹信任提示,并从 repo 根目录启动。目录已存在时需 `--force` 才会覆盖;`update` 只刷新已安装的 mod,`uninstall` 只移除发行的文件,你在该文件夹自己加的文件会保留并列出。详见 [docs/mod.zh-CN.md](docs/mod.zh-CN.md)。
+**`--mod`**(可选;也是 `setup` 清单的一行,只在选了 Claude Code 时列出,除非你的 Claude Code 低于 2.1.287,否则预选)安装 Claude Code mod `flightwake-mod`,放在 `.claude/skills/flightwake-mod/`(只复制 manifest、`hooks/`、`types/`):session 开始时注入 STATE、输入框上方的提示行、session 飞行日志(`/fw-log`)、TRAPS 触发提醒,以及默认关闭的角色守门。需要 Claude Code 2.1.287+,接受文件夹信任提示,并从 repo 根目录启动。这个 repo 已经开着 Claude Code 的话,请结束它、从 repo 根目录重新启动——运行中的 session 永远不会加载新加的 mod——再跑 `/fw-mod` 确认有加载。目录已存在时需 `--force` 才会覆盖;`update` 刷新已安装的 mod,`update --mod` 会加上;`uninstall` 只移除发行的文件,你在该文件夹自己加的文件会保留并列出。详见 [docs/mod.zh-CN.md](docs/mod.zh-CN.md)。
 
 **`--git-init`** 让 `init` 在目录不是 git repo 时先创建它——只有明确给旗标才会做;没给就停下并告知。`init` 与 `setup` 都会先检查 git 是否已安装,没有则按平台给出安装提示。
 
@@ -176,7 +183,7 @@ skill 与 hook 是各平台的便利糖衣——同一套四个 skill、同一�
 
 health 颜色(你唯一要盯的事)、STATE 落后量(与 Stop hook 同一套 rev-list 逻辑,但从「结束时提醒」变成「随时看得到」)、context 用量。仪表还会依状态**直接提示下一个指令**:刚开场 → `→ 开工先 /fw-coldstart`;STATE 落后 ≥3 → `→ /fw-record 收尾`;context 快满 → `→ /fw-record → /clear → /fw-coldstart`;一切正常 → 安静。绝不覆盖既有 statusline(单值设置),且 repo 层设置优先于用户层,与全局仪表工具可并存。
 
-注意:纯 `npx flightwake init` **不会**装仪表——它是选配。已经 init 过才想装?再跑一次 `npx flightwake init --statusline` 即可,只会补上仪表(其他已装的全部 skip),下一个 Claude Code session 就会看到 bar。
+注意:纯 `npx flightwake init` **不会**装仪表——它是选配。已经 init 过才想装?跑 `npx flightwake update --statusline` 就会补上仪表,其他选项(包括 `--private`)沿用,下一个 Claude Code session 就会看到 bar。
 
 仪表也会在 flightwake 有新版时提示(`→ 可更新 v0.9.1:npx flightwake update`)——只在没有更要紧的事时显示。检查是每 24 小时最多一次对 npm registry 的匿名 GET,缓存在系统临时目录,永远在后台进程执行(渲染绝不等网络)。不想要:`FLIGHTWAKE_NO_UPDATE_CHECK=1`。
 
