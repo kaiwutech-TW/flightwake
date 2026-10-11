@@ -9,7 +9,7 @@ const cn = new URL('/zh-CN/', site).toString();
 const ja = new URL('/ja/', site).toString();
 const isNotFound = path === '/404';
 const graph = [
-  { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'flightwake', applicationCategory: 'DeveloperApplication', operatingSystem: 'Cross-platform', description, url: zh, codeRepository: 'https://github.com/kaiwutech-TW/flightwake', downloadUrl: 'https://www.npmjs.com/package/flightwake', softwareVersion: '0.15.0', license: 'https://opensource.org/licenses/MIT', inLanguage: ['en', 'zh-TW', 'zh-CN', 'ja'] },
+  { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'flightwake', applicationCategory: 'DeveloperApplication', operatingSystem: 'Cross-platform', description, url: zh, codeRepository: 'https://github.com/kaiwutech-TW/flightwake', downloadUrl: 'https://www.npmjs.com/package/flightwake', softwareVersion: '0.16.0', license: 'https://opensource.org/licenses/MIT', inLanguage: ['en', 'zh-TW', 'zh-CN', 'ja'] },
   ...(faqs.length ? [{ '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faqs.map(({ q, a }) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })) }] : []),
 ];
 ---

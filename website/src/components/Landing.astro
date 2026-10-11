@@ -1,6 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import { localized, type Language } from '../content';
+import { modCaptures, modCommands } from '../modCaptures';
 import '../styles/site.css';
 interface Props { lang: Language }
 const { lang } = Astro.props;
@@ -11,8 +12,9 @@ const languagePaths = { 'zh-TW': '/', 'zh-CN': '/zh-CN/', en: '/en/', ja: '/ja/'
 const installLanguage = lang === 'zh-CN' ? 'zh-CN' : lang === 'ja' ? 'ja' : lang === 'en' ? 'en' : 'zh-TW';
 const installCommand = `npx flightwake init --lang=${installLanguage} --agents=claude,codex,gemini`;
 const readme = { 'zh-TW': 'README.zh-TW.md', 'zh-CN': 'README.zh-CN.md', en: 'README.md', ja: 'README.ja.md' }[lang];
+const modDoc = { 'zh-TW': 'docs/mod.zh-TW.md', 'zh-CN': 'docs/mod.zh-CN.md', en: 'docs/mod.md', ja: 'docs/mod.ja.md' }[lang];
 const repo = 'https://github.com/kaiwutech-TW/flightwake';
-const anchors = ['idea', 'workflow', 'orca', 'features', 'install', 'faq'];
+const anchors = ['idea', 'workflow', 'mod', 'orca', 'features', 'install', 'faq'];
 ---
 <Base lang={lang} title={c.title} description={c.description} path={path} faqs={[...c.faqs]}>
   <a class="skip" href="#main">{{ 'zh-TW': '跳到主要內容', 'zh-CN': '跳到主要内容', en: 'Skip to content', ja: '本文へ移動' }[lang]}</a>
@@ -29,8 +31,19 @@ const anchors = ['idea', 'workflow', 'orca', 'features', 'install', 'faq'];
     <div class="marquee" aria-hidden="true"><div class="marquee-track"><span>CONTEXT HAS A LIMIT</span><b>✳</b><span>THE WORK DOESN'T</span><b>✳</b><span>CONTEXT HAS A LIMIT</span><b>✳</b><span>THE WORK DOESN'T</span><b>✳</b></div></div>
     <section id="idea" class="section tension"><div class="wrap"><div class="section-intro"><p class="eyebrow">01 / {c.tensionEyebrow}</p><h2>{c.tensionTitle}</h2><p>{c.tensionText}</p></div><div class="memory-grid">{c.tensionCards.map(([label, title, body], i) => <article class="memory-card"><span class="memory-icon" aria-hidden="true">{['◫', '≡', '✳'][i]}</span><p class="card-label">{label}</p><h3>{title}</h3><p>{body}</p></article>)}</div><div class="principle"><span class="principle-star" aria-hidden="true">✳</span><p>{c.principle}</p><span>{c.principleSub}</span></div></div></section>
     <section id="workflow" class="section workflow"><div class="wrap"><div class="section-heading"><div><p class="eyebrow">02 / {c.flowEyebrow}</p><h2>{c.flowTitle}</h2></div><span class="section-scribble" aria-hidden="true">↘</span></div><div class="flow-grid">{c.flowSteps.map(([number, title, body, token], i) => <article class="flow-card"><div class="flow-top"><span>{number}</span><span class="flow-glyph" aria-hidden="true">{['◉', '↗', '◎', '→'][i]}</span></div><h3>{title}</h3><p>{body}</p><span class="flow-token">{token}</span></article>)}</div><div class="flow-foot"><span>START</span><div class="flow-line"><i></i><i></i><i></i><i></i></div><span>CONTINUE ↗</span></div></div></section>
+    <section id="mod" class="section mod-section"><div class="wrap">
+      <div class="mod-heading"><p class="eyebrow">03 / {c.modEyebrow}</p><h2>{c.modTitle}</h2><p>{c.modIntro}</p></div>
+      <div class="mod-demo" data-mod-demo>
+        <div class="mod-tabs" data-tab-label={c.modTitle}>{c.modScenes.map(([label], i) => <button class="mod-tab" type="button" data-mod-tab={i}>{label}</button>)}</div>
+        {c.modScenes.map(([label, title, body], i) => <div class="mod-demo-panel" data-mod-panel={i}>
+          <div class="mod-terminal"><div class="mod-terminal-head"><span class="terminal-lights" aria-hidden="true"><i></i><i></i><i></i></span><span>FLIGHTWAKE · FIELD CAPTURE</span><span>{`0${i + 1} / 03`}</span></div><div class="mod-terminal-command"><span aria-hidden="true">{i === 1 ? '›' : '$'}</span> {modCommands[i]}</div><pre tabindex="0"><code>{modCaptures[i]}</code></pre></div>
+          <div class="mod-panel-copy"><span class="mod-panel-index">{label}</span><h3>{title}</h3><p>{body}</p></div>
+        </div>)}
+      </div>
+      <p class="mod-capture-note">{c.modCaptureNote}</p><div class="mod-links"><a href={`${repo}/blob/main/${modDoc}`} target="_blank" rel="noopener noreferrer">{c.modDocs} ↗</a><a href={`${repo}/releases/tag/v0.16.0`} target="_blank" rel="noopener noreferrer">{c.modRelease} ↗</a></div>
+    </div></section>
     <section id="orca" class="section story"><div class="wrap">
-      <div class="story-heading"><p class="eyebrow">03 / {c.storyEyebrow}</p><h2>{c.storyTitle}</h2><p>{c.storyIntro}</p></div>
+      <div class="story-heading"><p class="eyebrow">04 / {c.storyEyebrow}</p><h2>{c.storyTitle}</h2><p>{c.storyIntro}</p></div>
       <div class="story-board"><div class="story-board-head"><span>CASE STUDY · FLIGHTWAKE REPOSITORY</span><span class="story-live"><i></i> 2026.10</span></div><div class="story-columns">{c.storyColumns.map(([label, title, body], i) => <article class="story-column"><div class="story-step"><span>{`0${i + 1}`}</span><span aria-hidden="true">{i === 2 ? '✓' : '↗'}</span></div><p class="story-label">{label}</p><h3>{title}</h3><p>{body}</p></article>)}</div><div class="story-board-bottom"><a href={`${repo}/blob/main/.flightwake/records/261011-fleet-and-setup-flow.md`} target="_blank" rel="noopener noreferrer">{c.storyLink} ↗</a><span>ORCA × FLIGHTWAKE</span></div></div>
       <p class="story-caveat">* {c.storyCaveat}</p>
       <div class="live-case"><div class="live-case-heading"><p class="eyebrow">{c.liveCaseEyebrow}</p><h3>{c.liveCaseTitle}</h3><p>{c.liveCaseIntro}</p></div>
@@ -38,13 +51,52 @@ const anchors = ['idea', 'workflow', 'orca', 'features', 'install', 'faq'];
         <p class="live-case-status"><span aria-hidden="true">◌</span> {c.liveCaseStatus}</p>
       </div>
     </div></section>
-    <section id="features" class="section features"><div class="wrap"><div class="section-heading"><div><p class="eyebrow">04 / {c.featuresEyebrow}</p><h2>{c.featuresTitle}</h2></div><span class="section-scribble" aria-hidden="true">✳</span></div><div class="feature-list">{c.features.map(([number, title, body]) => <article class="feature-row"><span class="feature-number">{number}</span><h3>{title}</h3><p>{body}</p><span class="feature-arrow" aria-hidden="true">↗</span></article>)}</div></div></section>
-    <section id="install" class="section install"><div class="wrap install-grid"><div class="install-copy"><p class="eyebrow">05 / {c.installEyebrow}</p><h2>{c.installTitle}</h2><p>{c.installText}</p><a class="install-doc" href={`${repo}/blob/main/${readme}`} target="_blank" rel="noopener noreferrer">{lang === 'zh-TW' ? '閱讀完整安裝文件' : lang === 'zh-CN' ? '阅读完整安装文档' : lang === 'ja' ? '導入ガイドを読む' : 'Read the full installation guide'} ↗</a></div><div class="install-panel"><div class="code-card"><div class="code-head"><span>01 / {c.installPrimary}</span><button class="copy-button" type="button" data-copy="cd your-repo&#10;npx flightwake setup" data-copied={c.copied} aria-label={`${c.copyButton}: npx flightwake setup`}>{c.copyButton} ↗</button></div><pre tabindex="0"><code><span class="shell-dollar">$</span> cd your-repo
+    <section id="features" class="section features"><div class="wrap"><div class="section-heading"><div><p class="eyebrow">05 / {c.featuresEyebrow}</p><h2>{c.featuresTitle}</h2></div><span class="section-scribble" aria-hidden="true">✳</span></div><div class="feature-list">{c.features.map(([number, title, body]) => <article class="feature-row"><span class="feature-number">{number}</span><h3>{title}</h3><p>{body}</p><span class="feature-arrow" aria-hidden="true">↗</span></article>)}</div></div></section>
+    <section id="install" class="section install"><div class="wrap install-grid"><div class="install-copy"><p class="eyebrow">06 / {c.installEyebrow}</p><h2>{c.installTitle}</h2><p>{c.installText}</p><a class="install-doc" href={`${repo}/blob/main/${readme}`} target="_blank" rel="noopener noreferrer">{lang === 'zh-TW' ? '閱讀完整安裝文件' : lang === 'zh-CN' ? '阅读完整安装文档' : lang === 'ja' ? '導入ガイドを読む' : 'Read the full installation guide'} ↗</a></div><div class="install-panel"><div class="code-card"><div class="code-head"><span>01 / {c.installPrimary}</span><button class="copy-button" type="button" data-copy="cd your-repo&#10;npx flightwake setup" data-copied={c.copied} aria-label={`${c.copyButton}: npx flightwake setup`}>{c.copyButton} ↗</button></div><pre tabindex="0"><code><span class="shell-dollar">$</span> cd your-repo
 <span class="shell-dollar">$</span> npx flightwake setup</code></pre></div><div class="code-card code-secondary"><div class="code-head"><span>02 / {c.installOther}</span><button class="copy-button" type="button" data-copy={installCommand} data-copied={c.copied} aria-label={`${c.copyButton}: npx flightwake init`}>{c.copyButton} ↗</button></div><pre tabindex="0"><code><span class="shell-dollar">$</span> {installCommand}</code></pre></div><div class="install-note"><span aria-hidden="true">↳</span><p>{c.afterInstall}</p></div><p class="upgrade-note">{c.upgrade}</p></div></div></section>
-    <section id="faq" class="section faq"><div class="wrap faq-grid"><div><p class="eyebrow">06 / FAQ</p><h2>{c.faqsTitle}</h2><div class="faq-decoration" aria-hidden="true">?</div></div><div class="faq-list">{c.faqs.map(({ q, a }) => <details><summary>{q}<span aria-hidden="true">＋</span></summary><p>{a}</p></details>)}</div></div></section>
+    <section id="faq" class="section faq"><div class="wrap faq-grid"><div><p class="eyebrow">07 / FAQ</p><h2>{c.faqsTitle}</h2><div class="faq-decoration" aria-hidden="true">?</div></div><div class="faq-list">{c.faqs.map(({ q, a }) => <details><summary>{q}<span aria-hidden="true">＋</span></summary><p>{a}</p></details>)}</div></div></section>
   </main>
   <footer class="site-footer"><div class="wrap"><div class="footer-main"><div><a class="brand footer-brand" href={path}><img class="brand-mark" src="/favicon.svg" width="36" height="36" alt="" /><span>flightwake</span><span class="brand-dot">.</span></a><p>{c.footerLine}</p></div><div class="footer-links"><a href={repo} target="_blank" rel="noopener noreferrer">{c.footerSource} ↗</a><a href="https://www.npmjs.com/package/flightwake" target="_blank" rel="noopener noreferrer">npm ↗</a><a href="#main">{c.footerTop} ↑</a></div></div><div class="footer-bottom"><span>© 2026 FLIGHTWAKE · MIT LICENSE</span><span>RECORDS FOLLOW WORK.</span></div></div></footer>
   <script>
+    const demo = document.querySelector<HTMLElement>('[data-mod-demo]');
+    if (demo) {
+      const tabs = [...demo.querySelectorAll<HTMLButtonElement>('[data-mod-tab]')];
+      const panels = [...demo.querySelectorAll<HTMLElement>('[data-mod-panel]')];
+      const tabList = demo.querySelector<HTMLElement>('.mod-tabs');
+      tabList?.setAttribute('role', 'tablist');
+      tabList?.setAttribute('aria-label', tabList.dataset.tabLabel || 'Release demo');
+      const select = (index: number, focus = false) => {
+        tabs.forEach((tab, i) => {
+          tab.setAttribute('aria-selected', String(i === index));
+          tab.tabIndex = i === index ? 0 : -1;
+          panels[i].hidden = i !== index;
+        });
+        if (focus) tabs[index].focus();
+      };
+      tabs.forEach((tab, i) => {
+        tab.id = `mod-tab-${i}`;
+        tab.setAttribute('role', 'tab');
+        tab.setAttribute('aria-controls', `mod-panel-${i}`);
+        panels[i].id = `mod-panel-${i}`;
+        panels[i].setAttribute('role', 'tabpanel');
+        panels[i].setAttribute('aria-labelledby', tab.id);
+        tab.addEventListener('click', () => select(i));
+        tab.addEventListener('keydown', (event) => {
+          const current = tabs.indexOf(document.activeElement as HTMLButtonElement);
+          if (current < 0) return;
+          let next = current;
+          if (event.key === 'ArrowRight') next = (current + 1) % tabs.length;
+          else if (event.key === 'ArrowLeft') next = (current + tabs.length - 1) % tabs.length;
+          else if (event.key === 'Home') next = 0;
+          else if (event.key === 'End') next = tabs.length - 1;
+          else return;
+          event.preventDefault();
+          select(next, true);
+        });
+      });
+      demo.dataset.enhanced = 'true';
+      select(0);
+    }
     document.querySelectorAll<HTMLButtonElement>('.copy-button').forEach((button) => {
       button.addEventListener('click', async () => {
         const original = button.textContent;

@@ -50,6 +50,6 @@ This is a fully static build and needs no Cloudflare adapter or server-side runt
 
 ## Release copy
 
-The site currently distinguishes the published npm 0.15.0 release from work intended for 0.16.0 that is committed on `main` but unreleased. Some Fleet real-session cases remain unverified. Update `src/content.ts`, `src/layouts/Base.astro`, and `src/pages/llms.txt.ts` together when release status changes; verify the linked work record is public before deployment.
+The site currently presents the published npm 0.16.0 release and the optional Claude Code mod 0.2.0. The mod demo excerpts are in `src/modCaptures.ts`: setup ran through `test/setup-drive.mjs` with supplied answers, `/fw-mod` ran in an interactive Claude Code 2.1.296 session inside an isolated installed repo, and `fleet` used controlled session data shaped after `test/smoke.sh`. Temporary paths are redacted and Markdown formatting is flattened for the site's terminal frame. Some Fleet real-session cases remain unverified. Update `src/content.ts`, `src/layouts/Base.astro`, and `src/pages/llms.txt.ts` together when release status changes; verify the linked work record is public before deployment.
 
 The visual system and restrained motion follow the [Impeccable design skill](https://github.com/pbakaus/impeccable), especially its guidance that animation should explain state and respect reduced-motion preferences. The hero illustration is HTML/CSS/SVG, so its content is localizable and remains visible without JavaScript.
