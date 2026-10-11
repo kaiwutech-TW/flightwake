@@ -1,8 +1,8 @@
 ---
 updated: 2026-10-11
-updated_by: Claude(Fable 5.1)
-latest_record: records/261011-fleet-and-setup-flow.md
-health: green  # v0.16.0 已發佈(2026-10-11;release run 38129566832,npm latest 0.16.0 + provenance,npx 實裝 ok;main 的 ci/codeql/scorecard 對 c6c486b 皆 success);F7 真機驗證仍待做但文件已標明
+updated_by: Codex
+latest_record: records/261011-mod-showcase.md
+health: green  # v0.16.0 已發佈且本次網站更新完成本機/正式站驗證;F7 真機驗證仍待做且文件已標明
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
 <!-- 規則:只寫「現在」與「下一步」;歷史去 records/,決策去 DECISIONS.md。 -->
@@ -18,7 +18,7 @@ flightwake **v0.16.0 已發佈(2026-10-11,npm latest;直接 push main,release co
 - **安裝流程升級**:setup 依終端機語系(LC_ALL > LC_MESSAGES > LANG)預選語言、附加元件一次多選(精確集合;儀表/mod 預勾有條件、roles 不勾、Orca 只認 `ORCA_*`)、已安裝 repo 三選一、`update` 結尾點名未裝的附加元件並要 agent 先問人、init 偵測到語系差異提示 `update --lang=X`;`registryPath` 改與 `fleetBase` 同規則;private 安裝的語言寫進排除標頭。
 - 關卡(2026-10-11 主導者重跑):smoke 46 節全過、plugin test 465/465、validate 過、tsc clean、readonly 三項 ok、doctor 0/0;本 repo dogfood 副本已刷新。設計規格在 session scratchpad,不入版控。
 
-**展示網站**:四語 Astro 網站已推 main 並部署 Cloudflare Pages Direct Upload;新增飛行記錄器 Logo、首頁依瀏覽器語言偏好轉址與手動覆寫、匿名的雙 repo 多 agent 現場案例。自訂網域四語/SEO 路由 HTTPS 200;本次證據見 [[261011-showcase-locale-and-case]]。後續網站更新須重建並手動部署(指令見 `website/README.md`)。
+**展示網站**:四語 Astro 網站已推 main 並部署 Cloudflare Pages Direct Upload;目前包含飛行記錄器 Logo、語言偏好、匿名多 agent 案例與 0.16.0 Claude Code mod 的三段實測輸出。自訂網域四語/SEO 路由 HTTPS 200;最新證據見 [[261011-mod-showcase]]。後續網站更新須重建並手動部署(指令見 `website/README.md`)。
 
 # 進行中(未完成勿刪)
 
