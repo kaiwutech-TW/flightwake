@@ -209,7 +209,13 @@ export function registerPanel(on: On, sw: PanelSwitches): void {
       if (!d) return next(e)
       const lang = d.lang
       const { Box, Text } = $.ui.resolve(e)
-      const line = (props: Record<string, unknown>, text: string) => h(Text, { wrap: 'truncate-end', ...props }, text)
+      // Prose wraps to the pane's width (2026-10-11 field feedback: cut lines hid what they were about); a marked line
+      // keeps its mark in a column of its own so the wrapped rows hang under the text. Commands and paths stay one row.
+      const line = (props: Record<string, unknown>, text: string) => h(Text, { wrap: 'wrap', ...props }, text)
+      const cut = (props: Record<string, unknown>, text: string) => h(Text, { wrap: 'truncate-end', ...props }, text)
+      const para = (mark: string, props: Record<string, unknown>, text: string) => h(Box, { flexDirection: 'row' },
+        h(Box, { flexShrink: 0 }, h(Text, props, mark)),
+        h(Box, { flexGrow: 1, flexShrink: 1 }, h(Text, { wrap: 'wrap', ...props }, text)))
       const rows: unknown[] = []
 
       // ── header: health · lag · context ──
@@ -218,11 +224,11 @@ export function registerPanel(on: On, sw: PanelSwitches): void {
       const lag = lagSrc === null ? '' : lagText(lang, lagSrc)
       const pct = d.contextPercent
       const color = d.health === 'green' ? 'green' : d.health === 'yellow' ? 'yellow' : d.health === 'red' ? 'red' : undefined
-      rows.push(h(Box, { flexDirection: 'row', overflow: 'hidden' },
-        h(Text, { bold: true, wrap: 'truncate' }, '✈ flightwake'),
-        h(Text, { color, wrap: 'truncate' }, ` ●${d.health === 'unknown' ? '?' : d.health}`),
-        ...(lag ? [h(Text, { wrap: 'truncate' }, ` · ${lag}`)] : []),
-        ...(pct !== null ? [h(Text, { color: pct >= HOT ? 'red' : pct >= WARM ? 'yellow' : undefined, wrap: 'truncate' }, ` · ${T.context[lang](Math.round(pct))}`)] : []),
+      rows.push(h(Text, { wrap: 'wrap' },
+        h(Text, { bold: true }, '✈ flightwake'),
+        h(Text, { color }, ` ●${d.health === 'unknown' ? '?' : d.health}`),
+        ...(lag ? [` · ${lag}`] : []),
+        ...(pct !== null ? [h(Text, { color: pct >= HOT ? 'red' : pct >= WARM ? 'yellow' : undefined }, ` · ${T.context[lang](Math.round(pct))}`)] : []),
       ))
       const spend = sw.spend ? ((await read($, spendRef)) as FwSpend | null) : null
       const sl = spend !== null && spend.sessionId === d.sessionId ? spendLine(spend) : ''
@@ -233,15 +239,15 @@ export function registerPanel(on: On, sw: PanelSwitches): void {
       // ── watch: what needs attention beyond STATE's own items ──
       const a = d.attention
       const watch: unknown[] = []
-      if (pct !== null && pct >= CONTEXT_HOT) watch.push(line({ color: 'red' }, `! ${T.wrapUp[lang]}`))
-      if (a.healthWhy) watch.push(line({ color: d.health === 'red' ? 'red' : 'yellow' }, `! ${T.healthWhy[lang](d.health, a.healthWhy)}`))
-      if (a.dirty !== null && a.dirty > 0) watch.push(line({ color: 'yellow' }, `! ${T.dirty[lang](a.dirty)}`))
+      if (pct !== null && pct >= CONTEXT_HOT) watch.push(para('! ', { color: 'red' }, T.wrapUp[lang]))
+      if (a.healthWhy) watch.push(para('! ', { color: d.health === 'red' ? 'red' : 'yellow' }, T.healthWhy[lang](d.health, a.healthWhy)))
+      if (a.dirty !== null && a.dirty > 0) watch.push(para('! ', { color: 'yellow' }, T.dirty[lang](a.dirty)))
       if (a.record !== null && a.unfinished.length > 0) {
-        watch.push(line({}, `! ${T.unfinished[lang](a.record)}`))
-        for (const it of a.unfinished) watch.push(line({}, `  – ${it}`))
+        watch.push(para('! ', {}, T.unfinished[lang](a.record)))
+        for (const it of a.unfinished) watch.push(para('  – ', {}, it))
         if (a.moreUnfinished > 0) watch.push(line({ dimColor: true }, `  ${T.more[lang](a.moreUnfinished)}`))
       }
-      if (a.trapsActive !== null) watch.push(line({ color: 'yellow' }, `! ${T.traps[lang](a.trapsActive)}`))
+      if (a.trapsActive !== null) watch.push(para('! ', { color: 'yellow' }, T.traps[lang](a.trapsActive)))
       if (watch.length > 0) rows.push(h(Box, { marginTop: 1 }, line({ bold: true }, T.attention[lang])), ...watch)
 
       if (d.isUninitialized) {
@@ -251,7 +257,7 @@ export function registerPanel(on: On, sw: PanelSwitches): void {
         const section = (title: string, items: string[], more: number, mark: (i: number) => string) => {
           rows.push(h(Box, { marginTop: 1 }, line({ bold: true }, title)))
           if (items.length === 0) rows.push(line({ dimColor: true }, `  ${T.none[lang]}`))
-          items.forEach((it, i) => rows.push(line({}, `${mark(i)} ${it}`)))
+          items.forEach((it, i) => rows.push(para(`${mark(i)} `, {}, it)))
           if (more > 0) rows.push(line({ dimColor: true }, `  ${T.more[lang](more)}`))
         }
         section(T.inProgress[lang], d.inProgress, d.moreInProgress, () => '•')
@@ -272,7 +278,7 @@ export function registerPanel(on: On, sw: PanelSwitches): void {
         })))
         for (const t of tests.slice(-RECENT_TESTS).reverse()) {
           const ok = t.result === 'pass'
-          rows.push(line({ color: ok ? 'green' : t.result === 'fail' ? 'red' : undefined, dimColor: t.result === 'unknown' }, `  ${ok ? '✓' : t.result === 'fail' ? '✗' : '?'} ${t.command}`))
+          rows.push(cut({ color: ok ? 'green' : t.result === 'fail' ? 'red' : undefined, dimColor: t.result === 'unknown' }, `  ${ok ? '✓' : t.result === 'fail' ? '✗' : '?'} ${t.command}`))
         }
         const seen = new Set<string>()
         const recent: string[] = []
@@ -282,7 +288,7 @@ export function registerPanel(on: On, sw: PanelSwitches): void {
           recent.push(f.path)
           if (recent.length >= RECENT_FILES) break
         }
-        for (const p of recent) rows.push(line({ dimColor: true }, `  ✎ ${p}`))
+        for (const p of recent) rows.push(cut({ dimColor: true }, `  ✎ ${p}`))
       }
 
       // ── other sessions ──
@@ -299,15 +305,15 @@ export function registerPanel(on: On, sw: PanelSwitches): void {
             const mark = o.display === 'blocked' ? '⛔' : o.display === 'working' ? '●' : '○'
             const kind = o.blockedKind ? `(${FLEET_T.kind[lang][o.blockedKind]})` : ''
             const role = o.role ? ` · ${o.role}` : ''
-            rows.push(line({ color: o.display === 'blocked' ? 'red' : undefined, dimColor: o.display === 'idle' },
-              `${mark} ${o.label}${role} · ${word[o.display]}${kind} ${fmtAge(o.ageMs)}`))
+            rows.push(para(`${mark} `, { color: o.display === 'blocked' ? 'red' : undefined, dimColor: o.display === 'idle' },
+              `${o.label}${role} · ${word[o.display]}${kind} ${fmtAge(o.ageMs)}`))
             // second line only when there is something to act on: context running hot, or another version
             const isHot = o.contextPercent !== null && o.contextPercent >= CONTEXT_HOT
             const vers: string[] = []
             if (o.fwVersion !== null && d.fwVersion !== null && o.fwVersion !== d.fwVersion) vers.push(`flightwake ${o.fwVersion}`)
             if (o.mod !== null && o.mod !== MOD_VERSION) vers.push(`mod ${o.mod}`)
-            if (isHot) rows.push(line({ color: 'red' }, `    ${T.context[lang](o.contextPercent as number)} · ${T.wrapUp[lang]}`))
-            if (vers.length > 0) rows.push(line({ color: 'yellow' }, `    ${vers.join(' · ')} — ${T.differs[lang]}`))
+            if (isHot) rows.push(para('  ', { color: 'red' }, `${T.context[lang](o.contextPercent as number)} · ${T.wrapUp[lang]}`))
+            if (vers.length > 0) rows.push(para('  ', { color: 'yellow' }, `${vers.join(' · ')} — ${T.differs[lang]}`))
           }
           rows.push(line({ dimColor: true }, `  ${T.claudeOnly[lang]}`))
         }
