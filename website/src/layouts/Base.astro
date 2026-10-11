@@ -41,6 +41,40 @@ const graph = [
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content={new URL('/og.png', site).toString()} />
     <script type="application/ld+json" set:html={JSON.stringify(graph)} />
+    <script is:inline>
+      (() => {
+        const key = 'flightwake.language';
+        const supported = ['zh-TW', 'zh-CN', 'en', 'ja'];
+        document.addEventListener('click', (event) => {
+          const target = event.target;
+          if (!(target instanceof Element)) return;
+          const link = target.closest('a[data-language-choice]');
+          const choice = link?.getAttribute('data-language-choice');
+          if (choice && supported.includes(choice)) {
+            try { localStorage.setItem(key, choice); } catch { /* Browsing still works without storage. */ }
+          }
+        });
+        if (location.pathname !== '/') return;
+
+        let choice;
+        try { choice = localStorage.getItem(key); } catch { /* Use browser language instead. */ }
+        if (!supported.includes(choice)) {
+          const preferences = navigator.languages?.length ? navigator.languages : [navigator.language];
+          choice = 'en';
+          for (const preference of preferences) {
+            const language = preference.toLowerCase().replaceAll('_', '-');
+            if (language === 'zh' || language.startsWith('zh-hant') || /^zh-(tw|hk|mo)(-|$)/.test(language)) { choice = 'zh-TW'; break; }
+            if (language.startsWith('zh-hans') || /^zh-(cn|sg)(-|$)/.test(language)) { choice = 'zh-CN'; break; }
+            if (language === 'en' || language.startsWith('en-')) { choice = 'en'; break; }
+            if (language === 'ja' || language.startsWith('ja-')) { choice = 'ja'; break; }
+          }
+          try { localStorage.setItem(key, choice); } catch { /* Browsing still works without storage. */ }
+        }
+        if (choice === 'zh-TW') return;
+        const alternate = document.querySelector(`link[rel="alternate"][hreflang="${choice}"]`);
+        if (alternate) location.replace(new URL(alternate.href).pathname + location.search + location.hash);
+      })();
+    </script>
     <title>{title}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

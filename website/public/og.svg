@@ -2,7 +2,13 @@
   <rect width="1200" height="630" fill="#f6f2e9"/>
   <path d="M0 515h1200" stroke="#272824" stroke-width="2"/>
   <path d="M85 120h1030" stroke="#d8d0c1" stroke-width="2"/>
-  <text x="84" y="210" fill="#252722" font-family="Arial, sans-serif" font-size="38" font-weight="700">flightwake ✳</text>
+  <svg x="84" y="150" width="64" height="64" viewBox="0 0 64 64">
+    <rect x="4" y="7" width="56" height="50" rx="11" fill="#ed693e" stroke="#252821" stroke-width="3"/>
+    <path d="M15 19h18" fill="none" stroke="#252821" stroke-width="3" stroke-linecap="round"/>
+    <path d="M15 43c7 0 8-7 14-12s10-4 14-1 5-2 7-8" fill="none" stroke="#252821" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="50" cy="22" r="3.5" fill="#fff2e7" stroke="#252821" stroke-width="2"/>
+  </svg>
+  <text x="165" y="203" fill="#252722" font-family="Arial, sans-serif" font-size="38" font-weight="700">flightwake</text>
   <text x="84" y="335" fill="#252722" font-family="Arial, sans-serif" font-size="70" font-weight="700">Work moves forward.</text>
   <text x="84" y="420" fill="#252722" font-family="Arial, sans-serif" font-size="70" font-weight="700">The trail stays.</text>
   <path d="M800 520c100-135 188-68 308-209" fill="none" stroke="#ed693e" stroke-width="10" stroke-linecap="round" stroke-dasharray="1 22"/>

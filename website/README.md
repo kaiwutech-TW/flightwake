@@ -16,6 +16,8 @@ npm run build
 
 The routes are `/` (繁體中文), `/zh-CN/` (简体中文), `/en/` (English), and `/ja/` (日本語). Update the content in `src/content.ts`; keep all four versions in sync. The shared layout generates canonical URLs, Open Graph metadata, SoftwareApplication and FAQ structured data. Astro generates a multilingual sitemap. `robots.txt` and `llms.txt` are static endpoints using the configured site URL.
 
+On the first visit to `/`, a small inline script uses the browser's language preferences to choose a supported locale (`zh-Hant`/TW/HK/MO → 繁中, `zh-Hans`/CN/SG → 简中, `ja` → 日本語, `en` → English; other languages → English). It saves the choice in local storage and preserves the URL's query and hash when redirecting. A language-menu click replaces the saved choice. Explicit locale URLs never redirect, and without JavaScript `/` remains the crawlable Traditional Chinese page. The site reads browser preferences, which may differ from the operating system language.
+
 ## Cloudflare Pages
 
 The `flightwake` Cloudflare Pages project is a **Direct Upload** project. Build the site locally, then deploy the generated `dist/` directory from the repository root:
