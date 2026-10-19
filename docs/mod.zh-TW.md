@@ -130,7 +130,7 @@ tripwire 開著但閒置,因為沒有任何啟用中的 TRAPS 條目有 `paths` 
 - **這個 repo**(卡片顏色跟著 health):health、STATE 落後量(取 band 的讀數;只有 band 關著時,面板才自己計算)、context 條(綠色,60% 起黃色,80% 起紅色)、本 session 的 token 與費用、flightwake 安裝版本與 mod 版本,以及——只在有事時才出現——以 `!` 標記的行:context 到 80% 以上(該收尾了:`/fw-record` → `/clear` → `/fw-coldstart`);health 是黃色或紅色的原因(STATE 的 `health:` 值後面的註解);工作樹裡尚未 commit 的檔案;STATE 的 `latest_record` 所指 record 的「未完成 / 交接」項目(只認 `.flightwake/` 底下的 `records/<name>.md`);啟用中的 TRAPS 條目超過 20 則(fw-coldstart 提示該壓實的那一條)。
 - **Fleet**——在 Orca 裡:Orca 有的每個 agent 終端機(Claude Code、Codex 與其他 agent CLI;一般 shell 不列),每個 repo 一張卡片;有 agent 在等你回覆的 repo 排最前(`⛔`,紅色邊框),接著是工作中(`●`),最後是閒置(`○`)。每張卡片的第一行是 repo,附它的 health 與 flightwake 版本,讀自該 repo 自己的 `.flightwake/STATE.md` 與指令檔標記(唯讀;與這個 repo 不同時標 `≠`)。每個 agent 一列:agent、分頁的任務標題、座位角色、狀態與持續多久。有 mod 0.3.0+ 的 Claude Code session 會在它的 session 狀態回報檔裡回報確切的狀態、context 用量與角色,以那份為準;其他 agent 的狀態則從分頁標題(Claude Code 的 `✳` / 轉圈圖示、Codex 的「Action Required」)和它最近一次輸出的時間判斷,所以只是推測,面板也會這樣標明。
   - **跳過去**:把 Orca 切到那個分頁。
-  - **收尾**:只出現在閒置、而且 flightwake 有對應指令的 agent 上;按一下會先問(「確定送出 /fw-record」/「取消」);再按確認時會重新取一次清單,agent 仍是閒置才送出 `/fw-record`(Claude Code)或 `$fw-record`(Codex)。除此之外,絕不會有任何東西被打進別的 agent。
+  - **收尾**:只出現在閒置、而且 flightwake 有對應指令的 agent 上;按一下會先問(「確定送出 /fw-record」/「取消」);再按確認時會重新取一次清單,agent 仍是閒置才送出 `/fw-record`(Claude Code)或 `$fw-record`(Codex)。Codex 的 `$` skill 選單會吃掉跟指令一起送的 Enter,所以面板會讀回一次輸入框,只有裡面還是那條指令時才再按一次 Enter。除此之外,絕不會有任何東西被打進別的 agent。
   - 在 Orca 之外,或 Orca 沒有回應時,fleet 區塊改為列出各 Claude Code session 自己回報的狀態(等你回覆的排最前,附角色;context 到 80% 以上時多一行收尾提示;flightwake 或 mod 版本不同時也多一行)。
 - **進行中 / 下一步:** STATE 這兩段的頂層項目(分別最多 5 與 6 項,多的以「還有 n 項」一行帶過),依標題比對,四種範本語言都認得,Markdown 化為純文字。
 - **本 session:** 飛行日誌的計數(檔案、由 shell 推斷的檔案、測試執行次數與 ✓/✗、commit)、最近幾次測試執行,以及最近改動的檔案。
@@ -236,10 +236,10 @@ npx flightwake fleet --prune [--days=N] [--dry-run]   # 刪掉超過 N 天(預�
 
 新 session 開始時(重新載入、`/clear`、`/resume` 都不算),最多一次:如果**同一個 repo 資料夾**裡有個 session 在近 7 天內意外中斷——心跳失聯
 (當掉、`kill -9`、斷電),或以原因 `other` 結束——至少跑過一個回合、transcript 還在、而且之後沒有人在那個資料夾開過新 session,就跳一則 toast
-附上指令:
+點名那個 session,並指向 `/fw-fleet`(完整的接回指令在那裡;toast 只有約 40 欄寬,放不下 session id):
 
 ```
-flightwake:這個 repo 有個 session 在 2h 前意外中斷(當時工作中)。接回去:claude --resume 1234abcd-… — /fw-fleet 列出全部
+flightwake:session 1234abcd 在 2h 前意外中斷(當時工作中)——/fw-fleet 有接回指令
 ```
 
 正常的 `/exit`、`/clear`、`/resume` 或登出絕不觸發。「只提示一次」靠檔案本身判斷:那個資料夾有更新的 session 啟動過,候選就作廢——不另外儲存任何東西。

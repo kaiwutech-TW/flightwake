@@ -536,11 +536,13 @@ export const T = {
     'zh-CN': (r) => `本 session 没有上报:${r}`,
     ja: (r) => `このセッションは報告していません:${r}`,
   }),
-  hint: L4<(a: { age: string; s: string; cmd: string }) => string>({
-    en: (a) => `flightwake: a session in this repo stopped unexpectedly ${a.age} ago (it was ${a.s}). Pick it up: ${a.cmd} — /fw-fleet lists all`,
-    'zh-TW': (a) => `flightwake:這個 repo 有個 session 在 ${a.age} 前意外中斷(當時${a.s})。接回去:${a.cmd} — /fw-fleet 列出全部`,
-    'zh-CN': (a) => `flightwake:这个 repo 有个 session 在 ${a.age} 前意外中断(当时${a.s})。接回去:${a.cmd} — /fw-fleet 列出全部`,
-    ja: (a) => `flightwake: このリポジトリのセッションが ${a.age} 前に予期せず止まりました(${a.s})。再開:${a.cmd} — 一覧は /fw-fleet`,
+  // a toast is a box about 40 columns wide that keeps three lines: no room for a full id, so it names the row and
+  // points at /fw-fleet, which prints the whole resume command (seen cut to `148d4…` on 2.1.303, 2026-10-19)
+  hint: L4<(a: { age: string; s: string; id: string }) => string>({
+    en: (a) => `flightwake: session ${a.id} stopped unexpectedly ${a.age} ago (was ${a.s}) — /fw-fleet to resume it`,
+    'zh-TW': (a) => `flightwake:session ${a.id} 在 ${a.age} 前意外中斷(當時${a.s})——/fw-fleet 有接回指令`,
+    'zh-CN': (a) => `flightwake:session ${a.id} 在 ${a.age} 前意外中断(当时${a.s})——/fw-fleet 有接回命令`,
+    ja: (a) => `flightwake: セッション ${a.id} が ${a.age} 前に予期せず停止(${a.s})——再開コマンドは /fw-fleet`,
   }),
   label: L4({ en: 'session fleet', 'zh-TW': 'session 狀態回報', 'zh-CN': 'session 状态上报', ja: 'セッション状態の報告' }),
   modActive: L4<(a: { st: string; file: string; others: { live: number; b: number } | null }) => string>({
@@ -656,7 +658,7 @@ export function detailOf(lang: Lang, row: FleetRow): string {
   }
 }
 
-const id8 = (id: unknown): string => (typeof id === 'string' && id !== '' ? Array.from(id).slice(0, 8).join('') : '?')
+export const id8 = (id: unknown): string => (typeof id === 'string' && id !== '' ? Array.from(id).slice(0, 8).join('') : '?')
 
 /** The table lines: header, separator, one row per record (every cell through tableCell). */
 export function fleetTable(lang: Lang, rows: readonly FleetRow[], me: string): string[] {

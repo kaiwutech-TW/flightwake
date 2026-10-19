@@ -93,6 +93,18 @@ export function wrapUpCommand(agent: string): string | null {
   return null
 }
 
+/** Codex's `$` opens its skill picker, which takes the Enter sent with the text: wait this long, then read the composer back. */
+export const SUBMIT_CHECK_MS = 800
+
+/** The composer text in `orca terminal read --json` output (UI-only, never part of the tail), trimmed; null when none. */
+export function draftOf(stdout: string | null): string | null {
+  if (stdout === null) return null
+  let d: unknown
+  try { d = JSON.parse(stdout) } catch { return null }
+  const draft = (d as { result?: { terminal?: { draft?: unknown } } } | null)?.result?.terminal?.draft
+  return typeof draft === 'string' && draft.trim() !== '' ? draft.trim() : null
+}
+
 /** A context bar of `width` cells: filled / empty strings and the colour band (≥80 red, ≥60 yellow). */
 export function contextBar(percent: number, width = 10): { filled: string; empty: string; color: 'green' | 'yellow' | 'red' } {
   const p = Math.max(0, Math.min(100, percent))

@@ -100,7 +100,7 @@ commands: ["npm run migrate", "psql"]    # 命令前缀,逐个 token 比对
 - **这个 repo**(卡片颜色跟随健康状态):健康状态、STATE 落后数(取 band 的读数;只有 band 关闭时,面板才自己计算)、上下文条(绿色,60% 起黄色,80% 起红色)、本 session 的 token 与费用、flightwake 安装版本与 mod 版本,以及——只在有事时才出现——以 `!` 标记的行:上下文到 80% 以上(该收尾了:`/fw-record` → `/clear` → `/fw-coldstart`);健康状态为黄或红的原因(STATE 的 `health:` 值后面的注释);工作树里尚未 commit 的文件;STATE 的 `latest_record` 所指 record 的「未完成 / 交接」条目(只认 `.flightwake/` 下的 `records/<name>.md`);有效的 TRAPS 条目超过 20 条(fw-coldstart 提示该精简的那一条)。
 - **Fleet**——在 Orca 里:Orca 有的每个 agent 终端(Claude Code、Codex 与其他 agent CLI;普通 shell 不列),每个 repo 一张卡片;有 agent 在等你回复的 repo 排最前(`⛔`,红色边框),然后是工作中(`●`),最后是空闲(`○`)。每张卡片的第一行是 repo,附它的健康状态与 flightwake 版本,读自该 repo 自己的 `.flightwake/STATE.md` 与指令文件标记(只读;与这个 repo 不同时标 `≠`)。每个 agent 一行:agent、标签页的任务标题、座位角色、状态与持续多久。装有 mod 0.3.0+ 的 Claude Code session 会在它的 session 状态上报文件里上报确切的状态、上下文用量与角色,以那份为准;其他 agent 的状态则从标签页标题(Claude Code 的 `✳` / 转圈图标、Codex 的「Action Required」)和它最近一次输出的时间判断,所以只是推测,面板也会这样标明。
   - **跳过去**:把 Orca 切到那个标签页。
-  - **收尾**:只出现在空闲、而且 flightwake 有对应指令的 agent 上;按一下会先问(「确定发送 /fw-record」/「取消」);再按确认时会重新取一次列表,agent 仍是空闲才发送 `/fw-record`(Claude Code)或 `$fw-record`(Codex)。除此之外,绝不会有任何东西被输入到别的 agent 里。
+  - **收尾**:只出现在空闲、而且 flightwake 有对应指令的 agent 上;按一下会先问(「确定发送 /fw-record」/「取消」);再按确认时会重新取一次列表,agent 仍是空闲才发送 `/fw-record`(Claude Code)或 `$fw-record`(Codex)。Codex 的 `$` skill 菜单会吃掉跟命令一起发送的 Enter,所以面板会读回一次输入框,只有里面还是那条命令时才再按一次 Enter。除此之外,绝不会有任何东西被输入到别的 agent 里。
   - 在 Orca 之外,或 Orca 没有响应时,fleet 部分改为列出各 Claude Code session 自己上报的状态(等你回复的排最前,附角色;上下文到 80% 以上时多一行收尾提示;flightwake 或 mod 版本不同时也多一行)。
 - **进行中 / 下一步:** STATE 这两节的顶层条目(分别最多 5 与 6 条,多出的用「还有 n 条」一行带过),按标题匹配,四种模板语言都认,Markdown 转为纯文本。
 - **本 session:** 飞行日志的计数(文件、由 shell 推断的文件、测试运行次数与 ✓/✗、commit)、最近几次测试运行,以及最近改动的文件。
@@ -206,10 +206,10 @@ npx flightwake fleet --prune [--days=N] [--dry-run]   # 删掉超过 N 天(默�
 
 新 session 开始时(重新加载、`/clear`、`/resume` 都不算),最多一次:如果**同一个 repo 文件夹**里有个 session 在近 7 天内意外中断——心跳失联
 (崩溃、`kill -9`、断电),或以原因 `other` 结束——至少跑过一个回合、transcript 还在、而且之后没有人在那个文件夹开过新 session,就弹一条提示
-附上命令:
+点名那个 session,并指向 `/fw-fleet`(完整的接回命令在那里;提示框只有约 40 列宽,放不下 session id):
 
 ```
-flightwake:这个 repo 有个 session 在 2h 前意外中断(当时工作中)。接回去:claude --resume 1234abcd-… — /fw-fleet 列出全部
+flightwake:session 1234abcd 在 2h 前意外中断(当时工作中)——/fw-fleet 有接回命令
 ```
 
 正常的 `/exit`、`/clear`、`/resume` 或登出绝不触发。「只提示一次」靠文件本身判断:那个文件夹有更新的 session 启动过,候选就作废——不另外存储任何东西。

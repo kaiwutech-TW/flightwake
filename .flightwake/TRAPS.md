@@ -5,6 +5,35 @@
 # 坑 Registry
 
 ---
+name: codex-dollar-skill-enter-eaten-by-picker
+type: gotcha
+status: active
+tags: [codex, orca, fleet-console, skills, input]
+discovered: 2026-10-19
+confidence: confirmed
+paths: ["mods/flightwake/hooks/lib/orca.ts", "mods/flightwake/hooks/features/panel.ts"]
+---
+
+**症狀**:中控台對 Codex 按「收尾」→「確定送出 $fw-record」,`orca terminal send --text '$fw-record' --enter` 回 `accepted: true`、寫入 23 bytes,Codex 卻沒開始做事;Orca 回執附警告「no turn start was observed, so the Enter may have been swallowed」。`orca terminal read` 的畫面與串流都看不到這段字。
+**根因**:Codex 0.163 輸入框打 `$` 會開 skill 選單,同一次寫入裡的 Enter 被選單拿去「選取」,不是送出;字留在輸入框草稿。Orca 的 `terminal read` 把輸入框草稿放在另外的 `draft` 欄位,不在 `tail` 裡,所以看起來像什麼都沒收到。Claude Code 的 `/fw-record` + Enter 不受影響。
+**解法/繞法**:對 Codex 送 `$skill` 時,文字與 Enter 分兩次送(中間等選單出現),或送完後用 `--wait-submit` / 回執的 `turn_started` 確認真的開始;驗證時讀 `terminal read --screen --json` 的 `draft`。中控台的 Codex 收尾已改成送完讀回 `draft`,仍是原指令才補一次 Enter(2026-10-19,`pressEnterIfHeld`;真機複驗見 record)。
+**佐證**:2026-10-19 真機:panel 送出後 Codex 草稿為 `"$fw-record"`;手動再送一次 Enter 才開始執行 fw-record。Orca 1.4.229、Codex 0.163.0、mod 0.3.0
+
+---
+name: orca-send-sgr-mouse-leaks-into-claude-composer
+type: gotcha
+status: active
+tags: [orca, claude-code, mods, testing, panel]
+discovered: 2026-10-19
+confidence: probable
+---
+
+**症狀**:想用 `orca terminal send --text $'\e[<0;C;RM\e[<0;C;Rm'` 模擬點擊側邊面板的按鈕來真機驗證;一次「跳過去」有效,之後的點擊沒觸發按鈕,放開序列 `\e[<0;166;20m` 以文字留在 Claude Code 輸入框,接著送的 `/exit` 變成一般訊息送給模型。
+**根因**:未追到底。合成的滑鼠序列是否被當成滑鼠事件,看 Claude Code 當下的輸入狀態;失敗時整段序列進了輸入框。
+**解法/繞法**:真機操作面板改用鍵盤:ctrl+x tab 讓面板取得焦點,Tab 移動、Enter 按下。帶 `--debug-file` 啟動,log 的 `ui.focus Pane flightwake (person) onto flightwake-mod's <key>` 會寫出焦點落在哪個按鈕,`ui.press flightwake-mod/<key>` 證明按下;送任何指令前先讀 `draft` 確認輸入框是空的(ctrl+c 清空)。
+**佐證**:2026-10-19 中控台真機驗證(Claude Code 2.1.303、Orca 1.4.229);鍵盤方式完成跳過去、收尾、取消、確定送出四種按下
+
+---
 name: wrangler-pages-create-delegates-to-workers
 type: gotcha
 status: active
@@ -147,12 +176,14 @@ paths: ["test/smoke.sh"]
 ---
 name: readline-terminal-mode-loses-answer-lines
 type: gotcha
-status: active
+status: superseded
 tags: [setup, readline, tty, orca, terminal]
 discovered: 2026-10-05
 confidence: probable
 paths: ["bin/setup.mjs"]
 ---
+
+**已不再觸發**(2026-10-19):`bin/setup.mjs` 已用 `terminal: false`,smoke 43.1 斷言輸出無游標/清除序列;保留作歷史,改問答程式時看 smoke 43.1 即可。
 
 **症狀**:真實終端機(Orca、繁中)跑 `npx flightwake setup`,已回答的題目從畫面消失;`orca terminal read` 讀回來,正好是「有打字作答」的那幾行是空白(`[1] 2`、`輸入編號…:1`、`安裝 Claude Code mod? [y/N] y`),只按 Enter 的題目保留。pyte 模擬器在 60/80/100 欄都看不到。
 **根因**:`readline` 的 terminal 模式每題送 `ESC[1G ESC[0J <prompt> ESC[<n>G`(移到第 1 欄、清到螢幕尾、寫 prompt、再跳到它自己算的絕對欄位),打字回顯接在絕對欄位之後;Orca 的終端機讀取把這種行讀成空白。不是全形寬度計算問題(純 ASCII 的 `[1] 2` 也消失)。xterm 實際畫面是否也消失未另外驗證。
@@ -206,11 +237,13 @@ confidence: confirmed
 ---
 name: smoke-needs-python311-tomllib
 type: gotcha
-status: active
+status: superseded
 tags: [test, smoke, python, macos, environment]
 discovered: 2026-10-05
 confidence: confirmed
 ---
+
+**已併入** [[smoke-needs-python-311]]:兩條內容相同,2026-10-19 壓實時保留帶指令比對、hook 會提醒的那條。
 
 **症狀**:本機 `bash test/smoke.sh` 跑到 roles v2 那節停下:`ModuleNotFoundError: No module named 'tomllib'` → `❌ FAIL: TOML 應可解析且 escape 正確`,看起來像產生的 TOML 壞了;CI 卻是綠的。
 **根因**:smoke 第 22 節用 `python3 -c 'import tomllib'` 驗 TOML,`tomllib` 是 Python 3.11 才進標準庫;macOS 內建 `/usr/bin/python3` 是 3.9.6。CI runner 的 python 夠新。
@@ -253,13 +286,13 @@ type: gotcha
 status: active
 tags: [claude-code, mods, plugin, trust, headless]
 discovered: 2026-10-05
-confidence: probable
+confidence: confirmed
 ---
 
 **症狀**:mod 放在暫存 repo 的 `.claude/skills/flightwake-mod/`,`claude -p` 跑起來完全沒載入(沒有系統提示區段、沒有 /fw-log,debug log 也沒提到它);同一資料夾以互動模式接受工作區信任後,立刻以 `flightwake-mod@skills-dir` 載入。
-**根因**:推測專案 skills 目錄的外掛只在資料夾**已受信任**時採用;`-p` 跳過信任對話框但不等於授予信任(與 Astra 審查的警告一致)。只觀察一組對照(同資料夾、信任前 -p 不載、信任後互動載入),信任後的 `-p` 未再測。
+**根因**:專案 skills 目錄的外掛只在資料夾**已受信任**時採用;`-p` 跳過信任對話框但不等於授予信任(與 Astra 審查的警告一致)。只觀察一組對照(同資料夾、信任前 -p 不載、信任後互動載入),2026-10-19 補上信任後 `-p` 的對照,見佐證。
 **解法/繞法**:驗收真機載入要用互動 session 並接受信任(或改 `--plugin-dir` 驗功能,但那驗不到 skills-dir 路徑);文件與安裝器要說明「首次需信任此資料夾」。
-**佐證**:records/261005-flightwake-mod.md「真機載入」(load-debug.log vs load-debug4.log)
+**佐證**:records/261005-flightwake-mod.md「真機載入」(load-debug.log vs load-debug4.log);2026-10-19 複驗(Claude Code 2.1.303,同版 mod):未信任暫存 repo 的 `claude -p` debug log 完全沒有 flightwake-mod(4 個專案 skill 照常載入),已信任的本 repo `claude -p` 有 `hooks module flightwake-mod@skills-dir loaded` 與 `plugin.register … admitted`;`-p` 跑完也沒有替暫存資料夾寫入信任紀錄
 
 ---
 name: smoke-needs-python-311
@@ -274,7 +307,7 @@ commands: ["bash test/smoke.sh"]
 **症狀**:`bash test/smoke.sh` 在 roles v2 節失敗:`ModuleNotFoundError: No module named 'tomllib'` → `❌ FAIL: TOML 應可解析且 escape 正確`。
 **根因**:smoke 用 `python3 -c "import tomllib"` 驗 TOML;macOS 內建 `/usr/bin/python3` 是 3.9,tomllib 3.11 才有。CI 的 runner 是新版 Python,所以只在本機咬人。
 **解法/繞法**:把 3.11+ 的 python3 放到 PATH 前面再跑(例:`uv python find '>=3.11'` 取路徑,建一個 `python3` 連結的目錄加到 PATH 前面);smoke 本身未改(本分支不動測試基礎設施)。
-**佐證**:同一 commit,PATH 換成 Python 3.13 後 smoke 全過(records/261005-flightwake-mod.md)
+**佐證**:同一 commit,PATH 換成 Python 3.13 後 smoke 全過(records/261005-flightwake-mod.md);原 smoke-needs-python311-tomllib 併入本條,其佐證為 main 9dd685c 與 setup-wizard 分支各一次(record 261005-setup-wizard 驗證段);2026-10-19 複驗:`/usr/bin/python3` 仍是 3.9.6、smoke 第 637 行仍 import tomllib,PATH 換 3.13 後 smoke 全過
 
 ---
 name: mod-dollar-cannot-cross-import
@@ -353,13 +386,13 @@ type: gotcha
 status: active
 tags: [codex, hooks, testing]
 discovered: 2026-09-27
-confidence: suspected
+confidence: probable
 ---
 
 **症狀**:在暫存 repo 放 `.codex/hooks.json`(SessionStart/Stop/UserPromptSubmit 探針 hook,寫檔留痕),用 `codex exec` 跑,探針檔始終沒有產生。加 `--dangerously-bypass-hook-trust`、`-c 'projects."<path>".trust_level="trusted"'`、放在已信任的 `~` 底下、補空的 `.codex/config.toml`,全都一樣。輸出裡的 `hook: SessionStart` 行是全域 `~/.codex/hooks.json`(Orca 的 hook)觸發的,不是專案 hook。
-**根因**:未確定。推測 `codex exec` 在「沒有持久化信任紀錄的新專案 hook」時不載入專案層 hook;真實 repo 的 Stop hook 是在 TUI 裡被信任過(`~/.codex/config.toml` 的 `[hooks.state]` 有 trusted_hash)才生效。
+**根因**:Codex 只執行有持久化 hook 信任的專案 hook。0.163 的 `codex exec --help` 對 `--dangerously-bypass-hook-trust` 的說明是「Run enabled hooks without requiring persisted hook trust」;新專案的 hook 沒有信任紀錄,所以不跑。但 0.157 時加這個旗標也沒跑,0.163 加旗標的情況未驗。真實 repo 的 Stop hook 是在 TUI 裡被信任過(`~/.codex/config.toml` 的 `[hooks.state]` 有 trusted_hash)才生效。
 **解法/繞法**:不要用 `codex exec` 驗證新的專案 hook,改在 TUI 開新對話、信任 hook 後再驗。需要「/clear 後仍在」的內容,優先寫進 `AGENTS.md`,它不需要信任就會載入。實測 Codex 0.157.0 只讀 AGENTS.md、不讀 CLAUDE.md,Claude Code 2.1.283 則相反。
-**佐證**:2026-09-27 roles 調研,Codex 0.157.0;同一個 hook 腳本在 Claude Code `claude -p` 下的 SessionStart 注入實測成功
+**佐證**:2026-09-27 roles 調研,Codex 0.157.0;同一個 hook 腳本在 Claude Code `claude -p` 下的 SessionStart 注入實測成功;2026-10-19 複驗(Codex 0.163.0):暫存 repo 放 SessionStart/UserPromptSubmit/Stop 探針,`codex exec` 跑完探針檔沒產生,畫面上的 hook 行全來自全域 `~/.codex/hooks.json`;`~/.codex/config.toml` 前後雜湊相同。加旗標的重跑被 Claude Code auto mode 擋下,未做
 
 ---
 name: macos-mktemp-symlink-cwd-mismatch
@@ -378,15 +411,18 @@ confidence: confirmed
 ---
 name: codeql-action-version-lockstep
 type: trap
-status: active
+status: superseded
 tags: [ci, github-actions, dependabot, codeql]
 discovered: 2026-07-27
+confidence: confirmed
 ---
+
+**已不再觸發**(2026-10-19):`.github/dependabot.yml` 的 codeql-action group 已把三個 step 併成單一 PR,三處同釘 e4fba86(v4.37.3);保留作歷史,手動升版時仍要三處一起換。
 
 **症狀**:dependabot 開的 codeql-action 升版 PR,CI 紅在 `##[error]Loaded a configuration file for version '4.37.1', but running version '4.37.3'` → `CodeQL job status was configuration error`。PR 內容本身只是換一行 SHA,看起來完全無辜。
 **根因**:`github/codeql-action/init`、`analyze`、`upload-sarif` 在 dependabot 眼中是**三個獨立套件**,會拆成三個 PR;但 CodeQL 要求同一 workflow 內所有 codeql-action step 同版,任一 PR 單獨存在時 branch 上就是 init 舊版 + analyze 新版。init 步驟其實有先警告(`Not all workflow steps that use github/codeql-action actions use the same version`),但它只是 warning,真正炸在 analyze。
 **解法/繞法**:`.github/dependabot.yml` 用 `groups` 把 `github/codeql-action*` 併成單一 PR(已設,2026-07-27)。若手動升版:三處 SHA 一起換。看到 configuration error 先 `grep codeql-action .github/workflows/` 比對版本註解,別去查 CodeQL 設定檔。
-**佐證**:PR #1/#4/#5(2026-07-26 dependabot 批次),失敗 run 30184467406
+**佐證**:PR #1/#4/#5(2026-07-26 dependabot 批次),失敗 run 30184467406;2026-10-19 複驗:init、analyze、upload-sarif 同釘 e4fba86(v4.37.3),dependabot 的 codeql-action group 仍在
 
 ---
 name: gh-active-account-drift
@@ -394,12 +430,13 @@ type: gotcha
 status: active
 tags: [gh, github, multi-account]
 discovered: 2026-07-23
+confidence: probable
 ---
 
 **症狀**:`gh release create` 失敗說 "workflow scope may be required";或 `git push` 403 denied to 另一個帳號——明明這個 session 剛 `gh auth switch` 成功過。
 **根因**:gh 的 active account 是**全域狀態**,其他 session/終端切帳號會直接影響本 session;且錯誤訊息誤導——說缺 workflow scope,實際是 active 帳號對 repo 無權限。
 **解法/繞法**:本 repo 任何 gh 或 push 操作**前**先 `gh auth switch -u kaiwutech-TW`(別信上次的切換還在);看到 workflow scope 錯誤先 `gh auth status` 查 active 帳號,不要急著 `gh auth refresh` 加 scope。
-**佐證**:[[260723-v0100-release]](push main 成功後、開 Release 前被切回 kaiwu-aideamed)
+**佐證**:[[260723-v0100-release]](push main 成功後、開 Release 前被切回 kaiwu-aideamed);2026-10-19 複驗:gh 目前只登入 kaiwutech-TW 一個帳號,無法重現;active 帳號記在全域 `~/.config/gh/hosts.yml` 的機制不變
 
 ---
 name: hook-stdin-tty-block
@@ -407,12 +444,13 @@ type: trap
 status: active
 tags: [hooks, node, stdin]
 discovered: 2026-07-19
+confidence: confirmed
 ---
 
-**症狀**:hook/statusline 腳本手動執行(終端機直接跑、沒接 pipe)時永久卡住,無錯誤訊息。
+**症狀**:hook/statusline 腳本手動執行(終端機直接跑、沒接 pipe)時永久卡住,無錯誤訊息。Node 26 下則可能直接丟 `EAGAIN: resource temporarily unavailable, read`,不卡;兩種都是讀不到。
 **根因**:`readFileSync(0)` 在 stdin 是 TTY 時等 EOF 等不到——Claude Code 情境永遠 pipe JSON 進來所以沒事,手動測試必卡。
 **解法/繞法**:所有讀 stdin 的 hook 開頭先判 `process.stdin.isTTY`,是 TTY 就跳過讀取。**已咬兩次**:state-check 2026-07-17 修過(dashboard 手測 2 分鐘 timeout 坐實),statusline 2026-07-18 新寫時重犯——寫任何新 hook 前查本條。
-**佐證**:salesmartly_chain repo TRAPS 同名條目(當時只記在那邊,本 repo 漏登,故重犯)
+**佐證**:salesmartly_chain repo TRAPS 同名條目(當時只記在那邊,本 repo 漏登,故重犯);2026-10-19 複驗(Node 26.9.0,`script` 偽終端機且輸入保持開著):未防護的 `readFileSync(0)` 丟 EAGAIN,`hooks/statusline.mjs` 有 isTTY 防護、正常輸出;兩份 hook 與安裝副本都有防護
 
 ---
 name: dogfood-dual-copy-drift
@@ -420,12 +458,13 @@ type: gotcha
 status: active
 tags: [dogfooding, hooks, release]
 discovered: 2026-07-18
+confidence: confirmed
 ---
 
 **症狀**:修了 statusline/hook 的 bug,本機儀表變正常,但發版後使用者拿到的還是舊行為(或反過來:改了源頭,本機看不到效果)。
 **根因**:本 repo dogfood 自己——同一份 hook 存在兩處:`hooks/`(npm 發佈的源頭)與 `.flightwake/hooks/`(本 repo 的安裝副本)。改任一邊都不會自動同步另一邊。
-**解法/繞法**:改 hook/skill 時兩份都要動(`diff hooks/X .flightwake/hooks/X` 確認一致再 commit);已在其他 repo 裝過的副本(如 kaiwuweb)npm 發版前只能手動 cp。
-**佐證**:4b9abd8(context_window 修正,當下先改了安裝副本、diff 才發現源頭沒動)
+**解法/繞法**:改 hook/skill 時兩份都要動(改完源頭跑 `node bin/cli.mjs update` 刷新本 repo 副本;直接 diff 兩份永遠會差 `LANG` 與 `FW_VERSION` 兩行,那是安裝時代入的值,不算漂移);已在其他 repo 裝過的副本(如 kaiwuweb)npm 發版前只能手動 cp。
+**佐證**:4b9abd8(context_window 修正,當下先改了安裝副本、diff 才發現源頭沒動);2026-10-19 複驗:`.flightwake/hooks/` 仍是獨立副本,state-check 與 statusline 只差安裝代入的兩行
 
 ---
 name: {{kebab-case-slug}}

@@ -3,7 +3,7 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { cleanTitle, contextBar, groupByRepo, parseTerminalList, termState, wrapUpCommand } from '../hooks/lib/orca'
+import { cleanTitle, contextBar, draftOf, groupByRepo, parseTerminalList, SUBMIT_CHECK_MS, termState, wrapUpCommand } from '../hooks/lib/orca'
 import type { OrcaTerm } from '../hooks/lib/orca'
 import { gitBehind, installWorld, MARKER, STATE_FILLED } from './world'
 import type { World } from './world'
@@ -64,10 +64,16 @@ function orcaWorld(on: On, list: unknown[] = LIST, extra: Partial<World> = {}): 
     const a = args.join(' ')
     if (a === 'terminal list --json') return { exitCode: 0, stdout: listJson(list) }
     if (a.startsWith('terminal switch') || a.startsWith('terminal send')) return { exitCode: 0, stdout: '{"ok":true}' }
+    const read = /^terminal read --terminal (\S+) --screen --json$/.exec(a)
+    if (read) return { exitCode: 0, stdout: readJson(drafts[read[1] as string]) }
     return { exitCode: 1, stdout: '' }
   }
   return w
 }
+
+/** What each terminal's composer holds after the wrap-up send (Codex's skill picker keeps `$fw-record` there). */
+const drafts: Record<string, string | undefined> = { term_c: '$fw-record' }
+const readJson = (draft?: string) => JSON.stringify({ id: 'x', ok: true, result: { terminal: { tail: ['›'], ...(draft === undefined ? {} : { draft }) } } })
 
 const inOrca = (on: On) => mock.env(on, { ORCA_TERMINAL_HANDLE: 'term_self', ORCA_CLI_BIN_DIR: BIN })
 const panel = async ($: any, args = ''): Promise<string> => (await $.command.run({ command: 'fw-panel', args, origin: COMPOSER })).text ?? ''
@@ -90,6 +96,7 @@ describe('console: pure helpers', () => {
 
   test('wrapUpCommand, contextBar, groupByRepo', async () => {
     expect([wrapUpCommand('claude'), wrapUpCommand('codex'), wrapUpCommand('pi')]).toEqual(['/fw-record', '$fw-record', null])
+    expect([draftOf(readJson(' $fw-record ')), draftOf(readJson()), draftOf(readJson('  ')), draftOf('nope'), draftOf(null)]).toEqual(['$fw-record', null, null, null, null])
     expect(contextBar(85, 10)).toEqual({ filled: '█'.repeat(9), empty: '░', color: 'red' })
     expect(contextBar(30, 10).color).toBe('green')
     const t = parseTerminalList(listJson(LIST)) as OrcaTerm[]
@@ -140,22 +147,46 @@ describe('console: inside Orca', () => {
     const w = orcaWorld(on)
     engine(on)
     inOrca(on)
-    mock.clock(on, { now: NOW })
+    const clock = mock.clock(on, { now: NOW })
     await $.session.start(START)
     await panel($)
     const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: PROPS })
+    const confirm = async (handle: string) => { const p = ui.press({ key: `ok-${handle}` } as never); await clock.advance(SUBMIT_CHECK_MS); await p }
     await ui.press({ key: 'wrap-term_c' } as never)
     expect(w.orcaCalls.some((c) => c.includes('terminal send'))).toBe(false)
     expect(await ui.find({ key: 'ok-term_c' } as never)).toBeDefined()
-    await ui.press({ key: 'ok-term_c' } as never)
+    await confirm('term_c')
     expect(w.orcaCalls).toContain(`${BIN}/orca terminal send --terminal term_c --text $fw-record --enter --json`)
+    // the picker kept the command in Codex's composer: one more Enter, sent bare
+    expect(w.orcaCalls).toContain(`${BIN}/orca terminal send --terminal term_c --enter --json`)
     expect(await ui.find({ type: 'Text', text: /sent \$fw-record to Codex · Ship the app/ })).toBeDefined()
     await ui.press({ key: 'wrap-term_a' } as never)
     await ui.press({ key: 'no-term_a' } as never)
     expect(w.orcaCalls.some((c) => c.includes('--terminal term_a --text'))).toBe(false)
     await ui.press({ key: 'wrap-term_a' } as never)
-    await ui.press({ key: 'ok-term_a' } as never)
+    await confirm('term_a')
     expect(w.orcaCalls).toContain(`${BIN}/orca terminal send --terminal term_a --text /fw-record --enter --json`)
+    expect(w.orcaCalls).toContain(`${BIN}/orca terminal read --terminal term_a --screen --json`)
+    expect(w.orcaCalls).not.toContain(`${BIN}/orca terminal send --terminal term_a --enter --json`)
+    await ui.unmount()
+  })
+
+  test('a composer holding anything but the command (the person typing) gets no extra Enter', async ($, on) => {
+    const w = orcaWorld(on)
+    drafts.term_c = '$fw-record and also fix the tests'
+    engine(on)
+    inOrca(on)
+    const clock = mock.clock(on, { now: NOW })
+    await $.session.start(START)
+    await panel($)
+    const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: PROPS })
+    await ui.press({ key: 'wrap-term_c' } as never)
+    const p = ui.press({ key: 'ok-term_c' } as never)
+    await clock.advance(SUBMIT_CHECK_MS)
+    await p
+    drafts.term_c = '$fw-record'
+    expect(w.orcaCalls).toContain(`${BIN}/orca terminal read --terminal term_c --screen --json`)
+    expect(w.orcaCalls).not.toContain(`${BIN}/orca terminal send --terminal term_c --enter --json`)
     await ui.unmount()
   })
 

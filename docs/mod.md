@@ -143,7 +143,9 @@ the pane's width.
   - **Go** switches Orca to that tab.
   - **Wrap up** appears only on an idle agent flightwake has a command for: a press asks first (`send /fw-record` /
     `cancel`); the confirming press checks a fresh list and sends `/fw-record` (Claude Code) or `$fw-record` (Codex)
-    only if the agent is still idle. Nothing else is ever typed into another agent.
+    only if the agent is still idle. Codex's `$` skill picker takes the Enter sent with the command, so the panel reads
+    the input box back once and presses Enter again only when it still holds exactly that command. Nothing else is ever
+    typed into another agent.
   - Outside Orca, or when Orca does not answer, the fleet section falls back to the Claude Code sessions' own reports
     (blocked first, with role, a wrap-up line at 80%+ context, and a line when the flightwake or mod version differs).
 - **In progress / Next:** the top-level items of those two STATE sections (up to 5 and 6, with a "+n more" line),
@@ -281,10 +283,11 @@ characters), `⛔ 2 blocked` for several. Your own session is never counted. It 
 At the start of a fresh session (not on reload, `/clear` or `/resume`), at most once: if a session **in the same repo
 folder** stopped unexpectedly — its heartbeat went stale (crash, `kill -9`, power loss), or it ended with reason
 `other` — within the last 7 days, had at least one turn, its transcript still exists, and nobody has started a
-session in that folder since, one toast offers the command:
+session in that folder since, one toast names it and points to `/fw-fleet`, which prints the full resume command (a toast
+is about 40 columns wide, too narrow for a session id):
 
 ```
-flightwake: a session in this repo stopped unexpectedly 2h ago (it was working). Pick it up: claude --resume 1234abcd-… — /fw-fleet lists all
+flightwake: session 1234abcd stopped unexpectedly 2h ago (was working) — /fw-fleet to resume it
 ```
 
 A normal `/exit`, `/clear`, `/resume` or logout never triggers it. "Once" comes from the files themselves: when a newer

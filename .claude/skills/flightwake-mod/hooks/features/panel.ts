@@ -20,7 +20,7 @@ import type { Io, Lang } from '../lib/core'
 import { fmtAge, T as FLEET_T } from '../lib/fleet'
 import { CONTEXT_HOT, healthWhy, PANE_ID, panelVerb, recordUnfinished, stateDigest, STORE_KEY, T, TRAPS_COMPACT_AT } from '../lib/panel'
 import { isActive, parseTraps } from '../lib/traps'
-import { agentName, baseName, cleanTitle, contextBar, groupByRepo, parseTerminalList, POLL_MS, REPO_CAP, stateWord, T as OT, termState, wrapUpCommand } from '../lib/orca'
+import { agentName, baseName, cleanTitle, contextBar, draftOf, groupByRepo, parseTerminalList, POLL_MS, REPO_CAP, stateWord, SUBMIT_CHECK_MS, T as OT, termState, wrapUpCommand } from '../lib/orca'
 import type { TermState } from '../lib/orca'
 import type { FwBandView, FwConsole, FwConsoleRepo, FwFleet, FwFleetOther, FwFlightLog, FwPanelDigest, FwPanelUi, FwSpend } from '../../types/index'
 import { lagText } from './band'
@@ -257,7 +257,19 @@ async function sendWrapUp($: EngineInterface, lang: Lang, handle: string): Promi
   const cmd = wrapUpCommand(term.agent)
   if (state !== 'idle' || cmd === null) { await notify($, OT.notIdle[lang](who), true); return }
   const sent = await runOrca($, ['terminal', 'send', '--terminal', handle, '--text', cmd, '--enter', '--json'])
+  if (sent !== null) await pressEnterIfHeld($, handle, cmd)
   await notify($, sent === null ? OT.failed[lang]('terminal send') : OT.sent[lang](cmd, who), sent === null)
+}
+
+/**
+ * Codex's skill picker takes the Enter that came with `$fw-record` and leaves the command in the composer (Codex
+ * 0.163, 2026-10-19). Read the composer back once and press Enter only when it still holds exactly that command —
+ * any other draft is the person's, and an empty one means the command went through.
+ */
+async function pressEnterIfHeld($: EngineInterface, handle: string, cmd: string): Promise<void> {
+  try { await $.clock.sleep(SUBMIT_CHECK_MS) } catch {}
+  if (draftOf(await runOrca($, ['terminal', 'read', '--terminal', handle, '--screen', '--json'])) !== cmd) return
+  await runOrca($, ['terminal', 'send', '--terminal', handle, '--enter', '--json'])
 }
 
 export function registerPanel(on: On, sw: PanelSwitches): void {

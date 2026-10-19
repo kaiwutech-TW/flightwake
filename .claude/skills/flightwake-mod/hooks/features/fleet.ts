@@ -24,7 +24,7 @@ import type { Io, Lang } from '../lib/core'
 import { transcriptPath } from '../lib/spend'
 import {
   CLOCK_SKEW_MS, ENDED_CAP, ENDED_CAP_ALL, fleetBase, fleetFilePath, fleetReport, fmtAge, HEARTBEAT_MS, HINT_DELAY_MS,
-  HINT_TOAST_MS, hintCandidates, inputPrint, isOursText, isSafeId, LIST_WINDOW_ALL_MS, LIST_WINDOW_MS, lastSeen,
+  HINT_TOAST_MS, hintCandidates, id8, inputPrint, isOursText, isSafeId, LIST_WINDOW_ALL_MS, LIST_WINDOW_MS, lastSeen,
   notReportingReason, parseRec, pickHint, recordText, repoMarkersOf, resumableOf, resumeCmd, rowOf, schemaMajor, selectFiles, selfAndAncestors,
   FLEET_SINCE, sessionsDirOf, staleAfter, STALE_FLOOR_MS, T, targetOf, tildePath, transcriptOf, turnReason, countOthers, otherRows, deriveState, SCHEMA,
 } from '../lib/fleet'
@@ -539,11 +539,10 @@ async function hintScan($: EngineInterface): Promise<void> {
     }
     const c = pickHint(s.recs, me, now, existing)
     if (c === null) return
-    const cmd = resumeCmd(c, f.launchCwd)
-    if (cmd === null) return
+    if (resumeCmd(c, f.launchCwd) === null) return
     const word = T.word[W.lang] as Record<string, string>
     const was = c.ended?.stateAtEnd ?? c.state
-    const text = T.hint[W.lang]({ age: fmtAge(now - lastSeen(c)), s: (typeof was === 'string' && word[was]) || word.unknown || '?', cmd })
+    const text = T.hint[W.lang]({ age: fmtAge(now - lastSeen(c)), s: (typeof was === 'string' && word[was]) || word.unknown || '?', id: id8(c.sessionId) })
     $.ui.toast(text, { timeoutMs: HINT_TOAST_MS })
     if (F !== null) { F.hinted = true; await persist($) }
   } catch {}

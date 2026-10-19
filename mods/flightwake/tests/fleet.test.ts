@@ -1105,7 +1105,7 @@ describe('fleet: resume hint', () => {
     await start($, k)
     expect(k.toasts).toEqual([])
     await k.clock.advance(1500)
-    expect(k.toasts).toEqual(['flightwake: a session in this repo stopped unexpectedly 10m ago (it was working). Pick it up: claude --resume old1 — /fw-fleet lists all'])
+    expect(k.toasts).toEqual(['flightwake: session old1 stopped unexpectedly 10m ago (was working) — /fw-fleet to resume it'])
     await k.clock.advance(60000)
     expect(k.toasts).toHaveLength(1)
   })
@@ -1116,10 +1116,10 @@ describe('fleet: resume hint', () => {
     k.w.outside[TRANSCRIPT('old1')] = '{}'
     await start($, k)
     await k.clock.advance(1500)
-    expect(k.toasts).toEqual(['flightwake:這個 repo 有個 session 在 1h 前意外中斷(當時等你回覆)。接回去:claude --resume old1 — /fw-fleet 列出全部'])
+    expect(k.toasts).toEqual(['flightwake:session old1 在 1h 前意外中斷(當時等你回覆)——/fw-fleet 有接回指令'])
   })
 
-  test("launched elsewhere: the command starts with cd '<launchCwd>' &&, a single quote escaped", async ($, on) => {
+  test("launched elsewhere: /fw-fleet's command starts with cd '<launchCwd>' &&, a single quote escaped", async ($, on) => {
     const k = boot($, on)
     seed(k, staleRec({ launchCwd: '/repo/sub', transcript: TRANSCRIPT('old1', '-repo-sub') }))
     seed(k, staleRec({ sessionId: 'old2', heartbeatAt: NOW - 1_200_000, launchCwd: "/repo/it's", resume: { id: 'old2', resumable: true }, transcript: TRANSCRIPT('old2', '-repo-it-s') }))
@@ -1127,7 +1127,8 @@ describe('fleet: resume hint', () => {
     await start($, k)
     await k.clock.advance(1500)
     expect(k.toasts).toHaveLength(1)
-    expect(k.toasts[0]).toContain("Pick it up: cd '/repo/sub' && claude --resume old1 —")
+    expect(k.toasts[0]).toContain('session old1 stopped')
+    expect(await fwFleet($)).toContain("cd '/repo/sub' && claude --resume old1")
     expect(shq("/repo/it's")).toBe("'/repo/it'\\''s'")
   })
 
@@ -1137,7 +1138,8 @@ describe('fleet: resume hint', () => {
     k.w.outside[TRANSCRIPT('old1', '-repo-it-s')] = '{}'
     await start($, k)
     await k.clock.advance(1500)
-    expect(k.toasts[0]).toContain("Pick it up: cd '/repo/it'\\''s' && claude --resume old1 —")
+    expect(k.toasts[0]).toContain('session old1 stopped')
+    expect(await fwFleet($)).toMatch(/`cd '\/repo\/it'.*' && claude --resume old1`/)
   })
 
   const NOT_SHOWN: [string, (k: Knobs) => void, object?][] = [

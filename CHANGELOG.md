@@ -8,6 +8,14 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ## [Unreleased]
 
+### Fixed
+- **Fleet console "Wrap up" on Codex never submitted.** Codex's `$` skill picker took the Enter sent with `$fw-record`,
+  leaving it in the input box. The panel now reads the box back once and presses Enter again only when it still holds
+  exactly that command.
+- **Resume hint toast was cut off.** The toast box is about 40 columns wide, so the session id lost its tail and the
+  command could not be copied. The toast now names the session's short id and points to `/fw-fleet`, which prints the
+  full resume command.
+
 ## [0.17.0] — 2026-10-11
 
 ### Added
