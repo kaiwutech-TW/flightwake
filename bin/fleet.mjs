@@ -1,8 +1,9 @@
 /**
  * `npx flightwake fleet` — read-only list of the Claude Code sessions that report to `<base>/sessions/<id>.json`
  * (written by flightwake-mod's F7 `fleet` feature; base = absolute FLIGHTWAKE_HOME, else $HOME/.flightwake).
- * Blocked first, then working, idle, stale, ended. `--json` for tools (Orca), `--prune` is the only delete path in
- * the whole design: it removes ended/stale (and old unreadable) files, never a file written in the last 120 s.
+ * Blocked first, then working, idle, stale, ended. `--json` for tools (Orca), `--prune` is the only delete path for
+ * session files: it removes ended/stale (and old unreadable) files, never a file written in the last 120 s; it also
+ * removes trip files (<base>/trips, traps.mjs pruneTrips) not updated in N days.
  * Zero dependencies: Node built-ins only. Never creates the folder, never writes anything except `--prune`'s deletes.
  *
  * The base-dir rules (§2) and the display constants (§8) MIRROR mods/flightwake/hooks/lib/fleet.ts and
@@ -10,6 +11,8 @@
  */
 import { readdirSync, lstatSync, readFileSync, existsSync, rmSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
+// a cycle (traps.mjs imports this file's helpers); safe: neither module calls the other while loading
+import { pruneTrips } from './traps.mjs';
 
 // ── §8 constants (mirrors hooks/lib/fleet.ts and hooks/statusline.mjs) ──
 export const HEARTBEAT_MS = 30000;
@@ -58,14 +61,15 @@ export function realish(p) {
   }
 }
 /**
- * Whether `<base>/sessions` would sit inside a repo: inside `target` (by spelling or by real path), or the base is a
- * flightwake records folder (`<base>/STATE.md`) or lies in any git repo or flightwake root (`.git` or
+ * Whether `<base>/<sub>` (sessions, or trips) would sit inside a repo: inside `target` (by spelling or by real path),
+ * or the base is a flightwake records folder (`<base>/STATE.md`) or lies in any git repo or flightwake root (`.git` or
  * `.flightwake/STATE.md` on the base or a folder above it).
- * The same rule as the mod's guard (hooks/lib/fleet.ts repoMarkersOf); init --mod never creates the folder there.
+ * The same rule as the mod's guard (hooks/lib/fleet.ts repoMarkersOf); init --mod never creates the folder there, and
+ * every delete path (fleet --prune, traps forget, uninstall --purge's trip entries) refuses there.
  */
-export function fleetDirInRepo(target, base) {
+export function fleetDirInRepo(target, base, sub = 'sessions') {
   if (!base) return false;
-  const sdir = `${base}/sessions`;
+  const sdir = `${base}/${sub}`;
   if (isWithin(target, sdir) || isWithin(realish(target), realish(sdir))) return true;
   for (const b of new Set([base, realish(base)])) {
     if (existsSync(join(b, 'STATE.md'))) return true;
@@ -344,6 +348,19 @@ export async function runFleet({ args = [], env = process.env, now = Date.now(),
   try { const st = lstatSync(dir); isDir = st.isDirectory() && !st.isSymbolicLink(); } catch {}
   const constants = { heartbeatMs: HEARTBEAT_MS, staleFloorMs: STALE_FLOOR_MS, staleFactor: STALE_FACTOR, blockedAlertMs: BLOCKED_ALERT_MS };
   const zero = { blocked: 0, working: 0, idle: 0, stale: 0, ended: 0, unknown: 0 };
+
+  if (o.prune) {
+    // the only delete path for session files, and the age-based one for trip files (<base>/trips, traps.mjs pruneTrips):
+    // never inside a repo or a records folder (the mod's write guard, applied to deletes) — checked for both folders
+    for (const sub of ['sessions', 'trips']) if (fleetDirInRepo(cwd, b, sub)) { log(M(T.pruneInRepo(`${b}/${sub}`))); return 1; }
+    if (isDir) {
+      let files;
+      try { files = listFiles(dir); } catch { files = []; }
+      prune({ files, now, days: o.days, dry: o.dry, log, M });
+    } else log(M(T.missing(dir)));
+    pruneTrips({ base: b, now, days: o.days, dry: o.dry, log, M });
+    return 0;
+  }
   if (!isDir) {
     if (o.json) log(JSON.stringify({ version: 1, generatedAt: now, dir, constants, counts: zero, sessions: [], unreadable: [], hidden: 0 }));
     else log(M(T.missing(dir)));
@@ -351,12 +368,6 @@ export async function runFleet({ args = [], env = process.env, now = Date.now(),
   }
   let files;
   try { files = listFiles(dir); } catch { files = []; }
-
-  if (o.prune) {
-    // the only delete path: never inside a repo or a records folder (the mod's write guard, applied to deletes)
-    if (fleetDirInRepo(cwd, b)) { log(M(T.pruneInRepo(dir))); return 1; }
-    return prune({ files, now, days: o.days, dry: o.dry, log, M });
-  }
 
   // ── list ──
   const window = o.all ? LIST_WINDOW_ALL_MS : LIST_WINDOW_MS;

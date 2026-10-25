@@ -3,7 +3,7 @@
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { cleanTitle, contextBar, draftOf, groupByRepo, parseTerminalList, SUBMIT_CHECK_MS, termState, wrapUpCommand } from '../hooks/lib/orca'
+import { cleanTitle, composerOf, contextBar, draftOf, groupByRepo, parseTerminalList, SUBMIT_CHECK_MS, termState, wrapUpCommand } from '../hooks/lib/orca'
 import type { OrcaTerm } from '../hooks/lib/orca'
 import { gitBehind, installWorld, MARKER, STATE_FILLED } from './world'
 import type { World } from './world'
@@ -97,6 +97,8 @@ describe('console: pure helpers', () => {
   test('wrapUpCommand, contextBar, groupByRepo', async () => {
     expect([wrapUpCommand('claude'), wrapUpCommand('codex'), wrapUpCommand('pi')]).toEqual(['/fw-record', '$fw-record', null])
     expect([draftOf(readJson(' $fw-record ')), draftOf(readJson()), draftOf(readJson('  ')), draftOf('nope'), draftOf(null)]).toEqual(['$fw-record', null, null, null, null])
+    // an empty composer ('') is an answer; no draft field, no JSON, no output are not
+    expect([composerOf(readJson(' $fw-record ')), composerOf(readJson('  ')), composerOf(readJson()), composerOf('nope'), composerOf(null)]).toEqual(['$fw-record', '', null, null, null])
     expect(contextBar(85, 10)).toEqual({ filled: '█'.repeat(9), empty: '░', color: 'red' })
     expect(contextBar(30, 10).color).toBe('green')
     const t = parseTerminalList(listJson(LIST)) as OrcaTerm[]
@@ -166,8 +168,90 @@ describe('console: inside Orca', () => {
     await ui.press({ key: 'wrap-term_a' } as never)
     await confirm('term_a')
     expect(w.orcaCalls).toContain(`${BIN}/orca terminal send --terminal term_a --text /fw-record --enter --json`)
-    expect(w.orcaCalls).toContain(`${BIN}/orca terminal read --terminal term_a --screen --json`)
+    // Claude Code submits with the Enter it was sent: no read-back of its screen, no extra Enter
+    expect(w.orcaCalls.some((c) => c.includes('terminal read'))).toBe(true) // term_c's, above
+    expect(w.orcaCalls).not.toContain(`${BIN}/orca terminal read --terminal term_a --screen --json`)
     expect(w.orcaCalls).not.toContain(`${BIN}/orca terminal send --terminal term_a --enter --json`)
+    expect(await ui.find({ type: 'Text', text: /sent \/fw-record to Claude · Review docs/ })).toBeDefined()
+    await ui.unmount()
+  })
+
+  // the read-back cannot tell (Orca refused the read, the answer has no `draft`), or the extra Enter failed: the
+  // notice never says plainly "sent"
+  const UNSURE: [string, (a: string) => { exitCode: number; stdout: string } | null][] = [
+    ['the read fails', (a) => (a.startsWith('terminal read') ? { exitCode: 1, stdout: '' } : null)],
+    ['the read has no draft field', (a) => (a.startsWith('terminal read') ? { exitCode: 0, stdout: readJson() } : null)],
+    ['the read is not JSON', (a) => (a.startsWith('terminal read') ? { exitCode: 0, stdout: 'garbled' } : null)],
+    ['the extra Enter fails', (a) => (a === 'terminal send --terminal term_c --enter --json' ? { exitCode: 1, stdout: '' } : null)],
+  ]
+  for (const [name, answer] of UNSURE) {
+    test(`Codex wrap-up, ${name}: "may not have been submitted — check that tab", never plain "sent"`, async ($, on) => {
+      const w = orcaWorld(on)
+      const base = w.orca!
+      w.orca = (args) => answer(args.join(' ')) ?? base(args)
+      engine(on)
+      inOrca(on)
+      const clock = mock.clock(on, { now: NOW })
+      await $.session.start(START)
+      await panel($)
+      const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: PROPS })
+      await ui.press({ key: 'wrap-term_c' } as never)
+      const p = ui.press({ key: 'ok-term_c' } as never)
+      await clock.advance(SUBMIT_CHECK_MS)
+      await p
+      expect(w.orcaCalls).toContain(`${BIN}/orca terminal send --terminal term_c --text $fw-record --enter --json`)
+      expect(await ui.find({ type: 'Text', text: /^\$fw-record was typed into Codex · Ship the app but may not have been submitted — check that tab$/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /^sent / })).toBeUndefined()
+      await ui.unmount()
+    })
+  }
+
+  test('an empty composer after the send (it went through): "sent", no extra Enter', async ($, on) => {
+    const w = orcaWorld(on)
+    const base = w.orca!
+    w.orca = (args) => (args.join(' ').startsWith('terminal read') ? { exitCode: 0, stdout: readJson('  ') } : base(args))
+    engine(on)
+    inOrca(on)
+    const clock = mock.clock(on, { now: NOW })
+    await $.session.start(START)
+    await panel($)
+    const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: PROPS })
+    await ui.press({ key: 'wrap-term_c' } as never)
+    const p = ui.press({ key: 'ok-term_c' } as never)
+    await clock.advance(SUBMIT_CHECK_MS)
+    await p
+    expect(w.orcaCalls).not.toContain(`${BIN}/orca terminal send --terminal term_c --enter --json`)
+    expect(await ui.find({ type: 'Text', text: /sent \$fw-record to Codex · Ship the app/ })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('a second confirm while a wrap-up to that tab is still in flight sends nothing again', async ($, on) => {
+    const w = orcaWorld(on)
+    engine(on)
+    inOrca(on)
+    const clock = mock.clock(on, { now: NOW })
+    await $.session.start(START)
+    await panel($)
+    const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: PROPS })
+    await ui.press({ key: 'wrap-term_c' } as never)
+    const first = ui.press({ key: 'ok-term_c' } as never)
+    // the confirm is cleared before the wait: the button is gone while the first send is in flight
+    expect(await ui.find({ key: 'ok-term_c' } as never)).toBeUndefined()
+    // asked again meanwhile (wrap → confirm): refused, nothing typed twice
+    await ui.press({ key: 'wrap-term_c' } as never)
+    await ui.press({ key: 'ok-term_c' } as never)
+    expect(await ui.find({ type: 'Text', text: /still being sent — nothing sent again/ })).toBeDefined()
+    await clock.advance(SUBMIT_CHECK_MS)
+    await first
+    const typed = w.orcaCalls.filter((c) => c === `${BIN}/orca terminal send --terminal term_c --text $fw-record --enter --json`)
+    expect(typed).toHaveLength(1)
+    expect(w.orcaCalls.filter((c) => c === `${BIN}/orca terminal send --terminal term_c --enter --json`)).toHaveLength(1)
+    // once it is done, the tab can be asked again
+    await ui.press({ key: 'wrap-term_c' } as never)
+    const again = ui.press({ key: 'ok-term_c' } as never)
+    await clock.advance(SUBMIT_CHECK_MS)
+    await again
+    expect(w.orcaCalls.filter((c) => c === `${BIN}/orca terminal send --terminal term_c --text $fw-record --enter --json`)).toHaveLength(2)
     await ui.unmount()
   })
 

@@ -37,9 +37,17 @@ supersede 保留给「根因本身换了」的情况。写入前查重(第 1 步
 
 ## 步骤
 
-1. **先查重,再动笔**:写入前先跑
-   `npx flightwake traps similar --name=<slug> --tags=<a,b> [--paths=<glob,…>] [--commands=<命令,…>] --text="<症状 + 根因>"`
-   (只读;只看 TRAPS.md)。列出候选时三选一,不要直接再加一条:
+1. **先查重,再动笔**:写入前先跑(只读;只看 TRAPS.md)
+
+```bash
+npx flightwake traps similar --name='<slug>' --tags='<a,b>' --paths='src/db/**,*.sql' --commands='npm run migrate,psql' <<'EOF'
+<症状(原样贴上错误信息)+ 一句话根因>
+EOF
+```
+
+   正文一律走加引号的 heredoc(`<<'EOF'` … `EOF`,结尾的 `EOF` 单独一行、顶格),其他值一律用单引号——绝不用双引号:
+   双引号里,shell 会执行贴上的错误信息中的反引号与 `$(…)`。条目没有 paths / commands 就省略 `--paths` / `--commands`。
+   列出候选时三选一,不要直接再加一条:
    - **就地更新**既有条目——同一个根因:补佐证、补 paths/commands;把握度升级(suspected → confirmed)就是这种
    - **supersede**——根因本身换了:照第 6 步,旧条目改 `status: superseded`、正文指向新的 [[名称]]
    - **仍另立新条目**——根因不同:在新条目正文用一行写出为什么跟候选不是同一件事

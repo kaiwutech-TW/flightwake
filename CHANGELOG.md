@@ -10,17 +10,28 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ### Added
 - **`npx flightwake traps similar`** checks a new TRAPS entry against the existing ones before it is written (name,
-  tags, paths, commands and the symptom text; local and deterministic, threshold 0.40). `/fw-trap` now runs it first
-  and asks for a choice when it finds candidates: update the existing entry, supersede it, or record a new one with a
-  line on why it differs.
+  tags, paths, commands and the symptom text, read from stdin so a pasted symptom is never run by the shell; local and
+  deterministic, threshold 0.40). `/fw-trap` now runs it first and asks for a choice when it finds candidates: update
+  the existing entry, supersede it, or record a new one with a line on why it differs. An entry with the same name is
+  always listed.
 - **`npx flightwake traps stats`** lists the active entries with whether each one is anchored (`paths` / `commands`)
-  and how often the mod's tripwire matched it. `/fw-coldstart`'s compaction proposal now starts from this data. It
-  says so plainly when there is no trip data, and never counts an unanchored entry as unused.
-- **Mod: trip counts.** The tripwire counts every match, hinted or not, and writes the counts per session to
-  `<base>/trips/<session id>.json` (outside the repo, same refusal rules as the session file; interactive sessions
-  only). Hints are unchanged. `uninstall --purge` deletes this repo's trip files.
+  and in how many sessions the mod's tripwire recorded it. `/fw-coldstart`'s compaction proposal now starts from this
+  data. It says so plainly when there is no trip data, and never counts an unanchored entry as unused.
+- **`npx flightwake traps forget [--dry-run]`** removes this repo's trip records only. `fleet --prune` also prunes old
+  trip files.
+- **Mod: trip records.** A trap is recorded at most once per session per repo, and only when an Edit/Write target
+  matches its `paths` or a Bash command starts with one of its `commands` (a path merely mentioned in a shell command
+  still hints but is not recorded; refused calls are not recorded). Records go to `<base>/trips/<session id>.json`,
+  merged with what is already there (a resumed session keeps its records), under the session file's refusal rules,
+  and only into a `trips` folder that is private (0700). `init` / `update` create or tighten that folder when the mod
+  is installed. New switch `trips`; when unset it follows `fleet`. Hints are unchanged.
 
 ### Fixed
+- **Fleet console "Wrap up" could report "sent" for a Codex command that was never submitted**, and a second press
+  during the check sent it again. The panel now reads back only Codex tabs, says when it cannot confirm the command
+  went through, and ignores a second press while one is in progress.
+- **`/fw-fleet` resume command** was mis-escaped for folders whose name contains a single quote, and the session a
+  resume toast named could be hidden by the ended-rows cap. Both fixed.
 - **Fleet console "Wrap up" on Codex never submitted.** Codex's `$` skill picker took the Enter sent with `$fw-record`,
   leaving it in the input box. The panel now reads the box back once and presses Enter again only when it still holds
   exactly that command.

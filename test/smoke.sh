@@ -1859,9 +1859,11 @@ node -e '
   const fs=require("fs"); const [reg, man]=process.argv.slice(1);
   const m=/export const DEFAULTS = (\{[^}]*\})/.exec(fs.readFileSync(reg,"utf8")); if(!m) process.exit(2);
   const d=new Function("return "+m[1])(); const u=JSON.parse(fs.readFileSync(man,"utf8")).userConfig;
-  const want=Object.fromEntries(Object.entries(u).map(([k,v])=>[k,v.default]));
-  if (JSON.stringify(Object.entries(d).sort())!==JSON.stringify(Object.entries(want).sort())) { console.log(JSON.stringify(d), JSON.stringify(want)); process.exit(1); }' \
-  "$MODF/hooks/register.ts" "$MODF/.claude-plugin/plugin.json" || fail "45 register.ts DEFAULTS 應與 plugin.json userConfig 的 default 一致"
+  const want=Object.fromEntries(Object.entries(u).filter(([,v])=>"default" in v).map(([k,v])=>[k,v.default]));
+  if (JSON.stringify(Object.entries(d).sort())!==JSON.stringify(Object.entries(want).sort())) { console.log(JSON.stringify(d), JSON.stringify(want)); process.exit(1); }
+  // trips: deliberately no default, so "unset" is detectable (it then follows fleet)
+  if (!u.trips || "default" in u.trips || u.trips.type!=="boolean") { console.log("userConfig.trips:", JSON.stringify(u.trips)); process.exit(1); }' \
+  "$MODF/hooks/register.ts" "$MODF/.claude-plugin/plugin.json" || fail "45 register.ts DEFAULTS 應與 plugin.json userConfig 有 default 的欄位一致;trips 必須存在且沒有 default"
 pass "45 fleet CLI 唯讀清單/--json/--prune(不碰別人的 JSON、base 在 repo 裡拒絕)、init --mod 建 0700 sessions、uninstall 保留 sessions、fs.write 與 §8 常數三處一致、DEFAULTS 對 plugin.json"
 
 # 46. 安裝/升級流程:setup 依終端機語系預選語言、附加元件一題清單(取代語意)、已安裝 repo 三選一(升級/升級並加裝/離開)、
@@ -2283,8 +2285,9 @@ fi
 
 # 47. traps CLI(bin/traps.mjs):parser 與 mod 的 hooks/lib/traps.ts 逐欄一致(HTML 註解裡的假 frontmatter、併接後才成形的註解、
 #     {{…}} 佔位條目、superseded、缺 status → active、confidence 正規化、inline list);similar 找得到近似條目與同名、無關的找不到、
-#     --json、路徑重疊、用法錯誤 exit 1、唯讀;stats 沒觸發資料時不宣稱「從未觸發」、只算本 repo 的 trip 檔(他 repo / 壞檔 / v≠1 /
-#     symlink 忽略、repo 路徑經 symlink 也認得)、--days;uninstall 不帶 --purge 保留並說明、--purge 只刪本 repo 的 trip 檔、sessions 不動
+#     --json、路徑重疊、用法錯誤 exit 1、唯讀;stats 沒觸發資料時不宣稱「從未觸發」、只算本 repo 的 trip 檔(他 repo / 壞檔 / 不是我們的檔 /
+#     symlink 忽略、repo 路徑經 symlink 也認得)、--days;uninstall 不帶 --purge 保留並指向 traps forget、--purge 只刪本 repo 的紀錄、
+#     sessions 不動、base 在 repo 裡時拒絕(v2 / forget / fleet --prune / 0700 / stdin 等見 47.1–47.6)
 TR="$TMP/traps-repo"; newrepo "$TR" >/dev/null; mkdir -p .flightwake
 cat > .flightwake/TRAPS.md <<'EOF'
 <!-- format demo
@@ -2454,7 +2457,7 @@ echo "$out" | grep -qi 'never tripped' && fail "47 沒資料時不得宣稱 neve
 echo "$out" | grep -q 'Codex / Gemini sessions never record trips' && echo "$out" | grep -q 'can never trip by design' || fail "47 stats 應印資料來源與無錨點的說明(got: $out)"
 FLIGHTWAKE_HOME="$TH" node "$CLI" traps stats --json | node -e '
   const j=JSON.parse(require("fs").readFileSync(0,"utf8"));
-  if (j.version!==1 || j.tripData!==false || j.counts.anchoredNeverTripped!==null || j.counts.active!==5 || j.entries.some((e)=>e.trips!==null)) process.exit(1)' || fail "47 沒資料時 --json 不得給 trips / never-tripped 數字"
+  if (j.version!==1 || j.tripData!==false || j.counts.anchoredNeverTripped!==null || j.counts.active!==5 || j.entries.some((e)=>e.sessions!==null || "trips" in e)) process.exit(1)' || fail "47 沒資料時 --json 不得給 sessions / never-tripped 數字"
 [ -e "$TH" ] && fail "47 stats 不得建立 base 資料夾"
 # trip 檔:本 repo ×2(其一經 symlink 路徑)、他 repo、壞檔、v≠1、symlink、非 .json → 只算本 repo 兩個
 mkdir -p "$TH/trips" "$TMP/traps-out"; ln -s "$TR" "$TMP/traps-link"
@@ -2474,13 +2477,13 @@ TSNAP=$(fsnap2 "$TH")
 out=$(FLIGHTWAKE_HOME="$TH" node "$CLI" traps stats) || fail "47 有資料的 stats 應成功"
 echo "$out" | grep -q 'Summary: 5 active · 3 anchored · 2 unanchored · 1 anchored but never tripped$' || fail "47 只算本 repo:wrangler 從未觸發(他 repo / symlink / v2 不算)(got: $out)"
 echo "$out" | grep -q '^Trip data: 2 session(s), ' || fail "47 資料範圍應為本 repo 的 2 個 session(got: $out)"
-echo "$out" | grep -E '^  smoke-needs-python-311 +confirmed +2026-10-05 +commands +2 +3 ' >/dev/null || fail "47 smoke-needs-python-311 應為 2 sessions、3 次(got: $out)"
+echo "$out" | grep -E '^  smoke-needs-python-311 +confirmed +2026-10-05 +commands +2 +[0-9]{4}-[0-9]{2}-[0-9]{2}$' >/dev/null || fail "47 smoke-needs-python-311 應為 2 sessions + 最後觸發日(沒有次數欄)(got: $out)"
 js=$(FLIGHTWAKE_HOME="$TH" node "$CLI" traps stats --json) || fail "47 stats --json 應成功"
 node -e '
   const j=JSON.parse(process.argv[1]); const by=(n)=>j.entries.find((e)=>e.name===n);
   const ok = j.tripData===true && j.sessions===2 && j.counts.anchoredNeverTripped===1 && j.range && j.days===null
-    && by("smoke-needs-python-311").trips===3 && by("smoke-needs-python-311").sessions===2
-    && by("plain-git-status-rewrites-index").trips===3 && by("wrangler-pages-create-delegates-to-workers").trips===0
+    && by("smoke-needs-python-311").sessions===2 && !("trips" in by("smoke-needs-python-311"))
+    && by("plain-git-status-rewrites-index").sessions===1 && by("wrangler-pages-create-delegates-to-workers").sessions===0
     && by("codex-exec-stdin-hang").anchored===false && !by("smoke-needs-python311-tomllib");
   if (!ok) { console.log(JSON.stringify(j).slice(0,800)); process.exit(1); }' "$js" || fail "47 stats --json 計數不對"
 out=$(FLIGHTWAKE_HOME="$TH" node "$CLI" traps stats --days=10) || fail "47 stats --days 應成功"
@@ -2499,24 +2502,213 @@ TSEED "$UH/trips/o1.json" "$TMP/other-repo" '{"a":{n:1,first:iso(0),last:iso(0)}
 TSEED "$TMP/traps-out/m3.json" "$UR" '{"a":{n:1,first:iso(0),last:iso(0)}}'; ln -s "$TMP/traps-out/m3.json" "$UH/trips/m3.json"
 SSNAP=$(fsnap2 "$UH/sessions")
 out=$(FLIGHTWAKE_HOME="$UH" node "$CLI" uninstall 2>&1) || fail "47 uninstall 應成功(got: $out)"
-echo "$out" | grep -qF "kept 2 trip file(s) of this repo in $UH/trips — \`npx flightwake uninstall --purge\` removes them" || fail "47 uninstall 應說明保留了本 repo 的 trip 檔(got: $out)"
+echo "$out" | grep -qF "kept this repo's trip entries in 2 file(s) of $UH/trips — \`npx flightwake traps forget\` removes only those" || fail "47 uninstall 應說明保留了本 repo 的紀錄並指向 traps forget(got: $out)"
+echo "$out" | grep -q 'uninstall --purge\` removes' && fail "47 uninstall 不得建議會刪掉整個 .flightwake 的 --purge 來清 trip 檔(got: $out)"
 [ -f "$UH/trips/m1.json" ] && [ -f "$UH/trips/m2.json" ] || fail "47 不帶 --purge 不得刪 trip 檔"
 FLIGHTWAKE_HOME="$UH" node "$CLI" init --agents=claude >/dev/null
 out=$(FLIGHTWAKE_HOME="$UH" node "$CLI" uninstall --purge 2>&1) || fail "47 uninstall --purge 應成功(got: $out)"
-echo "$out" | grep -qF "removed 2 trip file(s) of this repo from $UH/trips" || fail "47 --purge 應說明刪了本 repo 的 trip 檔(got: $out)"
+echo "$out" | grep -qF "forgot this repo's trip entries in 2 file(s) of $UH/trips: 2 removed, 0 rewritten" || fail "47 --purge 應說明清掉了本 repo 的紀錄(got: $out)"
 [ ! -e "$UH/trips/m1.json" ] && [ ! -e "$UH/trips/m2.json" ] || fail "47 --purge 應刪掉本 repo 的 trip 檔"
 [ -f "$UH/trips/o1.json" ] && [ -L "$UH/trips/m3.json" ] && [ -f "$TMP/traps-out/m3.json" ] || fail "47 --purge 不得碰他 repo 的檔、symlink 或其目標"
 [ "$(fsnap2 "$UH/sessions")" = "$SSNAP" ] || fail "47 --purge 不得改動 sessions"
-# base 就是本 repo 的 .flightwake(FLIGHTWAKE_HOME=<repo>/.flightwake):--purge 繞開 trips 資料夾,只刪本 repo 的檔
+# base 就是本 repo 的 .flightwake(FLIGHTWAKE_HOME=<repo>/.flightwake):trips 在 repo 裡 → mod 從不寫那裡;--purge 繞開 trips 資料夾、拒絕動它並說明
 newrepo "$TMP/traps-un2" >/dev/null; UR2="$PWD"
 FLIGHTWAKE_HOME="$UR2/.flightwake" node "$CLI" init --agents=claude >/dev/null
 mkdir -p .flightwake/trips
 TSEED "$UR2/.flightwake/trips/mine.json" "$UR2" '{"a":{n:1,first:iso(0),last:iso(0)}}'
 TSEED "$UR2/.flightwake/trips/theirs.json" "$TMP/other-repo" '{"a":{n:1,first:iso(0),last:iso(0)}}'
 out=$(FLIGHTWAKE_HOME="$UR2/.flightwake" node "$CLI" uninstall --purge 2>&1) || fail "47 base 在 .flightwake 時 --purge 應成功(got: $out)"
-[ ! -e .flightwake/STATE.md ] && [ ! -e .flightwake/trips/mine.json ] && [ -f .flightwake/trips/theirs.json ] || fail "47 base 在 .flightwake 時 --purge 只留下他 repo 的 trip 檔(got: $out; $(find .flightwake 2>&1))"
+[ ! -e .flightwake/STATE.md ] && [ -f .flightwake/trips/mine.json ] && [ -f .flightwake/trips/theirs.json ] || fail "47 base 在 .flightwake 時 --purge 刪其餘、trips 整個不動(got: $out; $(find .flightwake 2>&1))"
+echo "$out" | grep -qF "uninstall --purge: $UR2/.flightwake/trips lies inside a repo or a flightwake records folder" || fail "47 base 在 repo 裡時 --purge 應說明拒絕(got: $out)"
 cd "$TMP"
-pass "47 traps:parser 與 mod 一致;similar 近似/同名/無關/--json/路徑重疊/用法錯誤/唯讀;stats 無資料不宣稱從未觸發、只算本 repo、--days;uninstall 保留或 --purge 只刪本 repo 的 trip 檔"
+pass "47 traps:parser 與 mod 一致;similar 近似/同名/無關/--json/路徑重疊/用法錯誤/唯讀;stats 無資料不宣稱從未觸發、只算本 repo、--days;uninstall 保留並指向 forget、--purge 只清本 repo、base 在 repo 裡拒絕"
+
+# 47.1 trip 檔 v2(mod 現行格式)與 v1 並讀:一檔多 repo 只取本 repo 的 key(經 symlink 的拼法也算)、sessionId ≠ 檔名不算、
+#      sessions = 觸發過的 session 數、--days 依每個 (session, 條目) 的時間篩、範圍只看納入的資料、日期用本地時區、
+#      __proto__ 條目不遺失、CJK 欄位裁切不溢出、大量 --json 經慢速 pipe 不被截斷
+cd "$TR"
+V2SEED() { node -e '
+  const [f, body, upd] = process.argv.slice(1); const now = Date.now(), D = 86400000; const iso = (ago) => new Date(now - ago).toISOString();
+  const rec = { v: 2, sessionId: require("path").basename(f, ".json"), updated: iso(0), trips: eval("(" + body + ")") };
+  if (upd === "none") delete rec.updated; else if (upd) rec.updated = iso(Number(upd) * D);
+  require("fs").writeFileSync(f, JSON.stringify(rec, null, 2) + "\n");' "$@"; }
+T2="$TMP/traps-v2home"; mkdir -p "$T2/trips"
+V2SEED "$T2/trips/a.json" "{[\"$TR\"]:{\"smoke-needs-python-311\":iso(2*D),\"wrangler-pages-create-delegates-to-workers\":iso(D)},\"$TMP/other-repo\":{\"gh-active-account-drift\":iso(D)}}"
+V2SEED "$T2/trips/b.json" "{[\"$TMP/traps-link\"]:{\"smoke-needs-python-311\":iso(5*D),[\"__proto__\"]:iso(5*D)}}"
+TSEED "$T2/trips/c.json" "$TR" '{"plain-git-status-rewrites-index":{n:4,first:iso(30*D),last:iso(D)}}'
+node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({v:2,sessionId:"someone-else",updated:new Date().toISOString(),trips:{[process.argv[2]]:{"codex-exec-stdin-hang":new Date().toISOString()}}}))' "$T2/trips/d.json" "$TR"
+V2SEED "$T2/trips/e.json" "{\"$TMP/other-repo\":{\"smoke-needs-python-311\":iso(D)}}"
+js=$(FLIGHTWAKE_HOME="$T2" node "$CLI" traps stats --json) || fail "47.1 v2 stats --json 應成功"
+node -e '
+  const j=JSON.parse(process.argv[1]); const by=(n)=>j.entries.find((e)=>e.name===n);
+  const ok = j.sessions===3 && j.sessionFiles===3 && by("smoke-needs-python-311").sessions===2 && by("wrangler-pages-create-delegates-to-workers").sessions===1
+    && by("plain-git-status-rewrites-index").sessions===1 && by("codex-exec-stdin-hang").sessions===0 && by("gh-active-account-drift").sessions===0
+    && j.counts.anchoredNeverTripped===0 && j.entries.every((e)=>!("trips" in e));
+  if (!ok) { console.log(JSON.stringify(j).slice(0,900)); process.exit(1); }' "$js" || fail "47.1 v2 + v1 並讀、多 repo 檔只取本 repo、sessionId ≠ 檔名不算"
+node --input-type=module -e "
+  import { tripFilesFor } from '$SRC/bin/traps.mjs';
+  const b = tripFilesFor('$T2/trips', '$TR').find((f) => f.name === 'b.json');
+  if (!b || !b.trips.has('__proto__') || b.trips.size !== 2) { console.log(b && [...b.trips.keys()]); process.exit(1); }" || fail "47.1 名為 __proto__ 的條目不得遺失"
+# --days=10:c 的時間是首次觸發(30 天前)→ 不納入,即使 v1 的 last 在昨天;範圍只涵蓋納入的 2 天前 / 5 天前 / 1 天前
+exp=$(node -e 'const p=(n)=>String(n).padStart(2,"0"); const d=(ago)=>{const x=new Date(Date.now()-ago*86400000); return `${x.getFullYear()}-${p(x.getMonth()+1)}-${p(x.getDate())}`}; console.log(`Trip data: 2 session(s), ${d(5)} → ${d(1)} (last 10 day(s))`)')
+out=$(FLIGHTWAKE_HOME="$T2" node "$CLI" traps stats --days=10) || fail "47.1 stats --days=10 應成功"
+echo "$out" | grep -qF "$exp" || fail "47.1 --days=10 的範圍只看納入的資料(want: $exp; got: $out)"
+echo "$out" | grep -q '1 anchored but not tripped in the last 10 day(s)$' || fail "47.1 --days=10 應排除首次觸發在 30 天前的 plain-git(got: $out)"
+out=$(FLIGHTWAKE_HOME="$T2" node "$CLI" traps stats --days=3) || fail "47.1 stats --days=3 應成功"
+echo "$out" | grep -q '^Trip data: 1 session(s), ' && echo "$out" | grep -E '^  smoke-needs-python-311 .* 1 +[0-9-]{10}$' >/dev/null || fail "47.1 --days=3 只剩 a 這個 session(got: $out)"
+# 本地日期:2026-10-20T20:30Z 在台北是 10-21、在 UTC / 洛杉磯是 10-20(最後觸發欄與範圍都一樣)
+T3="$TMP/traps-tzhome"; mkdir -p "$T3/trips"
+node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({v:2,sessionId:"tz",updated:"2026-10-20T20:30:00.000Z",trips:{[process.argv[2]]:{"smoke-needs-python-311":"2026-10-20T20:30:00.000Z"}}}))' "$T3/trips/tz.json" "$TR"
+for tzd in "Asia/Taipei 2026-10-21" "UTC 2026-10-20" "America/Los_Angeles 2026-10-20"; do
+  read -r tz want <<<"$tzd"
+  out=$(TZ="$tz" FLIGHTWAKE_HOME="$T3" node "$CLI" traps stats) || fail "47.1 TZ=$tz stats 應成功"
+  echo "$out" | grep -E "^  smoke-needs-python-311 .* 1 +$want\$" >/dev/null && echo "$out" | grep -qF "Trip data: 1 session(s), $want → $want" || fail "47.1 TZ=$tz 應印本地日期 $want(got: $out)"
+done
+node --input-type=module -e "
+  import { clip } from '$SRC/bin/traps.mjs';
+  const wide = (c) => /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/.test(c);
+  const w = (s) => [...s].reduce((n, c) => n + (wide(c) ? 2 : 1), 0);
+  const name = '資料庫遷移後-jsonb-變成字串的陷阱-非常長的名稱-'.repeat(3);
+  for (const n of [5, 8, 9, 20, 63, 64]) { const r = clip(name, n); if (w(r) > n || !r.endsWith('…')) { console.log(n, r, w(r)); process.exit(1); } }
+  if (clip('short', 10) !== 'short') process.exit(1);" || fail "47.1 CJK 名稱依顯示寬度裁切,不得溢出欄位"
+BIG="$TMP/traps-big"; mkdir -p "$BIG/.flightwake"
+node -e 'let t="# Traps\n"; for (let i=0;i<3000;i++) t+=`\n---\nname: entry-${i}-${"x".repeat(40)}\nstatus: active\nconfidence: confirmed\npaths: ["src/${i}/**"]\n---\n\n**Symptom**: s${i}\n`; require("fs").writeFileSync(process.argv[1], t)' "$BIG/.flightwake/TRAPS.md"
+n=$(cd "$BIG" && FLIGHTWAKE_HOME="$T2" node "$CLI" traps stats --json | (sleep 1; node -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8")).entries.length)')) || fail "47.1 大量 --json 經慢速 pipe 應是完整 JSON"
+[ "$n" = 3000 ] || fail "47.1 大量 --json 不得被 process.exit 截斷(got: $n)"
+pass "47.1 trip v2 與 v1 並讀、多 repo 檔只取本 repo、sessions/最後觸發、--days 依 (session, 條目) 時間與範圍、本地日期、__proto__、CJK 裁切、大量 --json 不截斷"
+
+# 47.2 traps forget:只移除本 repo 的 key(多 repo 檔改寫並保留權限、只剩本 repo 就刪檔、v1 刪檔)、--dry-run 零變動、
+#      不是我們的檔 / symlink 及其目標 / 他 repo 不動;base 在別的 repo 裡或 trips 是 symlink → 拒絕(exit 1、零變動);
+#      uninstall --purge 對 base 在別的 repo 裡也拒絕
+F2="$TMP/traps-fhome"; mkdir -p "$F2/trips" "$TMP/traps-fout"
+V2SEED "$F2/trips/m1.json" "{[\"$TR\"]:{\"smoke-needs-python-311\":iso(D)}}"
+V2SEED "$F2/trips/m2.json" "{[\"$TR\"]:{\"smoke-needs-python-311\":iso(D)},\"$TMP/other-repo\":{\"x\":iso(D)}}"; chmod 600 "$F2/trips/m2.json"
+V2SEED "$F2/trips/m3.json" "{[\"$TMP/traps-link\"]:{\"a\":iso(D)}}"
+TSEED "$F2/trips/m4.json" "$TR" '{"a":{n:1,first:iso(0),last:iso(0)}}'
+V2SEED "$F2/trips/o1.json" "{\"$TMP/other-repo\":{\"a\":iso(D)}}"
+node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({v:2,sessionId:"not-me",trips:{[process.argv[2]]:{a:new Date().toISOString()}}}))' "$F2/trips/x.json" "$TR"
+V2SEED "$TMP/traps-fout/lnk.json" "{[\"$TR\"]:{\"a\":iso(D)}}"; ln -s "$TMP/traps-fout/lnk.json" "$F2/trips/lnk.json"
+echo notes > "$F2/trips/notes.txt"
+FSNAP=$(fsnap2 "$F2"); OSNAP=$(fsnap2 "$TMP/traps-fout")
+out=$(FLIGHTWAKE_HOME="$F2" node "$CLI" traps forget --dry-run) || fail "47.2 forget --dry-run 應成功(got: $out)"
+for f in m1 m3 m4; do echo "$out" | grep -qF "would remove  $f.json" || fail "47.2 --dry-run 應列出將刪的 $f.json(got: $out)"; done
+echo "$out" | grep -qF "would rewrite  m2.json" && echo "$out" | grep -qF "would forget this repo's trip entries in 4 file(s)" || fail "47.2 --dry-run 應列出改寫與摘要(got: $out)"
+[ "$(fsnap2 "$F2")" = "$FSNAP" ] || fail "47.2 --dry-run 不得改動任何東西"
+out=$(FLIGHTWAKE_HOME="$F2" node "$CLI" traps forget) || fail "47.2 forget 應成功(got: $out)"
+for f in m1 m3 m4; do [ -e "$F2/trips/$f.json" ] && fail "47.2 forget 應刪掉只剩本 repo 的 $f.json(got: $out)"; done
+node -e '
+  const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));
+  if (j.v!==2 || j.sessionId!=="m2" || JSON.stringify(Object.keys(j.trips))!==JSON.stringify([process.argv[2]]) || typeof j.updated!=="string") { console.log(JSON.stringify(j)); process.exit(1); }' "$F2/trips/m2.json" "$TMP/other-repo" || fail "47.2 m2 應只留下他 repo 的 key"
+[ "$(modeof "$F2/trips/m2.json")" = 600 ] || fail "47.2 改寫後應保留檔案權限(got: $(modeof "$F2/trips/m2.json"))"
+[ -f "$F2/trips/o1.json" ] && [ -f "$F2/trips/x.json" ] && [ -L "$F2/trips/lnk.json" ] && [ -f "$F2/trips/notes.txt" ] && [ "$(fsnap2 "$TMP/traps-fout")" = "$OSNAP" ] || fail "47.2 他 repo / 不是我們的檔 / symlink 及其目標 / 非 .json 不得動"
+ls -a "$F2/trips" | grep -q '\.tmp$' && fail "47.2 不得留下暫存檔"
+out=$(FLIGHTWAKE_HOME="$F2" node "$CLI" traps forget) || fail "47.2 第二次 forget 應成功"
+echo "$out" | grep -qF "no trip entries for this repo in $F2/trips" || fail "47.2 沒東西可清時應說明(got: $out)"
+# 拒絕:base 在別的 git repo 裡;trips 是 symlink(連 --dry-run 也一樣 exit 1、零變動)
+FR="$TMP/traps-frepo"; mkdir -p "$FR/fw/trips" && (cd "$FR" && git init -q)
+V2SEED "$FR/fw/trips/m.json" "{[\"$TR\"]:{\"a\":iso(D)}}"
+FL="$TMP/traps-flhome"; mkdir -p "$FL" "$TMP/traps-flreal"; ln -s "$TMP/traps-flreal" "$FL/trips"
+V2SEED "$TMP/traps-flreal/m.json" "{[\"$TR\"]:{\"a\":iso(D)}}"
+for extra in "" "--dry-run"; do
+  rc=0; out=$(FLIGHTWAKE_HOME="$FR/fw" node "$CLI" traps forget $extra 2>&1) || rc=$?
+  [ "$rc" = 1 ] && [ -f "$FR/fw/trips/m.json" ] && echo "$out" | grep -qF "traps forget: $FR/fw/trips lies inside a repo or a flightwake records folder" || fail "47.2 base 在 repo 裡時 forget $extra 應拒絕(rc=$rc: $out)"
+  rc=0; out=$(FLIGHTWAKE_HOME="$FL" node "$CLI" traps forget $extra 2>&1) || rc=$?
+  [ "$rc" = 1 ] && [ -f "$TMP/traps-flreal/m.json" ] && echo "$out" | grep -qF "$FL/trips (or the folder holding it) is a symbolic link" || fail "47.2 trips 是 symlink 時 forget $extra 應拒絕且不跟隨(rc=$rc: $out)"
+done
+rc=0; out=$(env -u FLIGHTWAKE_HOME HOME= USERPROFILE= node "$CLI" traps forget 2>&1) || rc=$?
+[ "$rc" = 1 ] && echo "$out" | grep -q 'cannot locate the trips folder' || fail "47.2 沒有 HOME 時 forget 應說明並 exit 1(rc=$rc: $out)"
+newrepo "$TMP/traps-un3" >/dev/null; UR3="$PWD"
+FLIGHTWAKE_HOME="$FR/fw" node "$CLI" init --agents=claude >/dev/null
+V2SEED "$FR/fw/trips/u.json" "{[\"$UR3\"]:{\"a\":iso(D)}}"
+rc=0; out=$(FLIGHTWAKE_HOME="$FR/fw" node "$CLI" uninstall --purge 2>&1) || rc=$?
+[ "$rc" = 0 ] && [ -f "$FR/fw/trips/u.json" ] && echo "$out" | grep -qF "uninstall --purge: $FR/fw/trips lies inside a repo or a flightwake records folder" || fail "47.2 base 在別的 repo 裡時 uninstall --purge 不得刪 trip 檔並應說明(rc=$rc: $out)"
+cd "$TR"
+pass "47.2 traps forget:只清本 repo 的 key(改寫保留權限 / 刪檔 / v1)、--dry-run 零變動、不碰他人與 symlink;base 在 repo 裡、trips 是 symlink、沒有 HOME 都拒絕;uninstall --purge 同規則"
+
+# 47.3 fleet --prune 也清 trip 檔:updated(沒有就看 mtime)超過 N 天、我們的殘缺檔(依 mtime);剛寫過的、不是我們的、symlink 不動;
+#      --dry-run 零變動;sessions 資料夾不存在也照清 trips;base 在 repo 裡 → 拒絕
+P3="$TMP/traps-phome"; PCWD="$TMP/traps-pcwd"; mkdir -p "$P3/trips" "$PCWD"  # cwd 不得包住 base(fleetDirInRepo 把 cwd 當 repo)
+old() { touch -t 202001010000 "$@"; }
+V2SEED "$P3/trips/old1.json" "{\"$TMP/r\":{\"a\":iso(10*D)}}" 10; old "$P3/trips/old1.json"
+V2SEED "$P3/trips/new1.json" "{\"$TMP/r\":{\"a\":iso(D)}}" 1; old "$P3/trips/new1.json"
+V2SEED "$P3/trips/noupd.json" "{\"$TMP/r\":{\"a\":iso(D)}}" none; old "$P3/trips/noupd.json"
+V2SEED "$P3/trips/live.json" "{\"$TMP/r\":{\"a\":iso(10*D)}}" 10
+TSEED "$P3/trips/v1old.json" "$TMP/r" '{"a":{n:1,first:iso(0),last:iso(0)}}'
+node -e 'const f=process.argv[1]; const j=JSON.parse(require("fs").readFileSync(f,"utf8")); j.updated=new Date(Date.now()-20*86400000).toISOString(); require("fs").writeFileSync(f, JSON.stringify(j))' "$P3/trips/v1old.json"; old "$P3/trips/v1old.json"
+printf '{\n  "v": 2,\n  "sessionId": "torn",\n  "upd' > "$P3/trips/torn.json"; old "$P3/trips/torn.json"
+node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({v:2,sessionId:"someone",updated:"2020-01-01T00:00:00Z",trips:{}}))' "$P3/trips/foreign.json"; old "$P3/trips/foreign.json"
+printf 'garbage' > "$P3/trips/junk.json"; old "$P3/trips/junk.json"
+V2SEED "$TMP/traps-fout/plnk.json" "{\"$TMP/r\":{\"a\":iso(10*D)}}" 10; old "$TMP/traps-fout/plnk.json"; ln -s "$TMP/traps-fout/plnk.json" "$P3/trips/plnk.json"
+PSNAP=$(fsnap2 "$P3")
+out=$(cd "$PCWD" && FLIGHTWAKE_HOME="$P3" node "$CLI" fleet --prune --days=7 --dry-run) || fail "47.3 fleet --prune --dry-run 應成功(got: $out)"
+for f in old1 noupd v1old torn; do echo "$out" | grep -qF "would remove  trips/$f.json" || fail "47.3 --dry-run 應列出 trips/$f.json(got: $out)"; done
+[ "$(fsnap2 "$P3")" = "$PSNAP" ] || fail "47.3 --dry-run 不得改動 trips"
+out=$(cd "$PCWD" && FLIGHTWAKE_HOME="$P3" node "$CLI" fleet --prune --days=7) || fail "47.3 fleet --prune 應成功(got: $out)"
+for f in old1 noupd v1old torn; do [ -e "$P3/trips/$f.json" ] && fail "47.3 --prune 應刪 trips/$f.json(got: $out)"; done
+for f in new1 live foreign junk; do [ -f "$P3/trips/$f.json" ] || fail "47.3 --prune 不得刪 trips/$f.json(got: $out)"; done
+[ -L "$P3/trips/plnk.json" ] && [ -f "$TMP/traps-fout/plnk.json" ] && [ -d "$P3/trips" ] || fail "47.3 --prune 不得碰 symlink、其目標或資料夾本身"
+echo "$out" | grep -q 'no session has reported yet' && echo "$out" | grep -qF "pruned 4 of 8 trip file(s) not updated in 7 day(s) ($P3/trips)" || fail "47.3 prune 應說明 trips 的結果(got: $out)"
+PR3="$TMP/traps-prepo"; mkdir -p "$PR3/fw/trips" && (cd "$PR3" && git init -q)
+V2SEED "$PR3/fw/trips/old.json" "{\"$TMP/r\":{\"a\":iso(10*D)}}" 10; old "$PR3/fw/trips/old.json"
+rc=0; out=$(cd "$PCWD" && FLIGHTWAKE_HOME="$PR3/fw" node "$CLI" fleet --prune --days=0 2>&1) || rc=$?
+[ "$rc" = 1 ] && [ -f "$PR3/fw/trips/old.json" ] && echo "$out" | grep -q 'lies inside a repo or a flightwake records folder; nothing deleted' || fail "47.3 base 在 repo 裡時 --prune 不得刪 trip 檔(rc=$rc: $out)"
+node "$CLI" --help | grep -qF 'trip files (<base>/trips)' || fail "47.3 help 應說明 fleet --prune 也清 trip 檔"
+pass "47.3 fleet --prune 清舊 trip 檔(updated / mtime / 殘缺檔)、不碰剛寫的 / 別人的 / symlink、--dry-run 零變動、base 在 repo 裡拒絕、help 有寫"
+
+# 47.4 init --mod / update --mod:trips 與 sessions 一起建 0700;既有 0755 的 trips(舊 mod 以 umask 建)收緊成 0700,
+#      既有的 sessions 照舊不動;base 在 repo 裡不建(mod 在 trips 不存在或對群組/他人開放時拒寫)
+newrepo "$TMP/traps-mk" >/dev/null
+FLIGHTWAKE_HOME="$TMP/trips-mk1" node "$CLI" init --agents=claude --mod >/dev/null || fail "47.4 init --mod 應成功"
+[ "$(modeof "$TMP/trips-mk1/trips")" = 700 ] && [ "$(modeof "$TMP/trips-mk1/sessions")" = 700 ] || fail "47.4 init --mod 應建 0700 的 trips 與 sessions(got: $(modeof "$TMP/trips-mk1/trips" 2>&1))"
+mkdir -p "$TMP/trips-mk2/trips" "$TMP/trips-mk2/sessions" && chmod 755 "$TMP/trips-mk2/trips" "$TMP/trips-mk2/sessions"
+out=$(FLIGHTWAKE_HOME="$TMP/trips-mk2" node "$CLI" update --mod 2>&1) || fail "47.4 update --mod 應成功(got: $out)"
+[ "$(modeof "$TMP/trips-mk2/trips")" = 700 ] && [ "$(modeof "$TMP/trips-mk2/sessions")" = 755 ] || fail "47.4 既有 0755 的 trips 應收緊成 0700、sessions 不動(got: $(modeof "$TMP/trips-mk2/trips") / $(modeof "$TMP/trips-mk2/sessions"))"
+echo "$out" | grep -qF "chmod $TMP/trips-mk2/trips/ 0700 (was 755" || fail "47.4 收緊權限時應說明(got: $out)"
+rc=0; FLIGHTWAKE_HOME="$PWD/..fwcache" node "$CLI" update --mod >/dev/null 2>&1 || rc=$?
+[ "$rc" = 0 ] && [ ! -e "$PWD/..fwcache/trips" ] || fail "47.4 base 在 repo 內時不得建 trips"
+cd "$TR"
+pass "47.4 init / update --mod 建 0700 trips、收緊既有 0755 trips(sessions 不 chmod)、base 在 repo 內不建"
+
+# 47.5 similar 的內文:沒給 --text= 時讀 stdin;加引號的 heredoc 裡的反引號 / $(…) 不執行而是內文;--text= 優先;
+#      stdin 開著但一直沒資料不會卡住;四語 fw-trap 的範例指令原樣在 bash / zsh 跑得通,且不再出現 --text="…"
+js=$(node "$CLI" traps similar --name='smoke-tomllib-missing' --tags='smoke,python' --json <<'EOF'
+`touch $TMP/pwned1` $(touch "$TMP/pwned2") ModuleNotFoundError tomllib
+EOF
+) || fail "47.5 heredoc 傳內文應成功"
+[ -e "$TMP/pwned1" ] || [ -e "$TMP/pwned2" ] && fail "47.5 heredoc 內文的反引號 / \$(…) 不得被執行"
+node -e 'const j=JSON.parse(process.argv[1]); if (!j.query.text.includes("`touch $TMP/pwned1`") || !j.query.text.includes("$(touch") || !j.candidates.some((c)=>c.name==="smoke-needs-python311-tomllib")) { console.log(JSON.stringify(j)); process.exit(1); }' "$js" || fail "47.5 stdin 內文應原樣成為 text 並參與比對"
+js=$(echo "stdin words" | node "$CLI" traps similar --name=x --text="flag words" --json) || fail "47.5 --text= 與 stdin 並存應成功"
+node -e 'if (JSON.parse(process.argv[1]).query.text !== "flag words") process.exit(1)' "$js" || fail "47.5 --text= 應優先於 stdin"
+rc=0; out=$( (sleep 4 | node "$CLI" traps similar --name=x) 2>&1) || rc=$?
+[ "$rc" = 0 ] && echo "$out" | grep -q 'nothing arrived on stdin within 2 s' || fail "47.5 stdin 沒資料也不關時應在 2 秒後照常比對並說明(rc=$rc: $out)"
+for L in en zh-TW zh-CN ja; do
+  SK="$SRC/skills/$L/fw-trap/SKILL.md"
+  grep -qF -- '--text="' "$SK" && fail "47.5 $L fw-trap 不得再用雙引號 --text=\"…\""
+  awk '/^```bash$/{f=1;next} /^```$/{if(f){exit}} f' "$SK" | sed 's#^npx flightwake #node "$CLI" #' > "$TMP/trap-example.sh"
+  grep -q "<<'EOF'" "$TMP/trap-example.sh" && grep -q "^EOF$" "$TMP/trap-example.sh" && grep -qF -- "--paths='src/db/**,*.sql'" "$TMP/trap-example.sh" || fail "47.5 $L fw-trap 範例應是加引號的 heredoc + 單引號值(got: $(cat "$TMP/trap-example.sh"))"
+  for sh in bash zsh; do
+    command -v "$sh" >/dev/null || { echo "  skip: 沒有 $sh,略過 47.5 $L 的 $sh 執行"; continue; }
+    rc=0; out=$(CLI="$CLI" "$sh" "$TMP/trap-example.sh" 2>&1) || rc=$?
+    [ "$rc" = 0 ] && echo "$out" | head -1 | grep -q '^flightwake traps similar — ' && ! echo "$out" | grep -qi 'no matches found\|nothing arrived on stdin' || fail "47.5 $L fw-trap 範例在 $sh 應原樣跑通(rc=$rc: $out)"
+  done
+done
+pass "47.5 similar 內文從 stdin(heredoc 不執行反引號 / \$(…))、--text= 優先、stdin 不關不卡住;四語範例在 bash / zsh 原樣跑通"
+
+# 47.6 findSimilar:同名條目(即使 superseded、排在 5 個 active 候選之後)一定列出並標明;globsOverlap:catch-all 不與一切重疊
+node --input-type=module -e "
+  import { parseTraps, findSimilar, globsOverlap, MAX_CANDIDATES } from '$SRC/bin/traps.mjs';
+  let t = '# Traps\n';
+  for (let i = 0; i < 7; i++) t += '\n---\nname: db-jsonb-trap-' + i + '\nstatus: active\ntags: [db, jsonb, postgres]\nconfidence: confirmed\n---\n\n**Symptom**: jsonb column stored as string scalar by the driver\n';
+  t += '\n---\nname: my-new-trap\nstatus: superseded\ntags: [other]\n---\n\n**Symptom**: unrelated words entirely\n';
+  const c = findSimilar(parseTraps(t), { name: 'my-new-trap', tags: ['db', 'jsonb', 'postgres'], text: 'jsonb column stored as string scalar by the driver' });
+  const same = c.filter((x) => x.sameName);
+  if (c.length !== MAX_CANDIDATES || same.length !== 1 || same[0].entry.status !== 'superseded' || c.filter((x) => !x.sameName).length !== MAX_CANDIDATES - 1) { console.log(c.map((x) => x.entry.name + ':' + x.score)); process.exit(1); }
+  const cases = [['**', 'src/a.ts', false], ['*', 'db/x.sql', false], ['**/*', 'src/db/x.sql', false], ['src/**', '**', false], ['**/', 'a/b', false],
+    ['**', '**', true], ['src/**', 'src/db/x.sql', true], ['*.sql', 'db/x.sql', true], ['hooks/*.mjs', 'hooks/state-check.mjs', true], ['src/', 'lib/', false]];
+  const bad = cases.filter(([a, b, w]) => globsOverlap(a, b) !== w || globsOverlap(b, a) !== w);
+  if (bad.length) { console.log(JSON.stringify(bad)); process.exit(1); }" || fail "47.6 同名保留名額 / catch-all glob 不與一切重疊"
+pass "47.6 同名條目保留名額並標明;catch-all glob(**、*、**/*)只與相同的重疊"
+cd "$TMP"
 
 echo ""
 echo "✅ smoke 全過"

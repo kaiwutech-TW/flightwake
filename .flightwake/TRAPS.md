@@ -5,6 +5,21 @@
 # 坑 Registry
 
 ---
+name: claude-code-toast-40-columns-3-lines
+type: gotcha
+status: active
+tags: [claude-code, mods, toast, fleet]
+discovered: 2026-10-19
+confidence: confirmed
+paths: ["mods/flightwake/hooks/lib/fleet.ts"]
+---
+
+**症狀**:mod 用 `$.ui.toast` 給的接回提示 `claude --resume <36 字元 id>` 在畫面上被截成 `148d4…`,照抄接不回去。
+**根因**:Claude Code 2.1.303 的 toast 是約 40 欄寬、最多 3 行的框,標題列占用 `flightwake-mod`,超出部分以 `…` 截掉;不會換頁或捲動。
+**解法/繞法**:toast 只放短訊息(8 碼短 id + 指向能印完整內容的地方,例如 `/fw-fleet`);長指令、完整 id、路徑一律放 slash command 輸出或面板。
+**佐證**:2026-10-19 真機 kill -9 → 新 session 的 toast 截圖;修正後三行完整顯示(record [[261019-console-realmachine]],ac9031e)
+
+---
 name: plugin-test-kit-denies-unanswered-permission-request
 type: gotcha
 status: active

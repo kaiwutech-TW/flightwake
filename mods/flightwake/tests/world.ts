@@ -84,6 +84,16 @@ export type World = {
   orcaCalls: string[]
   /** `date +%z` answer (the local UTC offset, e.g. '+0800'); unset → the command is not available (exit 127). */
   tzOffset?: string
+  /** Absolute folders outside root that exist though nothing is in them (an empty `<base>/trips`). */
+  dirs: string[]
+  /**
+   * Permission bits by absolute path, as `stat -f %Lp` (BSD / macOS) prints them ('700'); a path not listed → that
+   * `stat` fails. `statForm: 'gnu'` answers `stat -c %a` instead (and fails the BSD form), as on Linux.
+   */
+  modes: Record<string, string>
+  statForm?: 'bsd' | 'gnu'
+  /** Every `stat` argv the plugin ran, joined. */
+  statCalls: string[]
 }
 
 const rel = (w: World, p: string): string | null =>
@@ -91,7 +101,7 @@ const rel = (w: World, p: string): string | null =>
 
 /** A path outside root that exists: a seeded file, a folder holding one, or a link. */
 const isOutside = (w: World, p: string): boolean =>
-  p in w.outside || w.links.includes(p) || Object.keys(w.outside).some((k) => k.startsWith(`${p}/`))
+  p in w.outside || w.links.includes(p) || w.dirs.some((d) => d === p || d.startsWith(`${p}/`)) || Object.keys(w.outside).some((k) => k.startsWith(`${p}/`))
 
 /**
  * The one write the mod may make: `<base>/sessions/<id>.json` with base = `fleetHome` when set, else HOME_OUT's
@@ -215,6 +225,14 @@ export function installWorld(on: On, init: Partial<World> = {}): World {
       const r = w.orca?.(rest)
       return { value: { exitCode: r?.exitCode ?? 127, stdout: r?.stdout ?? '', stderr: r ? '' : 'not found', isStdoutTruncated: false, isStderrTruncated: false } }
     }
+    if (cmd === 'stat') {
+      w.statCalls.push(rest.join(' '))
+      const form = w.statForm ?? 'bsd'
+      const p = rest[2] ?? ''
+      const isAsked = rest.length === 3 && ((form === 'bsd' && rest[0] === '-f' && rest[1] === '%Lp') || (form === 'gnu' && rest[0] === '-c' && rest[1] === '%a'))
+      const m = isAsked && isOutside(w, p) ? w.modes[p] : undefined
+      return { value: m === undefined ? { exitCode: 1, stdout: '', stderr: 'stat: cannot stat', isStdoutTruncated: false, isStderrTruncated: false } : { exitCode: 0, stdout: `${m}\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    }
     if (cmd === 'date' && rest.join(' ') === '+%z' && w.tzOffset !== undefined) return { value: { exitCode: 0, stdout: `${w.tzOffset}\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     if (cmd !== 'git') return { value: { exitCode: 127, stdout: '', stderr: 'not found', isStdoutTruncated: false, isStderrTruncated: false } }
     // The mod promises zero writes: every git call carries --no-optional-locks (plain `git status` may rewrite .git/index).
@@ -313,7 +331,7 @@ export function newWorld(init: Partial<World> = {}): World {
   return {
     root: '/repo', files: {}, git: {}, settings: {}, sessionId: 'session-1', gitCalls: [], reads: [], contentReads: [], writes: [], failReads: [], isSettingsFailing: false, gitWithoutNoLocks: [],
     outside: {}, mtimes: {}, links: [], aliases: {}, statDenied: [], existsDenied: [], fleetWrites: [], tripWrites: [], tripWriteAttempts: [], isFleetWriteFailing: false, isFleetIoThrowing: false, fleetWriteAttempts: [],
-    isFleetWriteHeld: false, heldWrites: [], maxFleetWritesInFlight: 0, orcaCalls: [],
+    isFleetWriteHeld: false, heldWrites: [], maxFleetWritesInFlight: 0, orcaCalls: [], dirs: [], modes: {}, statCalls: [],
     ...init,
   }
 }

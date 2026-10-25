@@ -38,9 +38,18 @@ supersede is reserved for when the root cause itself changed. The same rule deci
 
 ## Steps
 
-1. **Check for a near-duplicate before writing**: run
-   `npx flightwake traps similar --name=<slug> --tags=<a,b> [--paths=<glob,…>] [--commands=<cmd,…>] --text="<symptom + root cause>"`
-   (read-only; it reads TRAPS.md and nothing else). If it lists candidates, pick one of three instead of simply adding another entry:
+1. **Check for a near-duplicate before writing**: run (read-only; it reads TRAPS.md and nothing else)
+
+```bash
+npx flightwake traps similar --name='<slug>' --tags='<a,b>' --paths='src/db/**,*.sql' --commands='npm run migrate,psql' <<'EOF'
+<symptom (the error, pasted verbatim) + root cause in one sentence>
+EOF
+```
+
+   The text goes in through the quoted heredoc (`<<'EOF'` … `EOF`, the closing `EOF` alone at the start of its line) and every
+   other value in single quotes — never double quotes: inside them the shell runs backticks and `$(…)` from a pasted error.
+   Leave out `--paths` / `--commands` when the entry has none.
+   If it lists candidates, pick one of three instead of simply adding another entry:
    - **update the existing entry in place** — same root cause: more evidence, more paths/commands; a confidence upgrade (suspected → confirmed) is this case
    - **supersede** it — the root cause itself changed: as in step 6, set the old entry's `status: superseded` and point its body at the new [[name]]
    - **record a new entry anyway** — a different root cause: in the new entry's body, write one line saying why it is not the same as the candidate

@@ -18,13 +18,17 @@ this session's own transcript under `~/.claude/projects/` (token totals only); f
 `~/.claude/projects/` still exists (existence only, and only a path that is that session's own transcript), and whether
 `<base>` is a records folder or lies in a git repo (`<base>/STATE.md`, and `.git` and `.flightwake/STATE.md` on `<base>`
 or a folder above it; existence only), and where the repo root and `<base>/sessions` really land (a `stat` that follows
-links); for `tripwire`'s trip counts, the same probes over `<base>/trips` and this session's own file there; for `panel` inside Orca, Orca's terminal list (through the `orca` CLI) and each listed repo's
-`.flightwake/STATE.md` and instruction-file markers (read-only). No network.
+links); for `trips` (the tripwire's trip file), the same probes over `<base>/trips` and this session's own file
+there, plus whether `<base>/trips` exists and its permission bits (`stat -f %Lp`, else `stat -c %a`, on that one
+folder, only when a new trip is about to be written); for `panel` inside Orca, Orca's terminal list (through the `orca`
+CLI) and each listed repo's `.flightwake/STATE.md` and instruction-file markers (read-only), and — for a Codex tab only,
+right after a confirmed **Wrap up** — that tab's screen through `orca terminal read --screen --json`, of which only the
+input-box text (`draft`) is used. No network.
 
 What it never does: write inside the repo or your records (STATE, DECISIONS, TRAPS, records, ROLES.md). Its state is
 per session, with two exceptions: **its only file writes are two files per interactive session, both outside the repo
-under `<base>`** — `<base>/sessions/<id>.json` (the `fleet` feature) and `<base>/trips/<id>.json` (the `tripwire`
-feature's match counts); `<base>` is an absolute `FLIGHTWAKE_HOME`, else `~/.flightwake` — and the
+under `<base>`** — `<base>/sessions/<id>.json` (the `fleet` feature) and `<base>/trips/<id>.json` (the `trips`
+switch: which TRAPS entries this session tripped); `<base>` is an absolute `FLIGHTWAKE_HOME`, else `~/.flightwake` — and the
 `panel` feature keeps one yes/no — whether you last opened or closed the side panel — in the mod's own Claude Code
 plugin store. If `<base>`
 resolves inside the session's repo, is a flightwake records folder, or lies in any git repo, neither file is written. Any error in it degrades silently, and in a folder without `.flightwake/STATE.md` it does nothing at all. Its display
@@ -87,7 +91,8 @@ and stands in for it; the installer's closing message says so.
 ## The eight features — each has its own switch
 
 Seven are on by default; the role guard is off. (The side panel's switch only makes `/fw-panel` available; the
-panel itself never opens until you ask for it.) Switches live in Claude Code's `/config`, or in your *user* settings
+panel itself never opens until you ask for it.) The tripwire's trip file has a switch of its own, `trips`, which
+follows `fleet` when left unset. Switches live in Claude Code's `/config`, or in your *user* settings
 (`~/.claude/settings.json`):
 
 ```json
@@ -105,6 +110,7 @@ Project settings are not read for plugin options, so the installer cannot set th
 | `roleGuard` | off | For this folder's Claude seat role, `deny-write: [globs]` lines in the role body (ROLES.md) become blocks on the main session's `Edit` / `Write` / `NotebookEdit` into those paths, with a message naming the role, the rule and what to do instead. Only the person can release it with `/fw-role-release` (typed in the prompt) for this session; the release stays visible in the status line. Details: [the role guard section of roles.md](roles.md#optional-the-claude-code-mods-role-guard). |
 | `spend` | on | Tokens used this session and the API-equivalent cost. Cost is Claude Code's own ledger (the figure `/cost` shows, at API list prices — on a subscription it is not a bill); tokens are summed from the session transcript under `~/.claude/projects/`, one count per API response (subagents keep their own transcripts and are not included). Shown as the band's last field (`1.2M tok · ≈$4.99`) — when the bottom gauge is the effective status line the gauge shows the same field and the band stays quiet — and as a line in `/fw-mod`; `/fw-cost` prints the breakdown (uncached input / cache write / cache read / output). Refreshed after every turn. |
 | `fleet` | on | Reports this session's state — working, blocked (waiting on you), idle or ended — to `<base>/sessions/<id>.json` outside the repo, for `/fw-fleet`, `npx flightwake fleet`, a `⛔` field on the bottom gauge and a one-time `claude --resume` hint after a session stopped unexpectedly. Interactive sessions only; never prompt or command text. See [Session fleet](#session-fleet-fleet). |
+| `trips` | follows `fleet` | Part of the tripwire, with its own switch: records which TRAPS entries this session tripped, in `<base>/trips/<id>.json` outside the repo (see [Trip records](#trip-records)). Left unset it follows `fleet` — `"fleet": false` alone means no trip file either; `"trips": true` / `false` decides it outright. Only while `tripwire` is on; the hints work without it. |
 | `panel` | on | `/fw-panel` opens a pane beside the transcript: this repo (health, lag, context bar, cost, what needs attention, STATE's "In progress" and "Next entry points") and the fleet — inside Orca every agent terminal, Claude Code and Codex, by repo, with **Go** and a confirmed **Wrap up** button. Opened only when you ask; once opened it reopens by itself in later sessions until you close it. See [Side panel](#side-panel-panel). |
 
 ### TRAPS fields used by the tripwire
@@ -120,14 +126,30 @@ commands: ["npm run migrate", "psql"]
 - `commands` — command prefixes, compared token by token. No regex.
 - Superseded entries are never matched.
 
-**Trip counts.** Every tool call that matches an entry is also counted — including the calls the once-per-session hint
-stays quiet for — by entry name, with the first and last time, in `<base>/trips/<session id>.json` outside the repo:
-the same `<base>` and the same refusal rules as the [session fleet](#session-fleet-fleet) file (not inside the repo, not
-in a records folder or any git repo, never through a symlink, never over a file that is not ours), interactive sessions
-only, and rewritten after each matching call. Shape: [Trip file](#trip-file). It is evidence for compacting TRAPS later:
-`npx flightwake traps stats` adds the files up. Counting never blocks and never changes the hint; a refused or failed
-write is silent. It runs only while `tripwire` is on, so only Claude Code sessions with the mod record trips — Codex,
-Gemini CLI and Claude Code without the mod leave none, and the totals are a floor. `/clear` starts a new file.
+#### Trip records
+
+With `trips` on, a trap is recorded **at most once per session per repo**: "this entry was tripped in this session",
+with the time of the first match, in `<base>/trips/<session id>.json` outside the repo. Only what the call itself aimed
+at counts: an `Edit` / `Write` / `NotebookEdit` whose file matches `paths`, or a Bash command whose prefix matches
+`commands`. Path-like words inside a Bash command (`cat db/x.sql`, `grep … db/`, `git diff -- db/`) still bring the hint,
+exactly as before, but record nothing — that matching guesses on purpose. A subagent's call in the same session counts
+too. A call that did not run records nothing: a call a plugin denied, or one refused by the permission prompt, a deny
+rule, the auto-mode classifier or a settings `PreToolUse` hook (recognised by Claude Code's refusal wording, or by the
+call's id for a hook's or the classifier's deny). A match is filed under the repo root it happened in, so after `/cd`
+or a worktree switch the next match lands under the new root.
+
+The file is written only when a new (repo, entry) pair appears, never on every tool call, and it is merged with what
+is already on disk for the same session id (`claude --resume`, an in-process `/resume`, a second process): pairs are
+unioned, the earliest time kept, and nothing on disk is dropped. It is held to the same refusal rules as the
+[session fleet](#session-fleet-fleet) file (not inside the repo, not in a records folder or any git repo, never through
+a symlink, never over a file that is not ours), interactive sessions only, and one more: **`<base>/trips` must already
+exist and be private** (no group or other permission bits). The mod cannot create a folder with a mode, so
+`npx flightwake init --mod` and `update --mod` create it as `0700` (and tighten an existing one); until then, or where
+`stat` is not available (Windows), nothing is written and `/fw-mod` says why. Shape: [Trip file](#trip-file). It is
+evidence for compacting TRAPS later: `npx flightwake traps stats` adds the files up. Recording never blocks and never
+changes the hint; a refused or failed write is silent and tried again with the next new pair. Only Claude Code sessions
+with the mod record trips — Codex, Gemini CLI and Claude Code without the mod leave none, so the totals are a floor.
+`/clear` starts a new file.
 
 ## Side panel (`panel`)
 
@@ -153,9 +175,12 @@ the pane's width.
   - **Go** switches Orca to that tab.
   - **Wrap up** appears only on an idle agent flightwake has a command for: a press asks first (`send /fw-record` /
     `cancel`); the confirming press checks a fresh list and sends `/fw-record` (Claude Code) or `$fw-record` (Codex)
-    only if the agent is still idle. Codex's `$` skill picker takes the Enter sent with the command, so the panel reads
-    the input box back once and presses Enter again only when it still holds exactly that command. Nothing else is ever
-    typed into another agent.
+    only if the agent is still idle. Codex's `$` skill picker takes the Enter sent with the command, so for a Codex tab
+    the panel reads the input box back once and presses Enter again only when it still holds exactly that command
+    (Claude Code tabs are not read back). When that cannot be confirmed — the read fails or shows no input box, or the
+    extra Enter fails — the notice says the command was typed but may not have been submitted, and to check the tab.
+    The confirm button goes away as soon as it is pressed, and a press while a wrap-up to that tab is still being sent
+    sends nothing. Nothing else is ever typed into another agent.
   - Outside Orca, or when Orca does not answer, the fleet section falls back to the Claude Code sessions' own reports
     (blocked first, with role, a wrap-up line at 80%+ context, and a line when the flightwake or mod version differs).
 - **In progress / Next:** the top-level items of those two STATE sections (up to 5 and 6, with a "+n more" line),
@@ -173,7 +198,9 @@ or tmux by default) it always opens above the prompt.
 **What it runs.** Drawing runs nothing; the data is gathered outside drawing. Inside Orca (`ORCA_TERMINAL_HANDLE` set)
 and only while the pane is open, it runs `orca terminal list --json` every 10 s (the CLI in `ORCA_CLI_BIN_DIR`, else
 `orca` on `PATH`) and re-reads each listed repo's STATE frontmatter and marker at most once a minute; it runs `orca
-terminal switch` and `orca terminal send` only on your presses as above. Closing the pane stops the poll.
+terminal switch` and `orca terminal send` only on your presses as above, and, for a Codex tab only after a confirmed
+wrap-up, one `orca terminal read --screen --json` of that tab (only its `draft` field is used) and at most one bare
+`orca terminal send --enter`. Closing the pane stops the poll.
 
 ## Session fleet (`fleet`)
 
@@ -231,7 +258,9 @@ written then goes stale (and may be offered once as a resume candidate) — `npx
 ### `/fw-fleet`
 
 Read-only. Lists the session files from the last 7 days (newest 200), blocked first (longest waiting first), then
-working, idle, stale and ended (at most 10 ended rows); `/fw-fleet all` widens to 30 days. A session whose heartbeat is
+working, idle, stale and ended (at most 10 ended rows — except that an ended row in this repo that stopped
+unexpectedly and can be resumed is never cut, so the session the [resume hint](#the-resume-hint) named is always
+there); `/fw-fleet all` widens to 30 days. A session whose heartbeat is
 older than 120 s is shown as **stale**, never as working or blocked. A file that cannot be read (being written, or
 damaged) is counted in a footer line; an unknown format, a clock ahead of yours by over 60 s, or two processes on one
 session show as `unknown`. A resume command is offered for a stale session and for an ended one — after a normal exit,
@@ -359,30 +388,34 @@ Guidance for Orca and other tools:
 
 #### Trip file
 
-`<base>/trips/<session id>.json`, written by `tripwire` (not `fleet`), under the same `<base>`, file-name rule and write
-guards as the session files; one file per session id, rewritten whole (`JSON.stringify(t, null, 2)` plus a newline)
-after each tool call that matched an entry:
+`<base>/trips/<session id>.json`, written for the `trips` switch (in the `fleet` module's writer), under the same
+`<base>`, file-name rule and write guards as the session files, in a `<base>/trips` folder that must already exist with
+no group or other permission bits. One file per session id, rewritten whole (`JSON.stringify(t, null, 2)` plus a
+newline) only when a new (repo, entry) pair appears, merged with the file already there:
 
 ```json
 {
-  "v": 1,
+  "v": 2,
   "sessionId": "<id>",
-  "repo": "/abs/path/of/the/repo",
   "updated": "2026-10-26T08:00:00.000Z",
-  "trips": { "<trap name>": { "n": 3, "first": "<ISO>", "last": "<ISO>" } }
+  "trips": {
+    "/abs/path/of/the/repo": { "<trap name>": "<ISO time of the first match in this session>" }
+  }
 }
 ```
 
-- `repo` is the session's root (absolute, as Claude Code reports it) at the latest match; `updated` is the latest match.
-  Times are ISO 8601, UTC.
-- `trips` is keyed by the entry's `name` (an edited entry keeps counting under its name). `n` ≥ 1 counts the tool calls
-  that matched the entry, hinted or not; one call counts once per entry.
-- A file at that path that is not `v: 1` with the same `sessionId` is never overwritten. The mod never deletes trip
-  files.
+- `trips` is keyed by the repo root (absolute, as Claude Code reported it at the match), then by the entry's `name` (an
+  edited entry keeps its name); the value is the time of the first match in this session. Keys are sorted. `updated` is
+  the time of the write. Times are ISO 8601, UTC.
+- Merging keeps every pair already on disk and the earliest time per pair. A `v: 1` file of ours with the same
+  `sessionId` (the earlier per-entry count shape: `repo`, `trips.<name>.first`) is converted on the next write, each
+  entry under its `repo` at its `first` time. A file that is not `v: 1` or `v: 2` with the same `sessionId` is never
+  overwritten. A torn write of ours (unparseable, our prefix) has no pairs to keep and is replaced. The mod never deletes
+  trip files.
 
 ## Checking what it is doing: /fw-mod
 
-`/fw-mod` is read-only. It lists each of the eight features as on, off or idle, with the reason and what to do to make it
+`/fw-mod` is read-only. It lists each of the eight features (and the `trips` switch) as on, off or idle, with the reason and what to do to make it
 take effect. For example: the band hidden because the bottom gauge was detected; the tripwire on but idle because no
 active TRAPS entry has `paths` or `commands`; the role guard off (with how to turn it on), or on but idle because this
 folder's seat has no role or no `deny-write`; STATE injected this session, or only the "run /fw-coldstart" note because
@@ -443,7 +476,8 @@ Claude Code that the mod loaded — run `/fw-mod`.
   `npx flightwake fleet --prune` removes it.
 - **Policy surface.** With `fleet`, the hooks module uses `fs.write`, `fs.list` and six environment reads
   (`FLIGHTWAKE_HOME`, `HOME`, `USERPROFILE`, `ORCA_TERMINAL_HANDLE`, `ORCA_WORKSPACE_ID`, `TMUX_PANE`); with
-  `tripwire`, `fs.write` and the first three of those reads, for the trip file. With `panel`, it
+  `trips`, `fs.write`, the first three of those reads and a `stat` process on `<base>/trips` (its permission bits), for
+  the trip file. With `panel`, it
   also reads `ORCA_CLI_BIN_DIR` and runs the `orca` CLI inside Orca (see [Side panel](#side-panel-panel)). A managed policy
   that refuses plugins which write files or run processes refuses the **whole** mod, not only this feature.
 - **Fleet console states are partly guessed.** For agents without a fleet file (Codex, other CLIs, Claude Code without

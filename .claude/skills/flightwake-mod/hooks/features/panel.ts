@@ -20,7 +20,7 @@ import type { Io, Lang } from '../lib/core'
 import { fmtAge, T as FLEET_T } from '../lib/fleet'
 import { CONTEXT_HOT, healthWhy, PANE_ID, panelVerb, recordUnfinished, stateDigest, STORE_KEY, T, TRAPS_COMPACT_AT } from '../lib/panel'
 import { isActive, parseTraps } from '../lib/traps'
-import { agentName, baseName, cleanTitle, contextBar, draftOf, groupByRepo, parseTerminalList, POLL_MS, REPO_CAP, stateWord, SUBMIT_CHECK_MS, T as OT, termState, wrapUpCommand } from '../lib/orca'
+import { agentName, baseName, cleanTitle, composerOf, contextBar, groupByRepo, parseTerminalList, POLL_MS, REPO_CAP, stateWord, SUBMIT_CHECK_MS, T as OT, termState, wrapUpCommand } from '../lib/orca'
 import type { TermState } from '../lib/orca'
 import type { FwBandView, FwConsole, FwConsoleRepo, FwFleet, FwFleetOther, FwFlightLog, FwPanelDigest, FwPanelUi, FwSpend } from '../../types/index'
 import { lagText } from './band'
@@ -243,8 +243,26 @@ async function notify($: EngineInterface, text: string, isError: boolean): Promi
   await update($, uiRef, () => ({ confirm: null, notice: { text, isError, at } }))
 }
 
-/** "Wrap up" for one agent: only while it is still idle, judged from a fresh list (never from what was drawn). */
+/** Terminals a wrap-up is being sent to right now (module memory): a second press waits for the first to finish. */
+const wrapping = new Set<string>()
+
+/**
+ * "Wrap up" for one agent: only while it is still idle, judged from a fresh list (never from what was drawn), and
+ * never twice at once for the same terminal: the confirm is cleared before anything is asked of Orca, and a press
+ * that comes while one is in flight sends nothing.
+ */
 async function sendWrapUp($: EngineInterface, lang: Lang, handle: string): Promise<void> {
+  if (wrapping.has(handle)) { await notify($, OT.busy[lang], true); return }
+  wrapping.add(handle)
+  try {
+    await update($, uiRef, (u) => ({ confirm: null, notice: u?.notice ?? null }))
+    await wrapUpOnce($, lang, handle)
+  } finally {
+    wrapping.delete(handle)
+  }
+}
+
+async function wrapUpOnce($: EngineInterface, lang: Lang, handle: string): Promise<void> {
   const out = await runOrca($, ['terminal', 'list', '--json'])
   const term = (out === null ? null : parseTerminalList(out))?.find((t) => t.handle === handle) ?? null
   if (term === null) { await notify($, OT.failed[lang]('terminal list'), true); return }
@@ -257,19 +275,24 @@ async function sendWrapUp($: EngineInterface, lang: Lang, handle: string): Promi
   const cmd = wrapUpCommand(term.agent)
   if (state !== 'idle' || cmd === null) { await notify($, OT.notIdle[lang](who), true); return }
   const sent = await runOrca($, ['terminal', 'send', '--terminal', handle, '--text', cmd, '--enter', '--json'])
-  if (sent !== null) await pressEnterIfHeld($, handle, cmd)
-  await notify($, sent === null ? OT.failed[lang]('terminal send') : OT.sent[lang](cmd, who), sent === null)
+  if (sent === null) { await notify($, OT.failed[lang]('terminal send'), true); return }
+  // Claude Code submits with the Enter it was sent: only Codex's picker needs the read-back
+  const isSure = term.agent === 'codex' ? await pressEnterIfHeld($, handle, cmd) : true
+  await notify($, isSure ? OT.sent[lang](cmd, who) : OT.sentUnsure[lang](cmd, who), !isSure)
 }
 
 /**
  * Codex's skill picker takes the Enter that came with `$fw-record` and leaves the command in the composer (Codex
  * 0.163, 2026-10-19). Read the composer back once and press Enter only when it still holds exactly that command —
- * any other draft is the person's, and an empty one means the command went through.
+ * any other draft is the person's, and an empty one means the command went through. False when it cannot be told:
+ * the read failed or carried no `draft`, or the extra Enter failed (the notice then says to check the tab).
  */
-async function pressEnterIfHeld($: EngineInterface, handle: string, cmd: string): Promise<void> {
+async function pressEnterIfHeld($: EngineInterface, handle: string, cmd: string): Promise<boolean> {
   try { await $.clock.sleep(SUBMIT_CHECK_MS) } catch {}
-  if (draftOf(await runOrca($, ['terminal', 'read', '--terminal', handle, '--screen', '--json'])) !== cmd) return
-  await runOrca($, ['terminal', 'send', '--terminal', handle, '--enter', '--json'])
+  const draft = composerOf(await runOrca($, ['terminal', 'read', '--terminal', handle, '--screen', '--json']))
+  if (draft === null) return false
+  if (draft !== cmd) return true
+  return (await runOrca($, ['terminal', 'send', '--terminal', handle, '--enter', '--json'])) !== null
 }
 
 export function registerPanel(on: On, sw: PanelSwitches): void {

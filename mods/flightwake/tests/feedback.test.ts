@@ -248,6 +248,23 @@ describe('/fw-mod: what each feature is doing and why', () => {
     expect(w.writes).toEqual([])
   })
 
+  test('the trip file line: idle until the private folder exists, then on; off with how to turn it on', async ($, on) => {
+    const { w } = boot(on)
+    mock.env(on, { HOME: '/home/u' })
+    await $.session.start(START)
+    const tripsLine = async () => ((await $.command.run(RUN('fw-mod'))).text as string).split('\n').find((l) => l.includes('(`trips`)')) ?? ''
+    expect(await tripsLine()).toBe('- **trap trip file** (`trips`): idle — ~/.flightwake/trips does not exist yet, so nothing is written — `npx flightwake update --mod` creates it (private, 0700)')
+    w.dirs.push('/home/u/.flightwake/trips')
+    expect(await tripsLine()).toMatch(/^- \*\*trap trip file\*\* \(`trips`\): on — records each TRAPS entry tripped in this session \(once per repo\) in ~\/\.flightwake\/trips\/<id>\.json/)
+  })
+
+  test('trips unset with fleet off → off, saying it follows fleet', { options: { fleet: false } }, async ($, on) => {
+    boot(on)
+    await $.session.start(START)
+    const out = (await $.command.run(RUN('fw-mod'))).text as string
+    expect(out).toMatch(/trap trip file.*\(`trips`\): off — unset, it follows `fleet`; .*"trips": true/)
+  })
+
   test('read-only: no writes, and not registered where flightwake is not installed', async ($, on) => {
     const { w, registered } = boot(on, { files: {} })
     await $.session.start(START)

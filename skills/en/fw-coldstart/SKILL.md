@@ -46,10 +46,11 @@ Purpose: before touching any file, recover to a "safe takeover" state with the m
 - STATE untouched for over 7 days while git log has new commits → backfill a record before starting (archaeology is cheapest while the memory is still in commit messages)
 - TRAPS has >20 active entries, or this cold start measurably took >5 minutes → propose compaction to the user
   (merge duplicates, mark no-longer-true entries superseded — compaction means changing status and consolidating, never deleting lines)
-  **Start the proposal from data**: run `npx flightwake traps stats` (read-only) first — unanchored entries → candidates for adding
-  `paths`/`commands` anchors; anchored but not tripped in a long time → candidates to re-verify or supersede; tripped often → keep.
-  stats only covers Claude Code sessions with the mod (Codex/Gemini never record trips); when it says there is no trip data,
-  don't read "never tripped" as "unused"
+  **Start the proposal from data**: run `npx flightwake traps stats` (read-only) first — its count is sessions that tripped the entry
+  (once per session), and only Edit/Write paths and Bash command prefixes count; a read-only shell mention of a path does not.
+  Unanchored entries → candidates for adding `paths`/`commands` anchors; anchored but no session tripped it in a long time →
+  candidates to re-verify or supersede; tripped by many sessions → keep. stats only covers Claude Code sessions with the mod
+  (Codex/Gemini never record trips); when it says there is no trip data, don't read "never tripped" as "unused"
   **The proposal must be approvable with a single word**: give the diagnosis first (what's slow: STATE too long/stale?
   last session never wrapped up? too many stale TRAPS/DECISIONS entries? records using codenames outsiders can't read?),
   then an item-by-item plan (which entry gets superseded and why; which get merged). Don't touch anything before the user confirms —

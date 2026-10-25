@@ -1,5 +1,5 @@
 /**
- * /fw-mod — what each of the eight features is doing right now and why (2026-10-05 field feedback: the mod is
+ * /fw-mod — what each of the eight features (and F4's trip file switch) is doing right now and why (2026-10-05 field feedback: the mod is
  * designed not to interrupt, so after installing nobody could tell whether it had loaded or which features were
  * acting). Read-only: it reads what the features themselves read (STATE, TRAPS, the instruction-file markers and the
  * seat block, settings) and the features' own $.state values; it changes nothing. Registered regardless of the eight
@@ -13,10 +13,10 @@ import type { Io, Lang } from '../lib/core'
 import { parseSeatBlock } from '../lib/roles'
 import { hasMatchers, isActive, parseTraps } from '../lib/traps'
 import { fmtTokens, fmtUsd, totalTokens } from '../lib/spend'
-import { fleetModLine, T as FLEET_T } from '../lib/fleet'
+import { fleetBase, fleetModLine, T as FLEET_T, tildePath, tripsDirOf } from '../lib/fleet'
 import { PANE_ID, STORE_KEY } from '../lib/panel'
 
-export type Switches = { stateInject: boolean; band: boolean; recorder: boolean; tripwire: boolean; roleGuard: boolean; spend: boolean; fleet: boolean; panel: boolean }
+export type Switches = { stateInject: boolean; band: boolean; recorder: boolean; tripwire: boolean; roleGuard: boolean; spend: boolean; fleet: boolean; panel: boolean; trips: boolean }
 
 // The Io closure over this file's `$` (IO_OF_TEMPLATE in hooks/lib/core.ts; `$` may not cross an import).
 function ioOf($: EngineInterface): Io {
@@ -65,6 +65,7 @@ const LABEL: Record<keyof Switches, Record<Lang, string>> = {
   spend: { en: 'tokens and cost', 'zh-TW': 'token 與費用', 'zh-CN': 'token 与费用', ja: 'トークンとコスト' },
   fleet: FLEET_T.label,
   panel: { en: 'side panel', 'zh-TW': '側邊面板', 'zh-CN': '侧边面板', ja: 'サイドパネル' },
+  trips: { en: 'trap trip file', 'zh-TW': '踩坑紀錄檔', 'zh-CN': '踩坑记录文件', ja: '落とし穴の記録ファイル' },
 }
 const line = (lang: Lang, key: keyof Switches, state: string, why: string): string => `- **${LABEL[key][lang]}** (\`${key}\`): ${state} — ${why}`
 
@@ -126,6 +127,25 @@ async function statusText($: EngineInterface, sw: Switches): Promise<string | nu
     out.push(watched === 0
       ? line(lang, 'tripwire', IDLE(lang), M(lang, { en: 'no active TRAPS entry has paths or commands — add them to an entry to be warned (fw-trap explains the two fields)', 'zh-TW': 'TRAPS 裡沒有任何帶 paths 或 commands 的 active 條目 — 在條目加上這兩個欄位才會提示(fw-trap 有說明)', 'zh-CN': 'TRAPS 里没有任何带 paths 或 commands 的 active 条目 — 在条目加上这两个栏位才会提示(fw-trap 有说明)', ja: 'TRAPS に paths か commands を持つ active な項目がない — 項目にこの 2 欄を足すとヒントが出る(fw-trap に説明あり)' }))
       : line(lang, 'tripwire', ON(lang), M(lang, { en: `watching ${watched} TRAPS entr${watched === 1 ? 'y' : 'ies'} with paths / commands`, 'zh-TW': `監看 ${watched} 條帶 paths / commands 的 TRAPS 條目`, 'zh-CN': `监看 ${watched} 条带 paths / commands 的 TRAPS 条目`, ja: `paths / commands を持つ TRAPS 項目 ${watched} 件を監視中` })))
+  }
+
+  // F4's trip file (its own switch; unset, it follows `fleet`)
+  if (!sw.trips) {
+    out.push(line(lang, 'trips', OFF(lang), sw.tripwire
+      ? `${M(lang, { en: 'unset, it follows `fleet`', 'zh-TW': '沒設定時跟著 `fleet`', 'zh-CN': '没设置时跟着 `fleet`', ja: '未設定なら `fleet` に従う' })}; ${howTo(lang, 'trips', true)}`
+      : M(lang, { en: 'needs the tripwire on', 'zh-TW': '需要先開啟踩坑絆線', 'zh-CN': '需要先开启踩坑绊线', ja: '落とし穴の検知線をオンにする必要がある' })))
+  } else {
+    const env: { FLIGHTWAKE_HOME?: string; HOME?: string; USERPROFILE?: string } = {}
+    try { env.FLIGHTWAKE_HOME = await $.env.get('FLIGHTWAKE_HOME') } catch {}
+    try { env.HOME = await $.env.get('HOME') } catch {}
+    try { env.USERPROFILE = await $.env.get('USERPROFILE') } catch {}
+    const base = fleetBase(env)
+    const dir = base === null ? null : tripsDirOf(base)
+    const shown = dir === null ? '~/.flightwake/trips' : tildePath(dir, env.HOME || env.USERPROFILE || null)
+    const isThere = dir !== null && (await io.exists(dir))
+    out.push(isThere
+      ? line(lang, 'trips', ON(lang), M(lang, { en: `records each TRAPS entry tripped in this session (once per repo) in ${shown}/<id>.json, if the folder is private (0700)`, 'zh-TW': `把本 session 踩到的 TRAPS 條目(每個 repo 一次)記在 ${shown}/<id>.json,前提是資料夾是私人的(0700)`, 'zh-CN': `把本 session 踩到的 TRAPS 条目(每个 repo 一次)记在 ${shown}/<id>.json,前提是文件夹是私人的(0700)`, ja: `このセッションで該当した TRAPS 項目(repo ごとに一度)を ${shown}/<id>.json に記録(フォルダーが非公開 0700 のとき)` }))
+      : line(lang, 'trips', IDLE(lang), M(lang, { en: `${shown} does not exist yet, so nothing is written — \`npx flightwake update --mod\` creates it (private, 0700)`, 'zh-TW': `${shown} 還不存在,所以不寫 — \`npx flightwake update --mod\` 會建立它(私人,0700)`, 'zh-CN': `${shown} 还不存在,所以不写 — \`npx flightwake update --mod\` 会创建它(私人,0700)`, ja: `${shown} がまだないため書かない — \`npx flightwake update --mod\` が作る(非公開、0700)` })))
   }
 
   // F5

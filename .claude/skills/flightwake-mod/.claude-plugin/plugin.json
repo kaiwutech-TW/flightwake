@@ -5,7 +5,7 @@
     "name": "kaiwutech-TW",
     "url": "https://github.com/kaiwutech-TW/flightwake"
   },
-  "description": "flightwake's Claude Code layer: STATE in the system prompt, a quiet status band, a session flight log, trap tripwires, tokens and API-equivalent cost, a session fleet (who is blocked, working, idle or resumable across sessions), an on-request side panel, and an opt-in role guard. Reads .flightwake/, git, this session's transcript and ~/.flightwake/sessions; its only writes are this session's state file in ~/.flightwake/sessions and its trap match counts in ~/.flightwake/trips, both outside the repo, and the panel's open/closed preference in its own plugin store. Never writes your records.",
+  "description": "flightwake's Claude Code layer: STATE in the system prompt, a quiet status band, a session flight log, trap tripwires, tokens and API-equivalent cost, a session fleet (who is blocked, working, idle or resumable across sessions), an on-request side panel, and an opt-in role guard. Reads .flightwake/, git, this session's transcript and ~/.flightwake/sessions; its only writes are this session's state file in ~/.flightwake/sessions and which TRAPS entries it tripped in ~/.flightwake/trips, both outside the repo, and the panel's open/closed preference in its own plugin store. Never writes your records.",
   "types": "./types/index.d.ts",
   "userConfig": {
     "stateInject": {
@@ -29,7 +29,7 @@
     "tripwire": {
       "type": "boolean",
       "title": "Trap tripwires",
-      "description": "When a file or command matches an active TRAPS entry's paths/commands fields, show that entry to the agent once per session, and count every match in ~/.flightwake/trips/<id>.json (outside the repo) for `npx flightwake traps stats`. Never blocks.",
+      "description": "When a file or command matches an active TRAPS entry's paths/commands fields, show that entry to the agent once per session. Never blocks.",
       "default": true
     },
     "roleGuard": {
@@ -55,6 +55,11 @@
       "title": "Side panel",
       "description": "/fw-panel opens a pane beside the transcript: this repo's STATE and what needs attention, and — inside Orca — every agent terminal (Claude and Codex) by repo, with buttons to go to one or ask an idle one to wrap up (confirmed each time). Once opened it reopens in later sessions until you close it. Never opens unless you ask.",
       "default": true
+    },
+    "trips": {
+      "type": "boolean",
+      "title": "Trap trip file",
+      "description": "With the tripwire on, record which TRAPS entries this session tripped (once per repo and entry: an edit to a matching file or a matching command) in ~/.flightwake/trips/<id>.json outside the repo, for `npx flightwake traps stats`. Unset, it follows `fleet`. Writes only into the private folder `npx flightwake update --mod` makes. The hints work without it."
     }
   }
 }

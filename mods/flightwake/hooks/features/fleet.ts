@@ -5,7 +5,7 @@
  *
  * The only file in hooks/ that may call `$.fs.write` (a smoke grep enforces it). It writes two files, both under
  * `<base>` and held to the same rules (guardOutside): this session file, and F4's trip file (registerTripLog below,
- * switched with `tripwire`). The session file is
+ * switched with `trips`; it also needs `<base>/trips` to exist already and be private). The session file is
  * refused when the base lies inside the session root, by spelling or by real path (re-checked at every write: the
  * root follows /cd), or is a flightwake records folder or lies in any git repo or flightwake root; never through a
  * symbolic link, never over a file that is not ours (both re-checked at every heartbeat), never for a -p / SDK run;
@@ -29,7 +29,7 @@ import {
   HINT_TOAST_MS, hintCandidates, id8, inputPrint, isOursText, isSafeId, LIST_WINDOW_ALL_MS, LIST_WINDOW_MS, lastSeen,
   notReportingReason, parseRec, pickHint, recordText, repoMarkersOf, resumableOf, resumeCmd, rowOf, schemaMajor, selectFiles, selfAndAncestors,
   FLEET_SINCE, sessionsDirOf, staleAfter, STALE_FLOOR_MS, T, targetOf, tildePath, transcriptOf, turnReason, countOthers, otherRows, deriveState, SCHEMA,
-  isOursTripsText, tripFilePath, tripsDirOf, tripsText,
+  isOursTripsText, mergeTrips, tripFilePath, tripsDirOf, tripsOfFile, tripsText,
 } from '../lib/fleet'
 import type { Activity, BlockedKind, FleetEnv, Host, ListEntry, SessionRec, Trips } from '../lib/fleet'
 import type { FwFleet, FwFleetStatus } from '../../types/index'
@@ -54,6 +54,12 @@ type FleetIo = Io & {
    * the path appended; null when it cannot be placed (no realPath, or a stat refused other than ENOENT).
    */
   place: (abs: string) => Promise<string | null>
+  /**
+   * The permission bits of a folder (`stat -f %Lp`, BSD / macOS, else `stat -c %a`, GNU / busybox); null when
+   * neither answers (no `stat`, Windows, a refusal). `$.fs.stat` has no mode, and `$.fs.write` makes folders with
+   * the default one, so the trip folder is made private by the CLI and only checked here.
+   */
+  mode: (abs: string) => Promise<number | null>
 }
 
 /** A rejection that says the path is missing (the engine's ENOENT), as opposed to a refusal. */
@@ -105,6 +111,16 @@ function fleetIoOf($: EngineInterface): FleetIo {
         if (typeof real !== 'string' || real === '') return null
         const rest = a === full ? '' : a === '/' ? full.slice(1) : full.slice(a.length + 1)
         return rest === '' ? real : `${real.replace(/[\\/]+$/, '')}/${rest}`
+      }
+      return null
+    },
+    mode: async (p) => {
+      for (const argv of [['stat', '-f', '%Lp', p], ['stat', '-c', '%a', p]]) {
+        try {
+          const r = await $.process.run(argv, { timeoutMs: 3000 })
+          const m = r.exitCode === 0 ? r.stdout.trim() : ''
+          if (/^[0-7]{3,4}$/.test(m)) return parseInt(m, 8)
+        } catch {}
       }
       return null
     },
@@ -626,6 +642,8 @@ async function fleetCommandText($: EngineInterface, io: FleetIo, lang: Lang, arg
     unreadable: s.unreadable,
     ver: FLEET_SINCE,
     notMe: notReportingReason(lang, F),
+    // the row the resume hint named is never cut by the ended cap
+    root: (await io.root()) || W.root || null,
   })
 }
 
@@ -735,38 +753,52 @@ async function settle($: EngineInterface, key: string, tool: string): Promise<vo
   if ((isRemoved || (F !== null && F.state === 'blocked' && evidence.size === 0)) && isTracking()) await apply($, 'unblocked:tool-done')
 }
 
-// ── F4's trip file (switched with `tripwire`; written here because this is the mod's one writing file) ─────────
-// The tripwire counts each match in $.state `trapsTripped`; this hook sits outside it (register.ts registers it
-// first, and a plugin's registrations nest first-outermost), so after `next(e)` the count of this very call is in.
+// ── F4's trip file (switched with `trips`; written here because this is the mod's one writing file) ────────────
+// The tripwire records a new (repo, trap) pair in $.state `trapsTripped`; this hook sits outside it (register.ts
+// registers it first, and a plugin's registrations nest first-outermost), so after `next(e)` this call's pair is in.
 const TRIPS_REF = { plugin: 'flightwake-mod', key: 'trapsTripped' } as const
 
 /** session.start's isInteractive: null until seen (a hot reload sees it again); only true lets the file be written. */
 let tripsInteractive: boolean | null = null
-/** The last text attempted per path (module memory): an unchanged count is not written again. */
-let tripsLast: { path: string; text: string } | null = null
+/** The `n` last handled per session id (written, refused or failed): the same `n` again is nothing new. */
+let tripsDone: { sessionId: string; n: number } | null = null
 let tripsChain: Promise<void> = Promise.resolve()
+const TRIP_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit', 'Bash'])
 
 /**
- * Write the count as it stands, whole, when it changed: interactive sessions only (as the session file), and under
- * every rule of guardOutside, run again before each write (the root follows /cd). A refusal or a failed write is
- * silent and not retried until the count changes again; nothing here touches the tool result or the hint.
+ * Write the session's trips when a new pair appeared: interactive sessions only (as the session file), under every
+ * rule of guardOutside, run again before each write (the root follows /cd), and only into a `<base>/trips` that is
+ * already there and private (no group / other bits) — `npx flightwake init --mod` / `update --mod` make it 0700, and
+ * `$.fs.write` would make it with the default mode. The file on disk for this id (an earlier process: `--resume`, a
+ * second process, an in-process /resume back to it) is merged in, the earliest time per pair kept, so no pair there is
+ * ever dropped; a v1 file of ours is converted. Nothing new against the disk → no write. A refusal or a failed write
+ * is silent and not retried until another new pair; nothing here touches the tool result or the hint.
  */
 async function flushTrips($: EngineInterface): Promise<void> {
   if (tripsInteractive !== true) return
   let t: Trips | null = null
   try { t = (await $.state.get(TRIPS_REF)).value ?? null } catch { return }
-  if (t === null || !isSafeId(t.sessionId)) return
+  // the one cheap check on every call: nothing new since the last flush
+  if (t === null || (tripsDone !== null && tripsDone.sessionId === t.sessionId && tripsDone.n === t.n)) return
   const sessionId = t.sessionId
+  tripsDone = { sessionId, n: t.n }
+  if (!isSafeId(sessionId)) return
   const base = fleetBase(await readBaseEnv($))
   if (base === null) return
   const path = tripFilePath(base, sessionId)
   if (path === null) return
-  const text = tripsText(t)
-  if (tripsLast !== null && tripsLast.path === path && tripsLast.text === text) return
-  tripsLast = { path, text }
+  const dir = tripsDirOf(base)
   const io = fleetIoOf($)
-  const v = await guardOutside(io, await io.root(), base, tripsDirOf(base), path, (x) => isOursTripsText(x, sessionId))
-  if (v.status === 'active') await io.write(path, text)
+  const v = await guardOutside(io, await io.root(), base, dir, path, (x) => isOursTripsText(x, sessionId))
+  if (v.status !== 'active') return
+  if ((await io.probe(dir)) !== 'yes') return
+  const mode = await io.mode(dir)
+  if (mode === null || (mode & 0o077) !== 0) return
+  const disk = v.text === null ? null : tripsOfFile(v.text, sessionId)
+  const merged = mergeTrips(disk?.trips ?? {}, t.trips)
+  // the file already holds every pair, in the current shape: nothing to write
+  if (disk !== null && disk.v === 2 && JSON.stringify(merged) === JSON.stringify(mergeTrips(disk.trips, {}))) return
+  await io.write(path, tripsText(sessionId, new Date(await clockNow($)).toISOString(), merged))
 }
 
 export function registerTripLog(on: On): void {
@@ -778,8 +810,8 @@ export function registerTripLog(on: On): void {
 
   on('tool.call', {}, async ($, e, next) => {
     const r = await next(e)
-    if (r.deny === undefined && tripsInteractive === true) {
-      // queued, never awaited here: the tool result does not wait on the guard or the write
+    if (r.deny === undefined && tripsInteractive === true && TRIP_TOOLS.has(e.tool)) {
+      // queued, never awaited here: the tool result does not wait on the check, the guard or the write
       tripsChain = tripsChain.then(() => flushTrips($)).catch(noop)
     }
     return r

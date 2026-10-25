@@ -9,7 +9,7 @@
  */
 import { M, relToRoot, tableCell } from './core'
 import type { Lang } from './core'
-import type { FwTrapsTripped, FwTrapTrip } from '../../types/index'
+import type { FwTrapsTripped, FwTripMap } from '../../types/index'
 
 // ── constants (mirrored in bin/fleet.mjs and hooks/statusline.mjs) ──────────────────────────────────────────────
 export const SCHEMA = 'flightwake.session/1'
@@ -89,50 +89,122 @@ export const isOursText = (text: string): boolean => isFleetFile(text) || OURS_P
 
 // ── F4's trip file: `<base>/trips/<id>.json` (same base, file-name rule and write guards as the session file) ──
 // Read by `npx flightwake traps stats` (bin/), which depends on this exact shape: change both together.
-export const TRIPS_V = 1
+//   { "v": 2, "sessionId": "<id>", "updated": "<ISO>",
+//     "trips": { "<absolute repo root at the match>": { "<trap name>": "<ISO time of the first match>" } } }
+// A trap is recorded at most once per session per repo: "this trap was tripped in this session".
+export const TRIPS_V = 2
 export const tripsDirOf = (base: string): string => `${base}/trips`
 /** `<base>/trips/<id>.json`, or null when the id cannot be a file name (the session file's rule). */
 export const tripFilePath = (base: string, id: string): string | null => (isSafeId(id) ? `${tripsDirOf(base)}/${id}.json` : null)
 
-/** The $.state value (types/index.d.ts FwTrapsTripped), which is also the file's content less `v`. */
+/** The $.state value (types/index.d.ts FwTrapsTripped): this process's pairs, and `n`, how many there are. */
 export type Trips = FwTrapsTripped
-type Trip = FwTrapTrip
+/** repo root → trap name → ISO time of the first match. */
+export type TripMap = FwTripMap
+
+const own = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k)
+/** An own, enumerable data property whatever the key (`__proto__` included): never the prototype. */
+const put = <V>(o: Record<string, V>, k: string, v: V): void => { Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true }) }
+const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
+
+/** Whether `(repo, name)` is already in `m`. */
+export const hasTrip = (m: TripMap, repo: string, name: string): boolean => own(m, repo) && isObj(m[repo]) && own(m[repo] as object, name)
 
 /**
- * `cur` with one more match for each name, as of `iso`; a value made for another session id is replaced (a /clear
- * starts a new id, so a new file). `repo` is the root this match was made in. Computed keys only: a name such as
- * `__proto__` stays an own property, never the prototype.
+ * `cur` with the pairs `(repo, name)` this match adds, the first time each is seen; null when none is new (nothing
+ * to store, nothing to write). A value made for another session id is replaced (a /clear starts a new id, so a new
+ * file).
  */
-export function bumpTrips(cur: Trips | null, sessionId: string, repo: string, names: readonly string[], iso: string): Trips {
-  let trips: Record<string, Trip> = cur !== null && cur.sessionId === sessionId ? cur.trips : {}
-  for (const name of new Set(names)) {
-    const was = Object.prototype.hasOwnProperty.call(trips, name) ? trips[name] : undefined
-    trips = { ...trips, [name]: was === undefined ? { n: 1, first: iso, last: iso } : { n: was.n + 1, first: was.first, last: iso } }
-  }
-  return { sessionId, repo, updated: iso, trips }
+export function addTrips(cur: Trips | null, sessionId: string, repo: string, names: readonly string[], iso: string): Trips | null {
+  const was: TripMap = cur !== null && cur.sessionId === sessionId && isObj(cur.trips) ? cur.trips : {}
+  const fresh = [...new Set(names)].filter((n) => !hasTrip(was, repo, n))
+  if (fresh.length === 0 && cur !== null && cur.sessionId === sessionId) return null
+  const trips: TripMap = {}
+  for (const r of Object.keys(was)) put(trips, r, { ...(was[r] as Record<string, string>) })
+  if (!own(trips, repo)) put(trips, repo, {})
+  for (const n of fresh) put(trips[repo] as Record<string, string>, n, iso)
+  let n = 0
+  for (const r of Object.keys(trips)) n += Object.keys(trips[r] as object).length
+  return { sessionId, trips, n }
 }
 
-/** The file as written: `{v, sessionId, repo, updated, trips}` in that order, two-space JSON plus a newline. */
-export const tripsText = (t: Trips): string =>
-  `${JSON.stringify({ v: TRIPS_V, sessionId: t.sessionId, repo: t.repo, updated: t.updated, trips: t.trips }, null, 2)}\n`
+/** The earlier of two ISO times; a time that does not parse loses to one that does. */
+const earlier = (a: string, b: string): string => {
+  const x = Date.parse(a)
+  const y = Date.parse(b)
+  if (Number.isNaN(x)) return Number.isNaN(y) ? (a <= b ? a : b) : b
+  if (Number.isNaN(y)) return a
+  return y < x ? b : a
+}
+
+/** The union of `a` and `b`, the earliest time per (repo, name); keys sorted, so equal sets give equal text. */
+export function mergeTrips(a: TripMap, b: TripMap): TripMap {
+  const out: TripMap = {}
+  for (const r of [...new Set([...Object.keys(a), ...Object.keys(b)])].sort()) {
+    const ra = own(a, r) && isObj(a[r]) ? (a[r] as Record<string, string>) : {}
+    const rb = own(b, r) && isObj(b[r]) ? (b[r] as Record<string, string>) : {}
+    const names: Record<string, string> = {}
+    for (const n of [...new Set([...Object.keys(ra), ...Object.keys(rb)])].sort()) {
+      const x = own(ra, n) ? ra[n] : undefined
+      const y = own(rb, n) ? rb[n] : undefined
+      const v = typeof x === 'string' && typeof y === 'string' ? earlier(x, y) : typeof x === 'string' ? x : y
+      if (typeof v === 'string') put(names, n, v)
+    }
+    if (Object.keys(names).length > 0) put(out, r, names)
+  }
+  return out
+}
 
 /**
- * A trip file that is ours to overwrite: a JSON object with `v: 1` and this very session id, or (a torn write of
- * ours) text that begins that way. Anything else at the path — another tool's file, another version, another id — is
- * left untouched.
+ * The pairs in a trip file of this session, whichever version wrote it: v2 as is (pairs whose time is not a string
+ * are not pairs); v1 (`{ repo, trips: { name: { first } } }`) each trip under its `repo`, at its `first`. Null when
+ * the text is not a parseable trip file of this session id (a torn write of ours has no pairs to keep).
+ */
+export function tripsOfFile(text: string, sessionId: string): { v: 1 | 2; trips: TripMap } | null {
+  let j: unknown
+  try { j = JSON.parse(text) } catch { return null }
+  if (!isObj(j) || j.sessionId !== sessionId) return null
+  const out: TripMap = {}
+  if (j.v === 2 && isObj(j.trips)) {
+    for (const r of Object.keys(j.trips)) {
+      const names = j.trips[r]
+      if (!isObj(names)) continue
+      const keep: Record<string, string> = {}
+      for (const n of Object.keys(names)) { const t = names[n]; if (typeof t === 'string') put(keep, n, t) }
+      if (Object.keys(keep).length > 0) put(out, r, keep)
+    }
+    return { v: 2, trips: out }
+  }
+  if (j.v === 1 && typeof j.repo === 'string' && j.repo !== '' && isObj(j.trips)) {
+    const keep: Record<string, string> = {}
+    for (const n of Object.keys(j.trips)) {
+      const t = j.trips[n]
+      const first = isObj(t) ? t.first : undefined
+      if (typeof first === 'string') put(keep, n, first)
+    }
+    if (Object.keys(keep).length > 0) put(out, j.repo, keep)
+    return { v: 1, trips: out }
+  }
+  return j.v === 1 || j.v === 2 ? { v: j.v, trips: out } : null
+}
+
+/** The file as written: `{v, sessionId, updated, trips}` in that order, two-space JSON plus a newline. */
+export const tripsText = (sessionId: string, updated: string, trips: TripMap): string =>
+  `${JSON.stringify({ v: TRIPS_V, sessionId, updated, trips }, null, 2)}\n`
+
+/**
+ * A trip file that is ours to overwrite: a JSON object with `v` 1 or 2 (ours, before and after the per-repo shape)
+ * and this very session id, or (a torn write of ours) text that begins that way. Anything else at the path — another
+ * tool's file, another version, another id — is left untouched.
  */
 export function isOursTripsText(text: string, sessionId: string): boolean {
   try {
     const j: unknown = JSON.parse(text)
-    if (j !== null && typeof j === 'object' && !Array.isArray(j)) {
-      const o = j as { v?: unknown; sessionId?: unknown }
-      return o.v === TRIPS_V && o.sessionId === sessionId
-    }
-    return false
+    return isObj(j) && (j.v === 1 || j.v === TRIPS_V) && j.sessionId === sessionId
   } catch {
     if (!isSafeId(sessionId)) return false
     const id = sessionId.replace(/\./g, '\\.')
-    return new RegExp(`^\\s*\\{\\s*"v"\\s*:\\s*1\\s*,\\s*"sessionId"\\s*:\\s*"${id}"`).test(text)
+    return new RegExp(`^\\s*\\{\\s*"v"\\s*:\\s*[12]\\s*,\\s*"sessionId"\\s*:\\s*"${id}"`).test(text)
   }
 }
 
@@ -666,11 +738,10 @@ const plainState = (lang: Lang, s: unknown): string => {
   return typeof s === 'string' && w[s] !== undefined ? w[s] : T.word[lang].unknown
 }
 
-/** The detail cell's text (not yet escaped). */
+/** The detail cell's text (not yet escaped), without the resume command (fleetTable adds it as a code span). */
 export function detailOf(lang: Lang, row: FleetRow): string {
   const r = row.rec
   const sub = T.sub[lang]
-  const resume = row.resume ? ` · \`${row.resume}\`` : ''
   switch (row.display) {
     case 'blocked': {
       const b = r.blocked
@@ -693,11 +764,11 @@ export function detailOf(lang: Lang, row: FleetRow): string {
       return lt.reason === 'aborted' ? w.aborted : lt.reason === 'error' ? w.error : lt.reason === 'refusal' ? w.refusal : w.answer
     }
     case 'stale':
-      return `${T.stale[lang](plainState(lang, r.state))}${resume}`
+      return T.stale[lang](plainState(lang, r.state))
     case 'ended': {
       const e = T.end[lang] as Record<string, string>
       const reason = r.ended?.reason
-      return `${typeof reason === 'string' && e[reason] !== undefined ? e[reason] : e.other}${resume}`
+      return typeof reason === 'string' && e[reason] !== undefined ? e[reason] : e.other ?? '?'
     }
     default: {
       const u = T.unk[lang]
@@ -710,13 +781,27 @@ export function detailOf(lang: Lang, row: FleetRow): string {
 
 export const id8 = (id: unknown): string => (typeof id === 'string' && id !== '' ? Array.from(id).slice(0, 8).join('') : '?')
 
-/** The table lines: header, separator, one row per record (every cell through tableCell). */
+/**
+ * Shell text as a code span inside a table cell, so it copies exactly: backslashes are literal in a code span (never
+ * doubled — `'\''` is how a single quote is quoted), a `|` is escaped as `\|` (GFM strips it again, inside code
+ * too), a line break becomes a space, and the fence is one backtick longer than the longest run inside.
+ */
+export function codeCell(text: string): string {
+  const t = text.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|')
+  const longest = Math.max(0, ...(t.match(/`+/g) ?? []).map((m) => m.length))
+  const fence = '`'.repeat(longest + 1)
+  const pad = t.startsWith('`') || t.endsWith('`') ? ' ' : ''
+  return `${fence}${pad}${t}${pad}${fence}`
+}
+
+/** The table lines: header, separator, one row per record (every cell through tableCell; the resume command through codeCell). */
 export function fleetTable(lang: Lang, rows: readonly FleetRow[], me: string): string[] {
   const out = [T.header[lang], '|---|---|---|---:|---|']
   for (const row of rows) {
     const isMe = row.rec.sessionId === me
     const session = `\`${tableCell(id8(row.rec.sessionId)).replace(/`/g, '')}\`${isMe ? T.this[lang] : ''}`
-    out.push(`| ${T.st[lang][row.display]} | ${session} | ${tableCell(repoLabel(row.rec))} | ${fmtAge(row.ageMs)} | ${tableCell(detailOf(lang, row))} |`)
+    const resume = row.resume ? ` · ${codeCell(row.resume)}` : ''
+    out.push(`| ${T.st[lang][row.display]} | ${session} | ${tableCell(repoLabel(row.rec))} | ${fmtAge(row.ageMs)} | ${tableCell(detailOf(lang, row))}${resume} |`)
   }
   return out
 }
@@ -734,7 +819,16 @@ export type FleetReport = {
   ver: string
   /** Why this session is not reporting (already localized), or null when it is. */
   notMe: string | null
+  /**
+   * This session's root: an ended row there that stopped unexpectedly (reason `other`) and has a resume command is
+   * never cut by `endedCap` — it is the row the resume hint's toast sends the person here for.
+   */
+  root?: string | null
 }
+
+/** Whether the ended cap must keep this row: the one a resume hint can name (see FleetReport.root). */
+export const isPinned = (row: FleetRow, root: string | null | undefined): boolean =>
+  typeof root === 'string' && root !== '' && row.display === 'ended' && row.resume !== null && row.rec.root === root && row.rec.ended?.reason === 'other'
 
 /** The whole /fw-fleet output. */
 export function fleetReport(lang: Lang, r: FleetReport): string {
@@ -743,7 +837,7 @@ export function fleetReport(lang: Lang, r: FleetReport): string {
   let hidden = r.skipped
   const shown: FleetRow[] = []
   for (const row of sorted) {
-    if (row.display === 'ended' && ++ended > r.endedCap) { hidden += 1; continue }
+    if (row.display === 'ended' && !isPinned(row, r.root) && ++ended > r.endedCap) { hidden += 1; continue }
     shown.push(row)
   }
   const out: string[] = ['## /fw-fleet', '']

@@ -96,13 +96,22 @@ export function wrapUpCommand(agent: string): string | null {
 /** Codex's `$` opens its skill picker, which takes the Enter sent with the text: wait this long, then read the composer back. */
 export const SUBMIT_CHECK_MS = 800
 
-/** The composer text in `orca terminal read --json` output (UI-only, never part of the tail), trimmed; null when none. */
-export function draftOf(stdout: string | null): string | null {
+/**
+ * The composer text in `orca terminal read --json` output (UI-only, never part of the tail), trimmed: '' for an empty
+ * composer; null when it cannot be told (no output, not JSON, no `draft` field).
+ */
+export function composerOf(stdout: string | null): string | null {
   if (stdout === null) return null
   let d: unknown
   try { d = JSON.parse(stdout) } catch { return null }
   const draft = (d as { result?: { terminal?: { draft?: unknown } } } | null)?.result?.terminal?.draft
-  return typeof draft === 'string' && draft.trim() !== '' ? draft.trim() : null
+  return typeof draft === 'string' ? draft.trim() : null
+}
+
+/** The composer text, trimmed; null when it is empty or cannot be told. */
+export function draftOf(stdout: string | null): string | null {
+  const c = composerOf(stdout)
+  return c === null || c === '' ? null : c
 }
 
 /** A context bar of `width` cells: filled / empty strings and the colour band (≥80 red, ≥60 yellow). */
@@ -145,6 +154,13 @@ export const T = {
   sent: L4<(cmd: string, who: string) => string>({
     en: (c, w) => `sent ${c} to ${w}`, 'zh-TW': (c, w) => `已送 ${c} 給 ${w}`, 'zh-CN': (c, w) => `已发 ${c} 给 ${w}`, ja: (c, w) => `${w} に ${c} を送った`,
   }),
+  sentUnsure: L4<(cmd: string, who: string) => string>({
+    en: (c, w) => `${c} was typed into ${w} but may not have been submitted — check that tab`,
+    'zh-TW': (c, w) => `${c} 已打進 ${w},但可能沒有送出——請到那個分頁確認`,
+    'zh-CN': (c, w) => `${c} 已输入 ${w},但可能没有提交——请到那个标签确认`,
+    ja: (c, w) => `${w} に ${c} を入力したが、実行されていないかもしれない——そのタブを確認して`,
+  }),
+  busy: L4({ en: 'a wrap-up to that tab is still being sent — nothing sent again', 'zh-TW': '正在對那個分頁送收尾——沒有重複送出', 'zh-CN': '正在对那个标签发收尾——没有重复发送', ja: 'そのタブへの締めを送信中——重ねて送らなかった' }),
   notIdle: L4<(who: string) => string>({
     en: (w) => `${w} is not idle any more — nothing sent`, 'zh-TW': (w) => `${w} 已不是閒置——沒有送出`, 'zh-CN': (w) => `${w} 已不是闲置——没有发送`, ja: (w) => `${w} はもう待機中ではない——送信しなかった`,
   }),

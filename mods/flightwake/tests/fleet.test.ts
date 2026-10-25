@@ -1139,7 +1139,42 @@ describe('fleet: resume hint', () => {
     await start($, k)
     await k.clock.advance(1500)
     expect(k.toasts[0]).toContain('session old1 stopped')
-    expect(await fwFleet($)).toMatch(/`cd '\/repo\/it'.*' && claude --resume old1`/)
+    // the code span carries the exact shell text: the quote's backslash is never doubled
+    expect(await fwFleet($)).toContain(" · `cd '/repo/it'\\''s' && claude --resume old1` |")
+  })
+
+  test("the session the toast named is always listed by /fw-fleet, even past the 10 ended rows' cap", async ($, on) => {
+    const k = boot($, on)
+    // the toast's session: ended unexpectedly (reason other) in this repo an hour ago, older than 12 normal exits
+    seed(k, staleRec({ state: 'ended', heartbeatAt: NOW - 3_600_000, ended: { reason: 'other', at: NOW - 3_600_000, stateAtEnd: 'working' } }))
+    k.w.outside[TRANSCRIPT('old1')] = '{}'
+    for (let i = 0; i < 12; i++) {
+      seed(k, sessionRec({ sessionId: `e${String(i).padStart(7, '0')}`, state: 'ended', root: '/x/web', heartbeatAt: NOW - (i + 1) * 60000, ended: { reason: 'prompt_input_exit', at: NOW - (i + 1) * 60000, stateAtEnd: 'idle' } }))
+    }
+    await start($, k)
+    await k.clock.advance(1500)
+    expect(k.toasts).toEqual(['flightwake: session old1 stopped unexpectedly 1h ago (was working) — /fw-fleet to resume it'])
+    const out = await fwFleet($)
+    expect(out).toContain("| – ended | `old1` | repo | 1h | closed or killed · `claude --resume old1` |")
+    // the cap still holds for the rest: 10 of the 12 normal exits, 2 counted as hidden
+    expect(out.split('\n').filter((l) => l.startsWith('| – ended'))).toHaveLength(11)
+    expect(out).toContain('2 older ended file(s) hidden')
+  })
+
+  test('the pin is only for that row: an unexpected end in another repo, or a normal exit here, is capped as before', async ($, on) => {
+    const k = boot($, on)
+    seed(k, staleRec({ sessionId: 'oth00001', root: '/x/web', state: 'ended', heartbeatAt: NOW - 3_600_000, resume: { id: 'oth00001', resumable: true }, transcript: TRANSCRIPT('oth00001'), ended: { reason: 'other', at: NOW - 3_600_000, stateAtEnd: 'working' } }))
+    seed(k, staleRec({ sessionId: 'here0001', state: 'ended', heartbeatAt: NOW - 3_700_000, resume: { id: 'here0001', resumable: true }, transcript: TRANSCRIPT('here0001'), ended: { reason: 'prompt_input_exit', at: NOW - 3_700_000, stateAtEnd: 'idle' } }))
+    k.w.outside[TRANSCRIPT('oth00001')] = '{}'
+    k.w.outside[TRANSCRIPT('here0001')] = '{}'
+    for (let i = 0; i < 10; i++) {
+      seed(k, sessionRec({ sessionId: `e${String(i).padStart(7, '0')}`, state: 'ended', root: '/x/web', heartbeatAt: NOW - (i + 1) * 60000, ended: { reason: 'prompt_input_exit', at: NOW - (i + 1) * 60000, stateAtEnd: 'idle' } }))
+    }
+    await start($, k)
+    const out = await fwFleet($)
+    expect(out).not.toContain('`oth00001`')
+    expect(out).not.toContain('`here0001`')
+    expect(out).toContain('2 older ended file(s) hidden')
   })
 
   const NOT_SHOWN: [string, (k: Knobs) => void, object?][] = [

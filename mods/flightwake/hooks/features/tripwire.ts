@@ -2,20 +2,24 @@
  * F4 TRAPS tripwires: when an Edit/Write/NotebookEdit or Bash call matches an active TRAPS entry's `paths` or
  * `commands`, a compact hint is appended to the tool result's `context` (what the model reads after the result).
  * It NEVER blocks: a denied call passes through untouched, and every failure falls through to the plain result.
- * Every match is also counted in $.state `trapsTripped` (each matching call, hinted or not, by entry name): the
- * evidence a TRAPS compaction reads. This file only counts; hooks/features/fleet.ts (registerTripLog, outside this
- * hook) writes the count to `<base>/trips/<id>.json`, since that file is the mod's only writer.
+ * With `trips` on, a trap is also recorded in $.state `trapsTripped` — at most once per session per repo, hinted or
+ * not: the evidence a TRAPS compaction reads. Only what the call itself aimed at records: an Edit / Write /
+ * NotebookEdit whose file matches `paths`, or a Bash command whose prefix matches `commands`. Path-like words inside
+ * a Bash command (`cat db/x.sql`, `git diff -- db/`) still hint but do not record — that matching guesses on purpose.
+ * A call that did not run records nothing: a deny, or an error result that is a refusal (a settings PreToolUse hook's
+ * deny, the auto-mode classifier's, or the permission prompt's — REFUSAL_RE). This file only records;
+ * hooks/features/fleet.ts (registerTripLog, outside this hook) writes `<base>/trips/<id>.json`, the mod's only writer.
  * Contract: docs/plans/mods.md (revised) and the header of hooks/lib/core.ts. Read scope: .flightwake/TRAPS.md only.
  */
-import { atom, update } from 'claude-code'
+import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
 import { M, fwContext, readRel, relToRoot, TRAPS_REL } from '../lib/core'
 import type { Io, Lang } from '../lib/core'
-import { bumpTrips } from '../lib/fleet'
+import { addTrips, hasTrip } from '../lib/fleet'
 import { matchAny } from '../lib/glob'
 import { parseCommand, startsWithTokens } from '../lib/shell'
-import { hasMatchers, isActive, parseTraps } from '../lib/traps'
+import { hasMatchers, isActive, parseTraps, REFUSAL_RE } from '../lib/traps'
 import type { TrapEntry } from '../lib/traps'
 
 const hinted = atom({ plugin: 'flightwake-mod', key: 'trapsHinted' } as const, null)
@@ -39,7 +43,8 @@ function ioOf($: EngineInterface): Io {
   }
 }
 
-type Hit = { entry: TrapEntry; via: string }
+/** `isAimed`: the call itself aimed at the entry (its file, or a command prefix) — what a trip records. */
+type Hit = { entry: TrapEntry; via: string; isAimed: boolean }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
 
@@ -53,7 +58,7 @@ function matchFile(entries: TrapEntry[], root: string, filePath: string): Hit[] 
   const rel = relToRoot(root, filePath)
   if (rel === null || rel === '') return []
   const out: Hit[] = []
-  for (const entry of entries) if (entry.paths.length && matchAny(entry.paths, rel) !== null) out.push({ entry, via: rel })
+  for (const entry of entries) if (entry.paths.length && matchAny(entry.paths, rel) !== null) out.push({ entry, via: rel, isAimed: true })
   return out
 }
 
@@ -93,6 +98,8 @@ const redirectTarget = (tok: string): string => tok.replace(/^(?:\d*|&)?[<>]>?/,
 function matchBash(entries: TrapEntry[], root: string, cwd0: string, command: string): Hit[] {
   const parsed = parseCommand(command)
   const out = new Map<TrapEntry, string>()
+  /** Entries some segment's command prefix matched (the hint may name a path word found earlier). */
+  const aimed = new Set<TrapEntry>()
   let cwds: Set<string> | null = new Set<string>([cwd0]) // null = degraded: cwd no longer tracked
   let isCertain = true
   const stack: Array<{ cwds: Set<string> | null; isCertain: boolean }> = []
@@ -108,12 +115,13 @@ function matchBash(entries: TrapEntry[], root: string, cwd0: string, command: st
       continue
     }
     for (const entry of entries) {
-      if (out.has(entry)) continue
       const prefix = entry.commands.find((p) => startsWithTokens(seg.tokens, p))
       if (prefix !== undefined) {
-        out.set(entry, prefix.trim().split(/\s+/).join(' '))
+        aimed.add(entry)
+        if (!out.has(entry)) out.set(entry, prefix.trim().split(/\s+/).join(' '))
         continue
       }
+      if (out.has(entry)) continue
       if (!entry.paths.length) continue
       search: for (const tok of seg.tokens) {
         const word = redirectTarget(tok)
@@ -145,7 +153,7 @@ function matchBash(entries: TrapEntry[], root: string, cwd0: string, command: st
     }
     if (seg.op && seg.op !== '&&') isCertain = false
   }
-  return [...out].map(([entry, via]) => ({ entry, via }))
+  return [...out].map(([entry, via]) => ({ entry, via, isAimed: aimed.has(entry) }))
 }
 
 const clip = (s: string): string => (s.length > MAX_LINE ? `${s.slice(0, MAX_LINE)}…` : s)
@@ -190,8 +198,36 @@ function render(lang: Lang, shown: Hit[], more: number): string {
   return lines.join('\n')
 }
 
+/**
+ * Record the aimed hits' (repo, name) pairs the first time each is seen this session; a pair already there costs
+ * one $.state read and nothing else. Never throws: a trip that cannot be kept never costs the hint.
+ */
+async function recordTrips($: EngineInterface, sessionId: string, repo: string, hits: readonly Hit[]): Promise<void> {
+  try {
+    const names = hits.filter((h) => h.isAimed).map((h) => h.entry.name)
+    if (names.length === 0) return
+    const cur = await read($, tripped)
+    if (cur !== null && cur.sessionId === sessionId && names.every((n) => hasTrip(cur.trips, repo, n))) return
+    let ms = Date.now()
+    try { const t = await $.clock.now(); if (typeof t === 'number' && Number.isFinite(t)) ms = t } catch {}
+    const iso = new Date(ms).toISOString()
+    await update($, tripped, (c) => addTrips(c, sessionId, repo, names, iso) ?? c)
+  } catch {
+    // a trip that cannot be kept never costs the hint
+  }
+}
+
+/** tool_use_ids a settings PreToolUse hook or the auto-mode classifier refused, until their tool.call settles. */
+const refusedIds = new Set<string>()
+const REFUSED_CAP = 256
+const noteRefused = (id: unknown): void => {
+  if (typeof id !== 'string' || id === '') return
+  if (refusedIds.size >= REFUSED_CAP) refusedIds.clear()
+  refusedIds.add(id)
+}
+
 /** The hint to append for this call, or null. May take `$` because it is declared in this file. */
-async function hintFor($: EngineInterface, e: Record<string, unknown>): Promise<string | null> {
+async function hintFor($: EngineInterface, e: Record<string, unknown>, mayRecord: boolean): Promise<string | null> {
   const tool = e.tool
   const isFile = tool === 'Edit' || tool === 'Write' || tool === 'NotebookEdit'
   if (!isFile && tool !== 'Bash') return null
@@ -214,15 +250,8 @@ async function hintFor($: EngineInterface, e: Record<string, unknown>): Promise<
   if (!hits.length) return null
 
   const sessionId = await io.sessionId()
-  // counted before the dedup below: a match not hinted again is still a match
-  try {
-    let ms = Date.now()
-    try { const t = await $.clock.now(); if (typeof t === 'number' && Number.isFinite(t)) ms = t } catch {}
-    const iso = new Date(ms).toISOString()
-    await update($, tripped, (cur) => bumpTrips(cur, sessionId, ctx.root, hits.map((h) => h.entry.name), iso))
-  } catch {
-    // a count that cannot be kept never costs the hint
-  }
+  // recorded before the dedup below: a trap not hinted again is still tripped (in this repo, if new here)
+  if (mayRecord) await recordTrips($, sessionId, ctx.root, hits)
   const key = (h: Hit) => `${h.entry.name}@${h.entry.version}`
   let shown: Hit[] = []
   let more = 0
@@ -237,16 +266,43 @@ async function hintFor($: EngineInterface, e: Record<string, unknown>): Promise<
   return render(ctx.lang, shown, more)
 }
 
-export function registerTripwire(on: On): void {
+export type TripwireSwitches = { trips: boolean }
+
+export function registerTripwire(on: On, sw: TripwireSwitches): void {
   on('tool.call', {}, async ($, e, next) => {
-    const r = await next(e)
+    const id = e.tool_use_id
+    let r: Awaited<ReturnType<typeof next>>
+    try {
+      r = await next(e)
+    } catch (err) {
+      if (typeof id === 'string') refusedIds.delete(id)
+      throw err
+    }
+    const wasRefused = typeof id === 'string' && refusedIds.delete(id)
     if (r.deny !== undefined) return r
     try {
-      const hint = await hintFor($, e as Record<string, unknown>)
+      // a call that did not run trips nothing; its hint is unchanged (it never depended on the outcome)
+      const isRefusal = r.isError === true && (wasRefused || REFUSAL_RE.test(typeof r.text === 'string' ? r.text : ''))
+      const hint = await hintFor($, e as Record<string, unknown>, sw.trips && !isRefusal)
       if (hint !== null) return { ...r, context: [...(r.context ?? []), hint] }
     } catch {
       // a failing tripwire never touches the person's work
     }
+    return r
+  })
+
+  if (!sw.trips) return
+  // A settings PreToolUse hook's deny reaches tool.call as an error result carrying only its own reason: noted here,
+  // beneath every plugin's tool.call and above the settings hooks, by the call's id.
+  on('classic.PreToolUse', {}, async ($, e, next) => {
+    const r = await next(e)
+    try { if (r !== undefined && r !== null && r.deny !== undefined) noteRefused(e.tool_use_id) } catch {}
+    return r
+  })
+  // the auto-mode classifier's deny (its text is caught by REFUSAL_RE as well)
+  on('classic.PermissionDenied', {}, async ($, e, next) => {
+    const r = await next(e)
+    try { noteRefused(e.tool_use_id) } catch {}
     return r
   })
 }

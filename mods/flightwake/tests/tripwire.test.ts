@@ -3,6 +3,8 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { MockClock } from 'claude-code/testing'
 
+import { addTrips, codeCell, isOursTripsText, mergeTrips, tripsOfFile } from '../hooks/lib/fleet'
+import { REFUSAL_RE } from '../hooks/lib/traps'
 import { HOME_OUT, installWorld, MARKER, STATE_FILLED, STATE_TEMPLATE } from './world'
 import type { World } from './world'
 
@@ -263,20 +265,24 @@ describe('tripwire: caveats and results', () => {
   })
 })
 
-// ── trip file: every match counted per entry, written to <base>/trips/<id>.json outside the repo ───────────────
+// ── trip file: each trap tripped this session, once per repo, written to <base>/trips/<id>.json outside the repo ──
 const NOW = 1_760_000_000_000
 const TRIPS = `${HOME_OUT}/.flightwake/trips`
 const MINE = `${TRIPS}/session-1.json`
 const iso = (ms: number) => new Date(ms).toISOString()
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
-/** The fleet's own session file is not under test here: `fleet` off keeps its writes out of the way. */
-const ONLY_F4 = { options: { fleet: false } } as const
+/** The fleet's own session file is not under test here: `fleet` off keeps its writes out of the way, `trips` on. */
+const ONLY_F4 = { options: { fleet: false, trips: true } } as const
+/** The trips folder as `init --mod` / `update --mod` leave it: there, and private. */
+const PRIVATE: Partial<World> = { dirs: [TRIPS], modes: { [TRIPS]: '700' } }
 
 type Trip = { w: World; clock: MockClock }
 
-/** A world with a home outside the repo, a clock and an interactive session start, so the trip file can be written. */
-async function tripWorld($: any, on: On, t: string, init: Partial<World> = {}, opts: { env?: Record<string, string>; start?: object } = {}): Promise<Trip> {
-  const w = setup(on, t, init)
+/** A world with a home outside the repo, a private trips folder, a clock and an interactive session start. */
+async function tripWorld($: any, on: On, t: string, init: Partial<World> = {}, opts: { env?: Record<string, string>; start?: object; answer?: () => Record<string, unknown>; beneath?: (on: On) => void } = {}): Promise<Trip> {
+  const w = installWorld(on, { files: FILES(t), ...PRIVATE, ...init })
+  if (opts.beneath) opts.beneath(on)
+  else engine(on, opts.answer)
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, opts.env ?? { HOME: HOME_OUT })
   on('session.start', () => ({ cwd: w.root }))
@@ -297,49 +303,237 @@ const tripFile = (w: World, path = MINE): Record<string, any> | null => {
   if (t === undefined) return null
   try { return JSON.parse(t) as Record<string, any> } catch { return null }
 }
+const v2 = (trips: Record<string, Record<string, string>>, updated: string, sessionId = 'session-1') =>
+  `${JSON.stringify({ v: 2, sessionId, updated, trips }, null, 2)}\n`
 
 const TWO = () => traps(entry('sql', { paths: '["db/**"]' }), entry('pub', { commands: '["npm publish"]' }))
+const edit = (path: string) => ({ tool: 'Edit', file_path: path, old_string: 'a', new_string: 'b' }) as never
 
 describe('tripwire: trip file', () => {
-  test('every matching call counts, including repeats not hinted again; the file shape is exact', ONLY_F4, async ($, on) => {
+  test('once per session per repo: the first match of each trap is recorded, repeats write nothing; the v2 shape is exact', ONLY_F4, async ($, on) => {
     const k = await tripWorld($, on, TWO())
-    expect(await hit($, k, { tool: 'Edit', file_path: '/repo/db/a.sql', old_string: 'a', new_string: 'b' } as never)).toContain('`sql`')
+    expect(await hit($, k, edit('/repo/db/a.sql'))).toContain('`sql`')
     await k.clock.advance(1000)
     expect(await hit($, k, write('/repo/db/b.sql'))).toBe('')
     await k.clock.advance(1000)
     expect(await hit($, k, bash('npm publish --tag next'))).toContain('`pub`')
     await k.clock.advance(1000)
-    expect(await hit($, k, bash('sed -i s/a/b/ db/c.sql'))).toBe('')
-    await k.clock.advance(1000)
     expect(await hit($, k, bash('cd pkg && npm publish'))).toBe('')
     const text = k.w.outside[MINE]!
-    expect(text.endsWith('}\n')).toBe(true)
-    const f = JSON.parse(text) as Record<string, unknown>
-    expect(Object.keys(f)).toEqual(['v', 'sessionId', 'repo', 'updated', 'trips'])
-    expect(f).toEqual({
-      v: 1, sessionId: 'session-1', repo: '/repo', updated: iso(NOW + 4000),
-      trips: {
-        sql: { n: 3, first: iso(NOW), last: iso(NOW + 3000) },
-        pub: { n: 2, first: iso(NOW + 2000), last: iso(NOW + 4000) },
-      },
-    })
-    expect(text).toBe(`${JSON.stringify(f, null, 2)}\n`)
-    expect(k.w.tripWrites).toEqual([MINE, MINE, MINE, MINE, MINE])
+    expect(text).toBe(v2({ '/repo': { pub: iso(NOW + 2000), sql: iso(NOW) } }, iso(NOW + 2000)))
+    expect(Object.keys(JSON.parse(text))).toEqual(['v', 'sessionId', 'updated', 'trips'])
+    expect(k.w.tripWrites).toEqual([MINE, MINE])
     expect(k.w.writes).toEqual([])
   })
 
-  test('a call matching no entry neither counts nor writes; one call matching two entries counts each once', ONLY_F4, async ($, on) => {
+  test('Bash: path-like words hint as before but record nothing; only a command prefix records', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, traps(entry('sql', { paths: '["db/**"]' }), entry('both', { paths: '["web/**"]', commands: '["npm publish"]' })))
+    expect(await hit($, k, bash('cat db/x.sql'))).toContain('flightwake TRAPS: `sql` [confirmed] matches db/x.sql')
+    expect(await hit($, k, bash('grep -n x db/y.sql web/z.ts'))).toContain('flightwake TRAPS: `both` [confirmed] matches web/z.ts')
+    expect(await hit($, k, bash('git diff -- db/'))).toBe('')
+    expect(k.w.tripWriteAttempts).toEqual([])
+    expect(tripFile(k.w)).toBeNull()
+    // a path word first and the entry's command later in the same call: the hint still names the path word (as
+    // before), and the command records it
+    await k.clock.advance(1000)
+    expect(await hit($, k, bash('cat web/a.ts; npm publish'))).toBe('') // `both` was hinted above
+    expect(tripFile(k.w)?.trips).toEqual({ '/repo': { both: iso(NOW + 1000) } })
+    // the file tools record by their own target
+    await hit($, k, edit('/repo/db/x.sql'))
+    expect(tripFile(k.w)?.trips).toEqual({ '/repo': { both: iso(NOW + 1000), sql: iso(NOW + 1000) } })
+  })
+
+  test('a subagent call in the same session records too (once-per-session makes it harmless)', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO())
+    await hit($, k, { ...(bash('npm publish') as object), agentId: 'a1' } as never)
+    expect(tripFile(k.w)?.trips).toEqual({ '/repo': { pub: iso(NOW) } })
+  })
+
+  test('a call matching no entry neither records nor writes; one call matching two entries records each', ONLY_F4, async ($, on) => {
     const k = await tripWorld($, on, traps(entry('sql', { paths: '["*.sql"]' }), entry('db', { paths: '["db/**"]' })))
     await hit($, k, write('/repo/src/a.ts'))
     expect(k.w.tripWriteAttempts).toEqual([])
     await hit($, k, write('/repo/db/a.sql'))
     await hit($, k, write('/repo/src/b.ts'))
-    expect(tripFile(k.w)?.trips).toEqual({ sql: { n: 1, first: iso(NOW), last: iso(NOW) }, db: { n: 1, first: iso(NOW), last: iso(NOW) } })
+    expect(tripFile(k.w)?.trips).toEqual({ '/repo': { db: iso(NOW), sql: iso(NOW) } })
     expect(k.w.tripWrites).toEqual([MINE])
   })
 
+  test('nothing new: no file system work outside the repo, no stat — one $.state read is all a call costs', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO())
+    await hit($, k, write('/repo/db/a.sql'))
+    const outside = () => k.w.reads.filter((p) => p.startsWith(HOME_OUT))
+    const [reads, stats] = [outside().length, k.w.statCalls.length]
+    expect(stats).toBe(1)
+    await hit($, k, write('/repo/db/b.sql'))
+    await hit($, k, bash('ls'))
+    await hit($, k, { tool: 'Read', file_path: '/repo/db/a.sql' } as never)
+    expect([outside().length, k.w.statCalls.length]).toEqual([reads, stats])
+    expect(k.w.tripWriteAttempts).toEqual([MINE])
+  })
+
+  test('a call that did not run records nothing; its hint is unchanged', ONLY_F4, async ($, on) => {
+    let answer: Record<string, unknown> = { result: 'ok', text: 'ok' }
+    const k = await tripWorld($, on, TWO(), {}, { answer: () => answer })
+    // the permission prompt's "no", a deny rule, the auto-mode classifier: an error result in Claude Code's words
+    for (const text of [
+      "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.",
+      'Permission to use Bash with command npm publish has been denied.',
+      'Permission for this action was denied by the Claude Code auto mode classifier. Reason: risky',
+    ]) {
+      answer = { isError: true, result: text, text }
+      await hit($, k, bash('npm publish'))
+    }
+    answer = { isError: true, result: 'x', text: 'Permission for this tool use was denied. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). Try a different approach or report the limitation to complete your task.' }
+    expect(await hit($, k, write('/repo/db/a.sql'))).toContain('`sql`')
+    expect(k.w.tripWriteAttempts).toEqual([])
+    // a command that ran and failed did trip the trap
+    answer = { isError: true, result: 'Exit code 1', text: 'Exit code 1\nnpm ERR! 403' }
+    await hit($, k, bash('npm publish'))
+    expect(tripFile(k.w)?.trips).toEqual({ '/repo': { pub: iso(NOW) } })
+  })
+
+  test("a settings PreToolUse hook's deny (an error result in its own words) records nothing; the hint is unchanged", ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO(), {}, { beneath: (o) => { o('classic.PreToolUse', () => ({ deny: 'not on this branch' }) as never); engine(o) } })
+    const r = await $.tool.call(bash('npm publish'))
+    await k.clock.settle()
+    expect(r.isError).toBe(true)
+    expect(ctx(r)).toContain('`pub`')
+    expect(k.w.tripWriteAttempts).toEqual([])
+  })
+
+  test("the auto-mode classifier's deny, noted by id (PermissionDenied), records nothing", ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO(), {}, {
+      beneath: (o) => {
+        o('classic.PermissionDenied', () => ({}) as never)
+        o('tool.call', async (_$, e) => {
+          await $.classic.PermissionDenied({ session_id: 'session-1', transcript_path: '', cwd: '/repo', hook_event_name: 'PermissionDenied', tool_name: e.tool, tool_input: {}, tool_use_id: e.tool_use_id, reason: 'classifier' } as never)
+          // in words REFUSAL_RE does not know: only the id says it was refused
+          return { isError: true, result: 'x', text: 'blocked' } as never
+        })
+      },
+    })
+    expect(await hit($, k, bash('npm publish'))).toContain('`pub`')
+    expect(k.w.tripWriteAttempts).toEqual([])
+  })
+
+  test('a denied call is not recorded', ONLY_F4, async ($, on) => {
+    const w = installWorld(on, { files: FILES(TWO()), ...PRIVATE })
+    on('tool.call', () => ({ deny: 'blocked elsewhere' }))
+    const clock = mock.clock(on, { now: NOW })
+    mock.env(on, { HOME: HOME_OUT })
+    on('session.start', () => ({ cwd: w.root }))
+    await $.session.start(START)
+    await $.tool.call(write('/repo/db/a.sql'))
+    await clock.settle()
+    expect(w.tripWriteAttempts).toEqual([])
+  })
+
+  test('after a root change (/cd, EnterWorktree) a match is filed under the root it happened in', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO())
+    await hit($, k, edit('/repo/db/a.sql'))
+    await k.clock.advance(1000)
+    k.w.root = '/wt/feat'
+    expect(await hit($, k, edit('/wt/feat/db/a.sql'))).toBe('') // hinted once per session already
+    await hit($, k, bash('npm publish'))
+    expect(tripFile(k.w)?.trips).toEqual({ '/repo': { sql: iso(NOW) }, '/wt/feat': { pub: iso(NOW + 1000), sql: iso(NOW + 1000) } })
+  })
+
+  test('merge: the file on disk for this id (an earlier process, --resume) is kept, the earliest time per pair', ONLY_F4, async ($, on) => {
+    const disk = v2({ '/old': { pub: iso(NOW - 9000) }, '/repo': { sql: iso(NOW - 5000), x: iso(NOW - 4000) } }, iso(NOW - 4000))
+    const k = await tripWorld($, on, TWO(), { outside: { [MINE]: disk } })
+    // every pair here is already on disk, at an earlier time: nothing to write
+    await hit($, k, edit('/repo/db/a.sql'))
+    expect(k.w.tripWriteAttempts).toEqual([])
+    expect(k.w.outside[MINE]).toBe(disk)
+    // a new pair: the union is written, nothing on disk dropped
+    await k.clock.advance(1000)
+    await hit($, k, bash('npm publish'))
+    expect(tripFile(k.w)).toEqual({
+      v: 2, sessionId: 'session-1', updated: iso(NOW + 1000),
+      trips: { '/old': { pub: iso(NOW - 9000) }, '/repo': { pub: iso(NOW + 1000), sql: iso(NOW - 5000), x: iso(NOW - 4000) } },
+    })
+  })
+
+  test('merge: a time on disk later than this process saw (a clock that moved) gives way to the earlier one', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO(), { outside: { [MINE]: v2({ '/repo': { sql: iso(NOW + 60000) } }, iso(NOW + 60000)) } })
+    await hit($, k, edit('/repo/db/a.sql'))
+    expect(tripFile(k.w)?.trips).toEqual({ '/repo': { sql: iso(NOW) } })
+  })
+
+  test('a v1 file of ours (same id) is converted: each trip under its repo at its first time, even with nothing new', ONLY_F4, async ($, on) => {
+    const v1 = JSON.stringify({ v: 1, sessionId: 'session-1', repo: '/old', updated: iso(NOW - 1000), trips: { sql: { n: 3, first: iso(NOW - 8000), last: iso(NOW - 1000) }, pub: { n: 1, first: iso(NOW - 7000), last: iso(NOW - 7000) } } }, null, 2)
+    const k = await tripWorld($, on, TWO(), { outside: { [MINE]: `${v1}\n` } })
+    await hit($, k, edit('/repo/db/a.sql'))
+    expect(k.w.outside[MINE]).toBe(v2({ '/old': { pub: iso(NOW - 7000), sql: iso(NOW - 8000) }, '/repo': { sql: iso(NOW) } }, iso(NOW)))
+  })
+
+  test('/resume away and back in one process: the first id\'s pairs stay in its file', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO())
+    await hit($, k, edit('/repo/db/a.sql'))
+    k.w.sessionId = 'session-2'
+    await k.clock.advance(1000)
+    await hit($, k, bash('npm publish'))
+    expect(tripFile(k.w, `${TRIPS}/session-2.json`)?.trips).toEqual({ '/repo': { pub: iso(NOW + 1000) } })
+    k.w.sessionId = 'session-1'
+    await k.clock.advance(1000)
+    await hit($, k, bash('npm publish'))
+    expect(tripFile(k.w)?.trips).toEqual({ '/repo': { pub: iso(NOW + 2000), sql: iso(NOW) } })
+  })
+
+  test('/clear (a new session id) starts a new file; the old one keeps its pairs', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO())
+    await hit($, k, write('/repo/db/a.sql'))
+    k.w.sessionId = 'session-2'
+    expect(await hit($, k, write('/repo/db/a.sql'))).toContain('`sql`')
+    expect(tripFile(k.w)?.trips).toEqual({ '/repo': { sql: iso(NOW) } })
+    expect(tripFile(k.w, `${TRIPS}/session-2.json`)).toEqual({ v: 2, sessionId: 'session-2', updated: iso(NOW), trips: { '/repo': { sql: iso(NOW) } } })
+  })
+
+  test('a file at our path that is not ours (another version, another id, another tool) is left untouched', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO())
+    let i = 0
+    for (const foreign of ['{"v":3,"sessionId":"session-1","trips":{}}', '{"v":2,"sessionId":"session-9","trips":{}}', '{"v":1,"sessionId":"session-9","trips":{}}', 'not json', '[1]']) {
+      k.w.outside[MINE] = foreign
+      k.w.sessionId = i % 2 === 0 ? 'session-1' : 'session-1' // the same id each time; a new trap each time
+      await hit($, k, bash(`npm publish ${i}`))
+      await hit($, k, write(`/repo/db/a${i++}.sql`))
+      expect(k.w.outside[MINE]).toBe(foreign)
+    }
+    expect(k.w.tripWriteAttempts).toEqual([])
+  })
+
+  test('a torn write of ours (unparseable, our prefix) is overwritten with what this process has', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO(), { outside: { [MINE]: '{\n  "v": 2,\n  "sessionId": "session-1",\n  "upd' } })
+    await hit($, k, write('/repo/db/a.sql'))
+    expect(tripFile(k.w)?.trips).toEqual({ '/repo': { sql: iso(NOW) } })
+  })
+
+  test('the trips folder: missing, or open to group / others, or its mode unreadable → nothing written, the hint still shown', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO(), { dirs: [], modes: {} })
+    expect(await hit($, k, write('/repo/db/a.sql'))).toContain('`sql`')
+    expect(k.w.tripWriteAttempts).toEqual([])
+    expect(k.w.statCalls).toEqual([]) // a missing folder is not even stat-ed
+    k.w.dirs.push(TRIPS)
+    for (const mode of ['755', '750', '701', '0770']) {
+      k.w.modes[TRIPS] = mode
+      await hit($, k, bash(`npm publish --tag ${mode}`)) // pub is new once; then nothing new
+    }
+    expect(k.w.tripWriteAttempts).toEqual([])
+    delete k.w.modes[TRIPS] // no `stat` answers (Windows, a refusal)
+    await hit($, k, edit('/repo/web/../db/b.sql'))
+    expect(k.w.tripWriteAttempts).toEqual([])
+  })
+
+  test('a private folder by either stat (BSD -f %Lp, GNU -c %a) is written to', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO(), { statForm: 'gnu', modes: { [TRIPS]: '700' } })
+    await hit($, k, write('/repo/db/a.sql'))
+    expect(k.w.statCalls).toEqual([`-f %Lp ${TRIPS}`, `-c %a ${TRIPS}`])
+    expect(tripFile(k.w)?.trips).toEqual({ '/repo': { sql: iso(NOW) } })
+  })
+
   test('the base inside the repo → nothing written, the hint still shown', ONLY_F4, async ($, on) => {
-    const k = await tripWorld($, on, TWO(), {}, { env: { FLIGHTWAKE_HOME: '/repo/.fwhome', HOME: HOME_OUT } })
+    const k = await tripWorld($, on, TWO(), { dirs: ['/repo/.fwhome/trips'], modes: { '/repo/.fwhome/trips': '700' } }, { env: { FLIGHTWAKE_HOME: '/repo/.fwhome', HOME: HOME_OUT } })
     expect(await hit($, k, write('/repo/db/a.sql'))).toContain('`sql`')
     expect(k.w.tripWriteAttempts).toEqual([])
     expect(k.w.writes).toEqual([])
@@ -357,7 +551,7 @@ describe('tripwire: trip file', () => {
     expect(await hit($, k, write('/repo/db/a.sql'))).toContain('`sql`')
     k.w.outside['/home/u/.flightwake/STATE.md'] = 'x'
     delete k.w.outside['/home/u/.git/HEAD']
-    await hit($, k, write('/repo/db/b.sql'))
+    await hit($, k, bash('npm publish'))
     expect(k.w.tripWriteAttempts).toEqual([])
   })
 
@@ -367,24 +561,7 @@ describe('tripwire: trip file', () => {
     expect(k.w.tripWriteAttempts).toEqual([])
   })
 
-  test('a file at our path that is not ours (another version, another id, another tool) is left untouched', ONLY_F4, async ($, on) => {
-    const k = await tripWorld($, on, TWO())
-    let i = 0
-    for (const foreign of ['{"v":2,"sessionId":"session-1","trips":{}}', '{"v":1,"sessionId":"session-9","trips":{}}', 'not json', '[1]']) {
-      k.w.outside[MINE] = foreign
-      await hit($, k, write(`/repo/db/a${i++}.sql`))
-      expect(k.w.outside[MINE]).toBe(foreign)
-    }
-    expect(k.w.tripWriteAttempts).toEqual([])
-  })
-
-  test('our own file (or a torn write of it) from earlier in this session is overwritten', ONLY_F4, async ($, on) => {
-    const k = await tripWorld($, on, TWO(), { outside: { [MINE]: '{\n  "v": 1,\n  "sessionId": "session-1",\n  "repo": "/re' } })
-    await hit($, k, write('/repo/db/a.sql'))
-    expect(tripFile(k.w)?.trips.sql.n).toBe(1)
-  })
-
-  test('tripwire off → nothing counted, nothing written', { options: { tripwire: false, fleet: false } }, async ($, on) => {
+  test('tripwire off → nothing recorded, nothing written', { options: { tripwire: false, fleet: false, trips: true } }, async ($, on) => {
     const k = await tripWorld($, on, TWO())
     expect(await hit($, k, write('/repo/db/a.sql'))).toBe('')
     expect(await hit($, k, bash('npm publish'))).toBe('')
@@ -392,35 +569,29 @@ describe('tripwire: trip file', () => {
     expect(k.w.writes).toEqual([])
   })
 
+  // `trips` unset follows `fleet`; set, it wins; the hints never depend on it
+  const SWITCH: [string, Record<string, boolean>, boolean][] = [
+    ['unset with fleet on (the defaults)', {}, true],
+    ['unset with fleet off', { fleet: false }, false],
+    ['on with fleet off', { fleet: false, trips: true }, true],
+    ['off with fleet on', { trips: false }, false],
+  ]
+  for (const [name, options, isWritten] of SWITCH) {
+    test(`trips ${name} → ${isWritten ? 'written' : 'no trip file'}; the hint is the same`, { options }, async ($, on) => {
+      const k = await tripWorld($, on, TWO())
+      expect(await hit($, k, write('/repo/db/a.sql'))).toContain('flightwake TRAPS: `sql` [confirmed] matches db/a.sql')
+      expect(k.w.tripWrites).toEqual(isWritten ? [MINE] : [])
+      expect(k.w.writes).toEqual([])
+    })
+  }
+
   test('a -p / SDK run (not interactive) writes nothing; the hint is unchanged', ONLY_F4, async ($, on) => {
     const k = await tripWorld($, on, TWO(), {}, { start: { cwd: '/repo', surface: null, isInteractive: false } })
     expect(await hit($, k, write('/repo/db/a.sql'))).toContain('`sql`')
     expect(k.w.tripWriteAttempts).toEqual([])
   })
 
-  test('a denied call is not counted', ONLY_F4, async ($, on) => {
-    const w = installWorld(on, { files: FILES(TWO()) })
-    on('tool.call', () => ({ deny: 'blocked elsewhere' }))
-    const clock = mock.clock(on, { now: NOW })
-    mock.env(on, { HOME: HOME_OUT })
-    on('session.start', () => ({ cwd: w.root }))
-    await $.session.start(START)
-    await $.tool.call(write('/repo/db/a.sql'))
-    await clock.settle()
-    expect(w.tripWriteAttempts).toEqual([])
-  })
-
-  test('/clear (a new session id) starts a new file from zero; the old one keeps its count', ONLY_F4, async ($, on) => {
-    const k = await tripWorld($, on, TWO())
-    await hit($, k, write('/repo/db/a.sql'))
-    await hit($, k, write('/repo/db/a.sql'))
-    k.w.sessionId = 'session-2'
-    expect(await hit($, k, write('/repo/db/a.sql'))).toContain('`sql`')
-    expect(tripFile(k.w)?.trips.sql.n).toBe(2)
-    expect(tripFile(k.w, `${TRIPS}/session-2.json`)).toMatchObject({ v: 1, sessionId: 'session-2', trips: { sql: { n: 1 } } })
-  })
-
-  test('a failing or throwing write never touches the result or the hint, and is tried again on the next count', ONLY_F4, async ($, on) => {
+  test('a failing or throwing write never touches the result or the hint, and is tried again with the next new trap', ONLY_F4, async ($, on) => {
     const k = await tripWorld($, on, TWO())
     k.w.isFleetWriteFailing = true
     const r = await $.tool.call(write('/repo/db/a.sql'))
@@ -433,8 +604,11 @@ describe('tripwire: trip file', () => {
     expect((await $.tool.call(bash('npm publish'))).text).toBe('ok')
     await k.clock.settle()
     k.w.isFleetWriteThrowing = false
-    await hit($, k, write('/repo/db/b.sql'))
-    expect(tripFile(k.w)?.trips).toMatchObject({ sql: { n: 2 }, pub: { n: 1 } })
+    await hit($, k, write('/repo/db/b.sql')) // nothing new: not tried
+    expect(k.w.tripWriteAttempts.length).toBe(2)
+    k.w.root = '/wt/b'
+    await hit($, k, write('/wt/b/db/b.sql'))
+    expect(tripFile(k.w)?.trips).toEqual({ '/repo': { pub: iso(NOW), sql: iso(NOW) }, '/wt/b': { sql: iso(NOW) } })
     expect(k.w.tripWriteAttempts.length).toBe(3)
   })
 
@@ -445,5 +619,51 @@ describe('tripwire: trip file', () => {
       await hit($, k, bash('npm publish')), await hit($, k, bash('npm publish')),
     ]
     expect(seen.map((c) => c.includes('flightwake TRAPS'))).toEqual([true, false, true, false])
+  })
+})
+
+describe('trip file helpers (pure)', () => {
+  test('addTrips: only new pairs; another id starts over; a name like __proto__ stays an own key', () => {
+    const a = addTrips(null, 's', '/r', ['x', 'x', '__proto__'], 'T1')!
+    expect(a).toEqual({ sessionId: 's', trips: { '/r': { x: 'T1', ['__proto__']: 'T1' } }, n: 2 })
+    expect(Object.prototype.hasOwnProperty.call(a.trips['/r'], '__proto__')).toBe(true)
+    expect(addTrips(a, 's', '/r', ['x'], 'T2')).toBeNull()
+    expect(addTrips(a, 's', '/q', ['x'], 'T2')?.n).toBe(3)
+    expect(addTrips(a, 's2', '/r', ['x'], 'T2')).toEqual({ sessionId: 's2', trips: { '/r': { x: 'T2' } }, n: 1 })
+  })
+
+  test('tripsOfFile / mergeTrips / isOursTripsText', () => {
+    expect(tripsOfFile('{"v":2,"sessionId":"s","updated":"u","trips":{"/r":{"a":"T","b":3}}}', 's')).toEqual({ v: 2, trips: { '/r': { a: 'T' } } })
+    expect(tripsOfFile('{"v":2,"sessionId":"t","trips":{}}', 's')).toBeNull()
+    expect(tripsOfFile('{"v":3,"sessionId":"s","trips":{}}', 's')).toBeNull()
+    expect(tripsOfFile('nope', 's')).toBeNull()
+    expect(tripsOfFile('{"v":1,"sessionId":"s","repo":"/o","trips":{"a":{"n":2,"first":"F","last":"L"}}}', 's')).toEqual({ v: 1, trips: { '/o': { a: 'F' } } })
+    const t1 = '2026-01-01T00:00:00.000Z'
+    const t2 = '2026-01-02T00:00:00.000Z'
+    expect(JSON.stringify(mergeTrips({ '/b': { y: t2 }, '/a': { x: t2 } }, { '/a': { x: t1, w: t2 } }))).toBe(JSON.stringify({ '/a': { w: t2, x: t1 }, '/b': { y: t2 } }))
+    expect(isOursTripsText('{"v":2,"sessionId":"s"}', 's')).toBe(true)
+    expect(isOursTripsText('{"v":1,"sessionId":"s"}', 's')).toBe(true)
+    expect(isOursTripsText('{ "v": 2, "sessionId": "s", "upd', 's')).toBe(true)
+    expect(isOursTripsText('{"v":2,"sessionId":"t"}', 's')).toBe(false)
+    expect(isOursTripsText('{"v":3,"sessionId":"s"}', 's')).toBe(false)
+  })
+
+  test('REFUSAL_RE: Claude Code refusals, not a failed command', () => {
+    for (const t of [
+      "The user doesn't want to proceed with this tool use. The tool use was rejected",
+      'Permission to use Bash has been denied.',
+      'Permission to use Bash with command rm -rf x has been denied.',
+      'Permission for this tool use was denied. The tool use was rejected',
+      'Permission for this action has been denied. Reason: x',
+      '<tool_use_error>Permission to use Write has been denied because Claude Code is running in don\'t ask mode.',
+    ]) expect(REFUSAL_RE.test(t)).toBe(true)
+    for (const t of ['Exit code 1\nPermission to use Bash has been denied.', 'String to replace not found in file.', 'npm ERR! 403 Forbidden']) expect(REFUSAL_RE.test(t)).toBe(false)
+  })
+
+  test('codeCell: exact shell text, | escaped for the table, a longer fence around backticks', () => {
+    expect(codeCell("cd '/repo/it'\\''s' && claude --resume x")).toBe("`cd '/repo/it'\\''s' && claude --resume x`")
+    expect(codeCell("cd '/a|b' && x")).toBe("`cd '/a\\|b' && x`")
+    expect(codeCell("cd '/a`b' && x")).toBe("``cd '/a`b' && x``")
+    expect(codeCell('`x`')).toBe('`` `x` ``')
   })
 })

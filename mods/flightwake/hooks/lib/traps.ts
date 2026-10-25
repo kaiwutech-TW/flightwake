@@ -60,3 +60,10 @@ export function parseTraps(text: string): TrapEntry[] {
 
 export const isActive = (e: TrapEntry): boolean => e.status !== 'superseded'
 export const hasMatchers = (e: TrapEntry): boolean => e.paths.length > 0 || e.commands.length > 0
+
+/**
+ * Claude Code's own words for a call that never ran because permission was refused: the prompt's "no" (main loop or
+ * subagent), a deny rule, `dontAsk`, the auto-mode classifier, a built-in safety check. Read only on an error result.
+ * A settings PreToolUse hook's deny reads as its own reason, so that one is caught by id instead (classic.PreToolUse).
+ */
+export const REFUSAL_RE = /^\s*(?:<tool_use_error>\s*)?(?:The user doesn't want to proceed with this tool use\b|Permission (?:for this (?:tool use|action|command)|to use \S+)[^\n]*?(?:was|has been) denied\b)/

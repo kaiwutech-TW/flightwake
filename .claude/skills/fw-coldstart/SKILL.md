@@ -38,8 +38,9 @@ description: flightwake 冷啟動 — 接手一個 repo 前先恢復狀態。Use
 - STATE 超過 7 天未更新且 git log 有新 commit → 先補一份 record 再開工(考古趁記憶還在 git message 裡)
 - TRAPS 的 active 條目 >20,或本次冷啟動實測 >5 分鐘 → 向使用者提議壓實
   (合併重複、把已不成立的條目標 superseded——壓實是改 status 與整併,永不刪行)
-  **提議從資料出發**:先跑 `npx flightwake traps stats`(唯讀)——沒有錨點的條目 → 候選:補 `paths`/`commands` 錨點;
-  有錨點但很久沒觸發 → 候選:重新驗證或 supersede;常被觸發 → 保留。stats 只涵蓋裝了 mod 的 Claude Code session
+  **提議從資料出發**:先跑 `npx flightwake traps stats`(唯讀)——它數的是「觸發過該條的 session 數」(同一 session 只算一次),
+  且只有 Edit/Write 的路徑與 Bash 指令前綴算數;唯讀的 shell 提到某路徑不算。沒有錨點的條目 → 候選:補 `paths`/`commands` 錨點;
+  有錨點但很久沒有 session 觸發 → 候選:重新驗證或 supersede;很多 session 觸發過 → 保留。stats 只涵蓋裝了 mod 的 Claude Code session
   (Codex/Gemini 不記觸發);它說沒有觸發資料時,不要把「沒觸發」當成「沒用」
   **提議必須具體到一個字能放行**:先給診斷(慢在哪:STATE 太長/太舊?上次沒收尾?
   TRAPS/DECISIONS 過時條目太多?記錄用了外人看不懂的代號?),再列逐條處置清單

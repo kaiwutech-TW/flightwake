@@ -5,7 +5,7 @@
  * before its final confirmation, instead of a hand-maintained copy that drifts from the code.
  * Zero dependencies: node built-ins + `git` (no shell).
  */
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, lstatSync, realpathSync, rmSync, renameSync, openSync, writeSync, fchmodSync, closeSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, lstatSync, realpathSync, rmSync, renameSync, openSync, writeSync, fchmodSync, closeSync, chmodSync } from 'node:fs';
 import { join, dirname, basename, isAbsolute, relative, sep, delimiter } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
@@ -1042,38 +1042,79 @@ export function install(o) {
     } catch { log(`  ⚠️  ${REGISTRY} could not be updated — skipped (cross-repo tools won't see this repo)`); }
   }
 
-  // 8. --mod (init, update --mod, setup's add path): the session fleet folder (<base>/sessions, F7) is created 0700 when absent — the mod's $.fs.write
-  //    cannot set modes, so a folder it creates first lands at the umask. Never chmods an existing folder, never goes
-  //    through a symlink, never inside this repo or any other repo / records folder (the mod refuses those bases too);
-  //    best-effort, never fails the install. Same base rule as the mod, the gauge and `fleet` (bin/fleet.mjs
-  //    fleetBase: absolute FLIGHTWAKE_HOME, else HOME), and the mod's guard (hooks/lib/fleet.ts repoMarkersOf).
-  //    A dry run lists the folder among the writes (setup's path list, --dry-run) and creates nothing.
-  if (o.mod && modHere) {
-    let sdir = null;
-    try {
-      const fb = fleetBase(process.env);
-      sdir = fb === null ? null : `${fb}/sessions`;
-      const present = (p) => { try { lstatSync(p); return true; } catch { return false; } };
-      if (sdir !== null && !fleetDirInRepo(TARGET, fb) && !present(sdir)) {
-        if (isLink(fb)) throw new Error('symlink');
-        writes.push(`${sdir}/`);
-        if (!dry) {
-          mkdirSync(sdir, { recursive: true, mode: 0o700 });
-          log(`  add  ${sdir}/${M({ en: ' (0700; session fleet)', 'zh-TW': '(0700;session 狀態回報)', 'zh-CN': '(0700;session 状态上报)', ja: '(0700;セッション状態の報告)' })}`);
+  // 8. Whenever the mod is in this repo after this run (init/update --mod, setup's add path, and a bare update that
+  //    refreshes an installed mod, so an upgrade gets the trips folder the mod now requires): the session fleet folder (<base>/sessions, F7) and the trip folder
+  //    (<base>/trips, F4's trip counts) are created 0700 when absent — the mod's $.fs.write cannot set modes, so a folder
+  //    it creates first lands at the umask. Never goes through a symlink, never inside this repo or any other repo /
+  //    records folder (the mod refuses those bases too); best-effort, never fails the install. Same base rule as the
+  //    mod, the gauge and `fleet` (bin/fleet.mjs fleetBase: absolute FLIGHTWAKE_HOME, else HOME), and the mod's guard
+  //    (hooks/lib/fleet.ts repoMarkersOf). A dry run lists the folders among the writes (setup's path list, --dry-run)
+  //    and changes nothing.
+  //    An existing sessions folder is never chmodded (DECISIONS 2026-10-11). An existing trips folder IS tightened to
+  //    0700 when it is a real folder owned by this user and open to group/others: the first mod build (0.17 dev) created
+  //    it at the umask, so every such folder is ours by construction, and its files name every repo you work in;
+  //    tightening never loosens anything. Owned by someone else → only a warning with the command.
+  if (modHere) {
+    const fb = (() => { try { return fleetBase(process.env); } catch { return null; } })();
+    const present = (p) => { try { lstatSync(p); return true; } catch { return false; } };
+    for (const sub of ['sessions', 'trips']) {
+      const sdir = fb === null ? null : `${fb}/${sub}`;
+      try {
+        if (sdir !== null && !fleetDirInRepo(TARGET, fb, sub) && !present(sdir)) {
+          if (isLink(fb)) throw new Error('symlink');
+          writes.push(`${sdir}/`);
+          if (!dry) {
+            mkdirSync(sdir, { recursive: true, mode: 0o700 });
+            log(`  add  ${sdir}/${sub === 'sessions'
+              ? M({ en: ' (0700; session fleet)', 'zh-TW': '(0700;session 狀態回報)', 'zh-CN': '(0700;session 状态上报)', ja: '(0700;セッション状態の報告)' })
+              : M({ en: ' (0700; tripwire counts)', 'zh-TW': '(0700;絆線觸發紀錄)', 'zh-CN': '(0700;绊线触发记录)', ja: '(0700;検知線の発火記録)' })}`);
+          }
+        } else if (sdir !== null && isLink(sdir)) throw new Error('symlink');
+        else if (sub === 'trips' && sdir !== null && !fleetDirInRepo(TARGET, fb, sub) && !isLink(fb)) {
+          const st = lstatSync(sdir);
+          const mode = st.mode & 0o777;
+          if (st.isDirectory() && (mode & 0o077)) {
+            const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+            if (uid !== null && st.uid === uid) {
+              writes.push(`${sdir}/`);
+              if (!dry) {
+                chmodSync(sdir, 0o700);
+                log(`  chmod ${sdir}/ 0700${M({
+                  en: ` (was ${mode.toString(8)}; trip files name every repo you work in)`,
+                  'zh-TW': `(原為 ${mode.toString(8)};觸發紀錄檔會寫出你用過的每個 repo)`,
+                  'zh-CN': `(原为 ${mode.toString(8)};触发记录文件会写出你用过的每个 repo)`,
+                  ja: `(元は ${mode.toString(8)}。発火記録ファイルには作業したすべての repo が書かれる)`,
+                })}`);
+              }
+            } else {
+              log(`  ⚠️  ${M({
+                en: `${sdir} is readable by others (${mode.toString(8)}) and not owned by you — left as it is; \`chmod 700 ${sdir}\` if it should be private`,
+                'zh-TW': `${sdir} 其他人可讀(${mode.toString(8)})且擁有者不是你——不動;要私有請 \`chmod 700 ${sdir}\``,
+                'zh-CN': `${sdir} 其他人可读(${mode.toString(8)})且所有者不是你——不动;要私有请 \`chmod 700 ${sdir}\``,
+                ja: `${sdir} は他人も読める(${mode.toString(8)})うえ所有者があなたではない——そのまま。非公開にするなら \`chmod 700 ${sdir}\``,
+              })}`);
+            }
+          }
         }
-      } else if (sdir !== null && isLink(sdir)) throw new Error('symlink');
-    } catch (e) {
-      log(`  ⚠️  ${e?.message === 'symlink' ? M({
-        en: `${sdir} (or the folder holding it) is a symbolic link — not created, and the mod writes nothing through it (/fw-mod shows the reason)`,
-        'zh-TW': `${sdir}(或它所在的資料夾)是符號連結——不建立,mod 也不會透過它寫入(/fw-mod 會說明原因)`,
-        'zh-CN': `${sdir}(或它所在的文件夹)是符号链接——不创建,mod 也不会通过它写入(/fw-mod 会说明原因)`,
-        ja: `${sdir}(またはその親フォルダ)はシンボリックリンク——作成せず、mod もそれを経由して書き込まない(理由は /fw-mod に表示)`,
-      }) : M({
-        en: 'the session fleet folder could not be created (not writable) — skipped; the mod creates it on first use',
-        'zh-TW': 'session 狀態資料夾建不起來(不可寫)— 略過;mod 第一次用到時會自己建',
-        'zh-CN': 'session 状态文件夹建不起来(不可写)— 略过;mod 第一次用到时会自己建',
-        ja: 'セッション状態フォルダを作れなかった(書き込み不可)— スキップ。mod が初回使用時に作成',
-      })}`);
+      } catch (e) {
+        log(`  ⚠️  ${e?.message === 'symlink' ? M({
+          en: `${sdir} (or the folder holding it) is a symbolic link — not created, and the mod writes nothing through it (/fw-mod shows the reason)`,
+          'zh-TW': `${sdir}(或它所在的資料夾)是符號連結——不建立,mod 也不會透過它寫入(/fw-mod 會說明原因)`,
+          'zh-CN': `${sdir}(或它所在的文件夹)是符号链接——不创建,mod 也不会通过它写入(/fw-mod 会说明原因)`,
+          ja: `${sdir}(またはその親フォルダ)はシンボリックリンク——作成せず、mod もそれを経由して書き込まない(理由は /fw-mod に表示)`,
+        }) : sub === 'sessions' ? M({
+          en: 'the session fleet folder could not be created (not writable) — skipped; the mod creates it on first use',
+          'zh-TW': 'session 狀態資料夾建不起來(不可寫)— 略過;mod 第一次用到時會自己建',
+          'zh-CN': 'session 状态文件夹建不起来(不可写)— 略过;mod 第一次用到时会自己建',
+          ja: 'セッション状態フォルダを作れなかった(書き込み不可)— スキップ。mod が初回使用時に作成',
+        }) : M({
+          en: 'the trip folder could not be created or tightened (not writable) — skipped; the mod creates it on first use',
+          'zh-TW': '觸發紀錄資料夾建不起來或改不了權限(不可寫)— 略過;mod 第一次用到時會自己建',
+          'zh-CN': '触发记录文件夹建不起来或改不了权限(不可写)— 略过;mod 第一次用到时会自己建',
+          ja: '発火記録フォルダを作成または権限変更できなかった(書き込み不可)— スキップ。mod が初回使用時に作成',
+        })}`);
+        if (e?.message === 'symlink') break; // the base itself is a link: one line is enough
+      }
     }
   }
 
