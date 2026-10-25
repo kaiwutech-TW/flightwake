@@ -1,8 +1,8 @@
 ---
 updated: 2026-10-26
 updated_by: Claude Code (Opus 5.5)
-latest_record: records/261026-traps-similar-and-trips.md
-health: yellow  # traps similar/stats 與 mod 觸發計數已完成(smoke 47 節全過);仍黃:mod 測試在 Claude Code 2.1.310 有 25 個 fleet 失敗(clean HEAD 同樣失敗,測試環境改變)、觸發計數未真機驗、修正未發版、TRAPS active 31 條超過紅線
+latest_record: records/261026-review-fixes.md
+health: yellow  # max review 15 項已修、smoke 全綠;仍黃:mod 測試套件在 Claude Code 2.1.310 有 25 個 fleet 失敗(clean HEAD 同一組,測試環境改變)所以不算綠、v2 觸發紀錄與面板修正未真機驗、未發版、TRAPS active 超過 20
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
 <!-- 規則:只寫「現在」與「下一步」;歷史去 records/,決策去 DECISIONS.md。 -->
@@ -22,16 +22,16 @@ flightwake **v0.17.0 已發佈(2026-10-11,npm latest,provenance;release run 3813
 
 **2026-10-19 真機驗證(詳見 [[261019-console-realmachine]])**:中控台的跳過去、兩段確認收尾、Codex 狀態、手動關閉,以及 F7 的 blocked、`/clear`、`/exit`、`kill -9` 接回,都在 Orca 實測通過。修了兩個 bug:Codex 收尾不送出、接回 toast 被截斷(ac9031e,在 `[Unreleased]`,尚未發版)。TRAPS 依實測壓實。
 
-**2026-10-26 TRAPS 寫前查重與觸發次數(詳見 [[261026-traps-similar-and-trips]])**:參考 dsh-plugin.org 的記憶插件,新增 `npx flightwake traps similar`(`/fw-trap` 寫入前查重、三選一)與 `npx flightwake traps stats`(各條有無錨點、被絆線比對幾次;`/fw-coldstart` 壓實提案從它出發);mod 絆線把次數寫到 repo 外 `<base>/trips/<id>.json`(DECISIONS 2026-10-26)。都在 `[Unreleased]`。
+**2026-10-26 TRAPS 寫前查重與觸發次數(詳見 [[261026-traps-similar-and-trips]])**:參考 dsh-plugin.org 的記憶插件,新增 `npx flightwake traps similar`(`/fw-trap` 寫入前查重、三選一)與 `npx flightwake traps stats`(各條有無錨點、被絆線比對幾次;`/fw-coldstart` 壓實提案從它出發);mod 絆線把次數寫到 repo 外 `<base>/trips/<id>.json`(DECISIONS 2026-10-26)。都在 `[Unreleased]`。同日 `/code-review max` 確認 15 項問題,已全修(詳見 [[261026-review-fixes]]):觸發紀錄改成每 session 每 repo 最多一次(trip 檔 v2、開關 `trips`、資料夾須 0700)、`npx flightwake traps forget`、`/fw-trap` 範本改 heredoc、面板與 `/fw-fleet` 的修正。
 
 **展示網站**:四語 Astro 網站已推 main 並部署 Cloudflare Pages Direct Upload;目前包含飛行記錄器 Logo、語言偏好、匿名多 agent 案例、0.17.0 側邊面板匿名示意與 `/fw-mod` 0.3.0 實測輸出。自訂網域四語/SEO 路由 HTTPS 200;網站已標示 npm 0.17.0,最新部署證據見 [[261011-mod-017-site]]。後續更新須重建並手動部署(指令見 `website/README.md`)。
 
 # 進行中(未完成勿刪)
 
 - **mod 測試在 Claude Code 2.1.310 有 25 個 fleet 失敗**:clean HEAD 同一組,是測試環境對沒人回答的權限請求改判拒絕(TRAPS `plugin-test-kit-denies-unanswered-permission-request`,probable)。要修得找 2.1.310 的 testing 文件;另需真機確認互動 session 的 F7 blocked 仍正常。
-- **觸發計數未真機驗**:dogfood 副本已刷新,mod 在刷新那一輪結束後才重載;下一輪碰到有錨點的 trap 後看 `~/.flightwake/trips/` 與 `node bin/cli.mjs traps stats`。子代理的兩個選擇待確認:只記互動 session、一檔一個 repo 欄位。
+- **v2 觸發紀錄未真機驗**:dogfood 副本已刷新、`~/.flightwake/trips` 已收成 0700;下一個 session 改到有 `paths` 錨點的檔或跑有 `commands` 錨點的指令後,看 `~/.flightwake/trips/` 是否為 v2、`node bin/cli.mjs traps stats` 的 sessions 欄。另待真機:權限對話框按「否」不被記、面板對 Codex 收尾的讀回與連按防護。
 - **待發版**:ac9031e 的兩個修正與 10-26 的 traps 功能都在 CHANGELOG `[Unreleased]`,下次 release 時 mod 版號從 0.3.0 往上推。
-- **兩處小 bug 待決定修不修**:面板「本 session」列寫死工作中(`features/panel.ts` 的 `isSelf ? 'working'`);`/fw-fleet` 表格把 code span 裡的反斜線加倍,路徑含單引號時指令抄出來是錯的。
+- **一處小 bug 待決定修不修**:面板「本 session」列寫死工作中(`features/panel.ts` 的 `isSelf ? 'working'`)。(`/fw-fleet` 反斜線加倍已在 10-26 修好)
 - **仍未驗**:`/fw-fleet` 四語輸出;真引擎 PermissionRequest 的 `tool_input` 是否等於 `tool.check` 的 input;Codex hook trust 的 bypass 對照重跑。
 - **spend 熱重載後「token 不明」但費用有值**:待查(record 未完節)。
 - 慣例演進採讀取端容忍(DECISIONS 2026-07-18),容忍不了時再議遷移工具;zh-CN/ja 安裝內容待 issue 需求再擴。
