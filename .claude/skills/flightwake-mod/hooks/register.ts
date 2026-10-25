@@ -13,7 +13,7 @@ import { registerTripwire } from './features/tripwire'
 import { registerRoleGuard } from './features/role-guard'
 import { registerStatus } from './features/status'
 import { registerSpend } from './features/spend'
-import { registerFleet } from './features/fleet'
+import { registerFleet, registerTripLog } from './features/fleet'
 import { registerPanel } from './features/panel'
 
 /** userConfig field → default, mirrored from .claude-plugin/plugin.json (F5 is opt-in). */
@@ -28,7 +28,11 @@ export const register: Register = (on, options) => {
   if (isEnabled(options, 'stateInject')) try { registerStateInject(on) } catch {} // F1
   if (isEnabled(options, 'band')) try { registerBand(on) } catch {} // F2
   if (isEnabled(options, 'recorder')) try { registerRecorder(on) } catch {} // F3
-  if (isEnabled(options, 'tripwire')) try { registerTripwire(on) } catch {} // F4
+  if (isEnabled(options, 'tripwire')) {
+    // the trip file's writer first, so it sits outside the tripwire and sees this call's count (first = outermost)
+    try { registerTripLog(on) } catch {}
+    try { registerTripwire(on) } catch {}
+  } // F4
   if (isEnabled(options, 'roleGuard')) try { registerRoleGuard(on) } catch {} // F5
   if (isEnabled(options, 'spend')) try { registerSpend(on) } catch {} // F6
   if (isEnabled(options, 'fleet')) try { registerFleet(on) } catch {} // F7

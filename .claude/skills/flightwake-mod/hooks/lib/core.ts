@@ -6,19 +6,20 @@
  *   the flightwake marker in AGENTS.md / GEMINI.md (language only) · package.json `scripts` · the effective
  *   `statusLine` setting · the session transcript (F6) · F7's `<base>/sessions/*.json`, whether a listed session's
  *   transcript exists (existence only), existence probes for `<base>/STATE.md` and for `.git` and
- *   `.flightwake/STATE.md` on `<base>` and each folder above it, and where the root and `<base>/sessions` really
- *   land (stat with resolve). F8's console, only inside Orca (ORCA_TERMINAL_HANDLE set) and only while the side
+ *   `.flightwake/STATE.md` on `<base>` and each folder above it, where the root and `<base>/sessions` really
+ *   land (stat with resolve); for F4's trip file the same probes over `<base>/trips` and its own file there. F8's console, only inside Orca (ORCA_TERMINAL_HANDLE set) and only while the side
  *   panel is open: `orca terminal list --json` every 10 s, and for each worktree it lists, that worktree's
  *   `.flightwake/STATE.md` and instruction-file markers (read-only, no git there); on a press, `orca terminal switch`
  *   and — after a second, confirming press, and only to an idle agent — `orca terminal send` of `/fw-record` /
  *   `$fw-record`. Nothing else, and no network. Everything outside the module goes through `$`; every
  * helper here swallows its own errors and answers null/false, so a feature built on them degrades silently (no
  * .flightwake/, not a git repo, git missing, unreadable file) instead of surfacing an error to the person.
- * Never writes inside the repo or the user's records: the mod's only write is F7's own session file,
- * `<base>/sessions/<id>.json` outside the repo, made in hooks/features/fleet.ts alone — refused when `<base>` lies
- * inside the repo (by spelling or by real path), is a records folder, or lies in any git repo or flightwake root;
- * never through a symlink; never over a file that is not ours. The shared Io here has no write; everything else
- * stays in $.state / $.store.
+ * Never writes inside the repo or the user's records. The mod makes two writes, both outside the repo under the same
+ * `<base>` and both in hooks/features/fleet.ts alone: F7's session file `<base>/sessions/<id>.json`, and F4's trip
+ * file `<base>/trips/<id>.json` (each TRAPS entry's match count this session). The same rules hold both (guardOutside
+ * there): refused when `<base>` lies inside the repo (by spelling or by real path), is a records folder, or lies in
+ * any git repo or flightwake root; never through a symlink; never over a file that is not ours; interactive sessions
+ * only. The shared Io here has no write; everything else stays in $.state / $.store.
  */
 
 export const PLUGIN = 'flightwake-mod' as const

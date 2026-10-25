@@ -34,24 +34,33 @@ Three rules:
    costs extra caution); to argue "**this is safe**" → it must be `confirmed` (being wrong hits prod and your users directly)
 
 Raising confidence (suspected → confirmed) is an **in-place edit of the same entry**, not a supersede;
-supersede is reserved for when the root cause itself changed.
+supersede is reserved for when the root cause itself changed. The same rule decides when the pre-write check (step 1) finds a candidate.
 
 ## Steps
 
-1. Follow the entry format demonstrated at the top of `.flightwake/TRAPS.md` (OKF-style frontmatter: name/type/status/confidence/tags/discovered)
+1. **Check for a near-duplicate before writing**: run
+   `npx flightwake traps similar --name=<slug> --tags=<a,b> [--paths=<glob,…>] [--commands=<cmd,…>] --text="<symptom + root cause>"`
+   (read-only; it reads TRAPS.md and nothing else). If it lists candidates, pick one of three instead of simply adding another entry:
+   - **update the existing entry in place** — same root cause: more evidence, more paths/commands; a confidence upgrade (suspected → confirmed) is this case
+   - **supersede** it — the root cause itself changed: as in step 6, set the old entry's `status: superseded` and point its body at the new [[name]]
+   - **record a new entry anyway** — a different root cause: in the new entry's body, write one line saying why it is not the same as the candidate
+   A candidate marked "same name" rules out a new entry under that name. No candidates → go on and write it.
+   Command unavailable (offline, an older flightwake, no Node)? Do the same check by hand: grep `.flightwake/TRAPS.md` for the new entry's
+   tags, paths and key error words, and make the same three-way choice for any close entry
+2. Follow the entry format demonstrated at the top of `.flightwake/TRAPS.md` (OKF-style frontmatter: name/type/status/confidence/tags/discovered)
    and write it at the **top** of `.flightwake/TRAPS.md`
    Optional: `paths` / `commands` — fill them when the trap belongs to particular files or commands, so the Claude Code mod's tripwire can
    show the entry the moment someone touches them: `paths: ["src/db/**", "*.sql"]` (repo-relative globs; a pattern without `/` matches that
    file name at any depth), `commands: ["npm run migrate", "psql"]` (command prefixes, word by word). No regex. Not sure, or the trap is
    about an idea rather than a place? Leave them empty — the entry works the same without them
-2. All four fields: symptom (paste the original error message), root cause in one sentence, fix/workaround, evidence link (commit/record)
-3. Link related traps with `[[name]]`
-4. **Write the symptom on the spot** — details fade within half a day. **Leave the root cause unsettled until it's nailed**:
+3. All four fields: symptom (paste the original error message), root cause in one sentence, fix/workaround, evidence link (commit/record)
+4. Link related traps with `[[name]]`
+5. **Write the symptom on the spot** — details fade within half a day. **Leave the root cause unsettled until it's nailed**:
    if it isn't, mark `confidence: suspected` and note what you haven't ruled out. Don't leave the entry unwritten while
    you think, and don't dress a guess as a conclusion. Come back and raise it once you've nailed it
-5. When a new trap **replaces or covers** an existing entry: set the old entry's frontmatter `status` to `superseded` and point its body at the [[new entry]] — never delete lines,
+6. When a new trap **replaces or covers** an existing entry: set the old entry's frontmatter `status` to `superseded` and point its body at the [[new entry]] — never delete lines,
    so an "old md vs new md" conflict always has a clear direction
-6. Judge the trap's **scope**: if it isn't specific to this repo — any project would step in it (platform/language/tool layer, e.g. Node stdin behavior, shell expansion) —
+7. Judge the trap's **scope**: if it isn't specific to this repo — any project would step in it (platform/language/tool layer, e.g. Node stdin behavior, shell expansion) —
    still register it in TRAPS (the repo's registry must be self-contained: the next person or agent can't see your personal memory),
    **and save a copy to your user-level memory** (e.g. Claude memory) so your other repos don't re-trip it.
    One copy per scope is division of labor, not duplication: a generic trap recorded in only one repo bites again in the next repo

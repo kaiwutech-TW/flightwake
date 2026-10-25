@@ -9,6 +9,7 @@
  */
 import { M, relToRoot, tableCell } from './core'
 import type { Lang } from './core'
+import type { FwTrapsTripped, FwTrapTrip } from '../../types/index'
 
 // ── constants (mirrored in bin/fleet.mjs and hooks/statusline.mjs) ──────────────────────────────────────────────
 export const SCHEMA = 'flightwake.session/1'
@@ -85,6 +86,55 @@ export const repoMarkersOf = (base: string): string[] => [
 /** A file that is ours: parses with our schema prefix, or (a torn write of ours) begins with it. */
 export const OURS_PREFIX_RE = /^\s*\{\s*"schema"\s*:\s*"flightwake\.session\//
 export const isOursText = (text: string): boolean => isFleetFile(text) || OURS_PREFIX_RE.test(text)
+
+// ── F4's trip file: `<base>/trips/<id>.json` (same base, file-name rule and write guards as the session file) ──
+// Read by `npx flightwake traps stats` (bin/), which depends on this exact shape: change both together.
+export const TRIPS_V = 1
+export const tripsDirOf = (base: string): string => `${base}/trips`
+/** `<base>/trips/<id>.json`, or null when the id cannot be a file name (the session file's rule). */
+export const tripFilePath = (base: string, id: string): string | null => (isSafeId(id) ? `${tripsDirOf(base)}/${id}.json` : null)
+
+/** The $.state value (types/index.d.ts FwTrapsTripped), which is also the file's content less `v`. */
+export type Trips = FwTrapsTripped
+type Trip = FwTrapTrip
+
+/**
+ * `cur` with one more match for each name, as of `iso`; a value made for another session id is replaced (a /clear
+ * starts a new id, so a new file). `repo` is the root this match was made in. Computed keys only: a name such as
+ * `__proto__` stays an own property, never the prototype.
+ */
+export function bumpTrips(cur: Trips | null, sessionId: string, repo: string, names: readonly string[], iso: string): Trips {
+  let trips: Record<string, Trip> = cur !== null && cur.sessionId === sessionId ? cur.trips : {}
+  for (const name of new Set(names)) {
+    const was = Object.prototype.hasOwnProperty.call(trips, name) ? trips[name] : undefined
+    trips = { ...trips, [name]: was === undefined ? { n: 1, first: iso, last: iso } : { n: was.n + 1, first: was.first, last: iso } }
+  }
+  return { sessionId, repo, updated: iso, trips }
+}
+
+/** The file as written: `{v, sessionId, repo, updated, trips}` in that order, two-space JSON plus a newline. */
+export const tripsText = (t: Trips): string =>
+  `${JSON.stringify({ v: TRIPS_V, sessionId: t.sessionId, repo: t.repo, updated: t.updated, trips: t.trips }, null, 2)}\n`
+
+/**
+ * A trip file that is ours to overwrite: a JSON object with `v: 1` and this very session id, or (a torn write of
+ * ours) text that begins that way. Anything else at the path — another tool's file, another version, another id — is
+ * left untouched.
+ */
+export function isOursTripsText(text: string, sessionId: string): boolean {
+  try {
+    const j: unknown = JSON.parse(text)
+    if (j !== null && typeof j === 'object' && !Array.isArray(j)) {
+      const o = j as { v?: unknown; sessionId?: unknown }
+      return o.v === TRIPS_V && o.sessionId === sessionId
+    }
+    return false
+  } catch {
+    if (!isSafeId(sessionId)) return false
+    const id = sessionId.replace(/\./g, '\\.')
+    return new RegExp(`^\\s*\\{\\s*"v"\\s*:\\s*1\\s*,\\s*"sessionId"\\s*:\\s*"${id}"`).test(text)
+  }
+}
 
 /**
  * A short fingerprint of a tool's input, held in module memory only (never written): it pairs a PermissionRequest

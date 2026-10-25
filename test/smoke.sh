@@ -2281,5 +2281,242 @@ else
   echo "  skip: 沒有 python3,略過 46.8(pty)"
 fi
 
+# 47. traps CLI(bin/traps.mjs):parser 與 mod 的 hooks/lib/traps.ts 逐欄一致(HTML 註解裡的假 frontmatter、併接後才成形的註解、
+#     {{…}} 佔位條目、superseded、缺 status → active、confidence 正規化、inline list);similar 找得到近似條目與同名、無關的找不到、
+#     --json、路徑重疊、用法錯誤 exit 1、唯讀;stats 沒觸發資料時不宣稱「從未觸發」、只算本 repo 的 trip 檔(他 repo / 壞檔 / v≠1 /
+#     symlink 忽略、repo 路徑經 symlink 也認得)、--days;uninstall 不帶 --purge 保留並說明、--purge 只刪本 repo 的 trip 檔、sessions 不動
+TR="$TMP/traps-repo"; newrepo "$TR" >/dev/null; mkdir -p .flightwake
+cat > .flightwake/TRAPS.md <<'EOF'
+<!-- format demo
+---
+name: fake-in-comment
+status: active
+---
+-->
+<!<!-- x -->-- a comment that only forms after the first pass
+---
+name: fake-in-joined-comment
+---
+-->
+
+# Traps
+
+---
+name: smoke-needs-python-311
+type: gotcha
+status: active
+tags: [smoke, python, macos, test]
+discovered: 2026-10-05
+confidence: confirmed
+commands: ["bash test/smoke.sh"]
+---
+
+**Symptom**: `bash test/smoke.sh` fails in the roles section: `ModuleNotFoundError: No module named 'tomllib'`.
+**Root cause**: smoke runs `python3 -c "import tomllib"`; macOS /usr/bin/python3 is 3.9 and tomllib only exists since Python 3.11.
+**Workaround**: put a 3.11+ python3 first in PATH.
+**Evidence**: record 261005
+
+---
+name: smoke-needs-python311-tomllib
+type: gotcha
+status: superseded
+tags: [test, smoke, python, macos, environment]
+discovered: 2026-10-05
+confidence: confirmed
+---
+
+**Merged into** [[smoke-needs-python-311]].
+**Symptom**: local smoke stops with ModuleNotFoundError: No module named 'tomllib'; CI is green.
+**Root cause**: tomllib joined the standard library in Python 3.11; macOS ships python3 3.9.6.
+
+---
+name: codex-exec-stdin-hang
+type: trap
+tags: [codex, stdin, automation]
+discovered: 2026-09-02
+confidence: Confirmed
+---
+
+**Symptom**: `codex exec '<prompt>'` prints Reading additional input from stdin and hangs forever.
+**Root cause**: codex exec reads stdin to EOF when stdin is not a TTY; an agent's shell pipe never closes.
+
+---
+name: wrangler-pages-create-delegates-to-workers
+type: gotcha
+status: active
+tags: [cloudflare, wrangler, pages]
+discovered: 2026-10-11
+confidence: maybe
+paths: ["website/astro.config.mjs", 'website/wrangler.jsonc']
+commands: [wrangler pages project create]
+---
+
+**Symptom**: wrangler pages project create deploys a Worker instead of creating a Pages project.
+**Root cause (tentative)**: this Wrangler version delegates Pages creation to the Workers framework flow.
+
+---
+name: gh-active-account-drift
+type: gotcha
+status: active
+tags: [gh, github, multi-account]
+discovered: 2026-07-23
+confidence: probable
+---
+
+**Symptom**: gh pr create fails with "must be a collaborator" although the account has access.
+**Root cause**: gh switched the active account after another login.
+
+---
+name: plain-git-status-rewrites-index
+type: gotcha
+status: active
+tags: [git, read-only, hooks]
+discovered: 2026-10-05
+confidence: confirmed
+paths: ["hooks/*.mjs", "mods/**"]
+---
+
+**Symptom**: a read-only tool ran git status and the .git/index bytes changed.
+**Root cause**: git status refreshes stat info and writes the index back unless --no-optional-locks is given.
+
+---
+name: {{kebab-case-slug}}
+type: trap
+status: active
+tags: [{{tag}}]
+discovered: {{YYYY-MM-DD}}
+---
+
+**Symptom**: {{what you saw}}
+EOF
+git add -A && git commit -qm traps
+# parser 一致:mod 的 traps.ts 以 extensionless import 讀 core,複製一份把 './core' 改成 './core.ts' 再由 node 直接載入
+TSP="$TMP/traps-ts"; mkdir -p "$TSP"; cp "$SRC/mods/flightwake/hooks/lib/core.ts" "$TSP/core.ts"
+sed "s#from './core'#from './core.ts'#" "$SRC/mods/flightwake/hooks/lib/traps.ts" > "$TSP/traps.ts"
+node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --input-type=module -e "
+  import fs from 'node:fs';
+  import { parseTraps as ts } from '$TSP/traps.ts';
+  import { parseTraps as js } from '$SRC/bin/traps.mjs';
+  const text = fs.readFileSync('.flightwake/TRAPS.md', 'utf8');
+  const a = ts(text), b = js(text), bad = [];
+  const keys = ['name', 'status', 'confidence', 'type', 'paths', 'commands', 'labelled', 'body', 'version'];
+  if (a.length !== b.length) bad.push('count ' + a.length + ' vs ' + b.length);
+  a.forEach((e, i) => { for (const k of keys) if (JSON.stringify(e[k]) !== JSON.stringify(b[i]?.[k])) bad.push(e.name + '.' + k); });
+  const names = b.map((e) => e.name).join(',');
+  if (names !== 'smoke-needs-python-311,smoke-needs-python311-tomllib,codex-exec-stdin-hang,wrangler-pages-create-delegates-to-workers,gh-active-account-drift,plain-git-status-rewrites-index') bad.push('names: ' + names);
+  const by = (n) => b.find((e) => e.name === n);
+  if (by('codex-exec-stdin-hang')?.status !== 'active' || by('codex-exec-stdin-hang')?.confidence !== 'confirmed') bad.push('missing status / Confirmed');
+  const w = by('wrangler-pages-create-delegates-to-workers');
+  if (w?.confidence !== 'unknown' || JSON.stringify(w?.paths) !== '[\"website/astro.config.mjs\",\"website/wrangler.jsonc\"]' || JSON.stringify(w?.commands) !== '[\"wrangler pages project create\"]') bad.push('wrangler fields');
+  if (JSON.stringify(by('smoke-needs-python-311')?.tags) !== '[\"smoke\",\"python\",\"macos\",\"test\"]' || by('smoke-needs-python-311')?.discovered !== '2026-10-05') bad.push('tags / discovered');
+  if (by('smoke-needs-python311-tomllib')?.status !== 'superseded') bad.push('superseded');
+  if (bad.length) { console.log(bad.join('\n')); process.exit(1); }" || fail "47 bin/traps.mjs 的 parseTraps 應與 mod 的 traps.ts 逐欄一致"
+TRSNAP=$(fsnap2 "$TR")
+# similar:近似條目(含 superseded,active 排前)、三選一說明;同名;無關 → 沒有候選;--json;路徑重疊
+rc=0; out=$(node "$CLI" traps similar --name=smoke-tomllib-missing --tags=smoke,python,macos --text="bash test/smoke.sh: ModuleNotFoundError: No module named 'tomllib' — macOS python3 is 3.9, tomllib needs Python 3.11" 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "47 similar 應 exit 0(rc=$rc: $out)"
+echo "$out" | head -1 | grep -q '^flightwake traps similar — 2 candidate(s) for "smoke-tomllib-missing"' || fail "47 近似條目應有 2 個候選(got: $out)"
+node -e 'const L=process.argv[1].split("\n"); const a=L.findIndex((l)=>/ smoke-needs-python-311 +\[active · confirmed\]/.test(l)), b=L.findIndex((l)=>/ smoke-needs-python311-tomllib +\[superseded/.test(l)); if(a<0||b<0||a>b) process.exit(1)' "$out" || fail "47 active 候選應排在 superseded 之前,superseded 要標明(got: $out)"
+echo "$out" | grep -q 'tags: smoke, python, macos' && echo "$out" | grep -q 'words: .*modulenotfounderror' || fail "47 候選應列出理由(標籤、字詞)(got: $out)"
+for w in '(a) update the existing entry in place' '(b) supersede it' '(c) record a new entry anyway'; do echo "$out" | grep -qF "$w" || fail "47 有候選時應印三選一($w)(got: $out)"; done
+out=$(node "$CLI" traps similar --name=gh-active-account-drift --text="something else entirely") || fail "47 同名 similar 應 exit 0"
+echo "$out" | grep -q 'gh-active-account-drift' && echo "$out" | grep -q 'same name' || fail "47 同名一定是候選並標明(got: $out)"
+rc=0; out=$(node "$CLI" traps similar --name=postgres-jsonb-string-scalar --tags=postgres,jsonb --text="a jsonb column is stored as a string scalar by the database driver" 2>&1) || rc=$?
+[ "$rc" = 0 ] && echo "$out" | grep -q 'no similar entry for "postgres-jsonb-string-scalar"' || fail "47 無關條目應回報沒有候選且 exit 0(rc=$rc: $out)"
+echo "$out" | grep -qF '(a) update' && fail "47 沒有候選時不印三選一(got: $out)"
+js=$(node "$CLI" traps similar --name=smoke-tomllib-missing --tags=smoke,python --commands="bash test/smoke.sh --fast" --text="ModuleNotFoundError: No module named 'tomllib'" --json) || fail "47 similar --json 應成功"
+node -e '
+  const j=JSON.parse(process.argv[1]); const c=j.candidates;
+  const ok = j.version===1 && typeof j.threshold==="number" && j.checked===6 && j.query.name==="smoke-tomllib-missing"
+    && c[0].name==="smoke-needs-python-311" && c[0].status==="active" && c[0].score>=j.threshold && c[0].sameName===false
+    && c[0].reasons.tags.includes("python") && c[0].reasons.commands[0]==="bash test/smoke.sh --fast ~ bash test/smoke.sh"
+    && c.some((x)=>x.name==="smoke-needs-python311-tomllib" && x.status==="superseded")
+    && c.every((x)=>["name","tags","paths","commands","words"].every((k)=>Array.isArray(x.reasons[k])));
+  if (!ok) { console.log(JSON.stringify(j).slice(0,600)); process.exit(1); }' "$js" || fail "47 similar --json 結構或內容不對"
+js=$(node "$CLI" traps similar --name=hook-reads-index --tags=git,hooks --paths=hooks/state-check.mjs --text="git status rewrote the index from a read-only hook" --json) || fail "47 路徑重疊的 similar 應成功"
+node -e 'const j=JSON.parse(process.argv[1]); const c=j.candidates.find((x)=>x.name==="plain-git-status-rewrites-index"); if(!c||c.reasons.paths[0]!=="hooks/state-check.mjs ~ hooks/*.mjs") { console.log(JSON.stringify(j)); process.exit(1); }' "$js" || fail "47 路徑與 glob 重疊應成為理由"
+node "$CLI" traps similar --name=x --lang=zh-TW --text="ModuleNotFoundError tomllib python 3.11 macos smoke" | grep -q '寫入前先選一個' || fail "47 --lang=zh-TW 的三選一應為中文"
+rc=0; node "$CLI" traps similar --tags=a >/dev/null 2>&1 || rc=$?; [ "$rc" = 1 ] || fail "47 similar 缺 --name 應 exit 1"
+rc=0; node "$CLI" traps similar --name=a --bogus >/dev/null 2>&1 || rc=$?; [ "$rc" = 1 ] || fail "47 不認得的旗標應 exit 1"
+rc=0; node "$CLI" traps similar --name=a --days=3 >/dev/null 2>&1 || rc=$?; [ "$rc" = 1 ] || fail "47 similar 不收 --days"
+rc=0; node "$CLI" traps bogus >/dev/null 2>&1 || rc=$?; [ "$rc" = 1 ] || fail "47 不認得的子命令應 exit 1"
+rc=0; node "$CLI" traps >/dev/null 2>&1 || rc=$?; [ "$rc" = 1 ] || fail "47 沒有子命令應 exit 1"
+rc=0; out=$(cd "$TMP" && node "$CLI" traps similar --name=a 2>&1) || rc=$?
+[ "$rc" = 1 ] && echo "$out" | grep -qF '.flightwake/TRAPS.md not found' || fail "47 沒有 TRAPS.md 應說明並 exit 1(rc=$rc: $out)"
+node "$CLI" --help | grep -q '^  traps ' || fail "47 help 應列出 traps"
+# stats:沒有任何 trip 檔 → 不宣稱「從未觸發」,只列有無錨點
+TH="$TMP/traps-home"
+rc=0; out=$(FLIGHTWAKE_HOME="$TH" node "$CLI" traps stats 2>&1) || rc=$?
+[ "$rc" = 0 ] || fail "47 stats 應 exit 0(rc=$rc: $out)"
+echo "$out" | grep -q 'Summary: 5 active · 3 anchored · 2 unanchored$' || fail "47 沒資料時摘要只有有無錨點(got: $out)"
+echo "$out" | grep -q 'No trip data for this repo' || fail "47 沒資料時應說明沒有觸發資料(got: $out)"
+echo "$out" | grep -qi 'never tripped' && fail "47 沒資料時不得宣稱 never tripped(got: $out)"
+echo "$out" | grep -q 'Codex / Gemini sessions never record trips' && echo "$out" | grep -q 'can never trip by design' || fail "47 stats 應印資料來源與無錨點的說明(got: $out)"
+FLIGHTWAKE_HOME="$TH" node "$CLI" traps stats --json | node -e '
+  const j=JSON.parse(require("fs").readFileSync(0,"utf8"));
+  if (j.version!==1 || j.tripData!==false || j.counts.anchoredNeverTripped!==null || j.counts.active!==5 || j.entries.some((e)=>e.trips!==null)) process.exit(1)' || fail "47 沒資料時 --json 不得給 trips / never-tripped 數字"
+[ -e "$TH" ] && fail "47 stats 不得建立 base 資料夾"
+# trip 檔:本 repo ×2(其一經 symlink 路徑)、他 repo、壞檔、v≠1、symlink、非 .json → 只算本 repo 兩個
+mkdir -p "$TH/trips" "$TMP/traps-out"; ln -s "$TR" "$TMP/traps-link"
+TSEED() { node -e '
+  const [f, repo, body] = process.argv.slice(1); const now = Date.now(), D = 86400000;
+  const iso = (ago) => new Date(now - ago).toISOString();
+  require("fs").writeFileSync(f, JSON.stringify({ v: 1, sessionId: require("path").basename(f, ".json"), repo, updated: iso(0), trips: eval("(" + body + ")") }));' "$@"; }
+TSEED "$TH/trips/s1.json" "$TR" '{"smoke-needs-python-311":{n:2,first:iso(3*D),last:iso(2*D)}}'
+TSEED "$TH/trips/s2.json" "$TMP/traps-link" '{"smoke-needs-python-311":{n:1,first:iso(D),last:iso(D)},"plain-git-status-rewrites-index":{n:3,first:iso(25*D),last:iso(20*D)}}'
+TSEED "$TH/trips/s3.json" "$TMP/other-repo" '{"wrangler-pages-create-delegates-to-workers":{n:5,first:iso(D),last:iso(D)}}'
+TSEED "$TMP/traps-out/s4.json" "$TR" '{"wrangler-pages-create-delegates-to-workers":{n:9,first:iso(D),last:iso(D)}}'
+ln -s "$TMP/traps-out/s4.json" "$TH/trips/s4.json"
+printf 'garbage' > "$TH/trips/bad.json"
+node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({v:2,repo:process.argv[2],trips:{"wrangler-pages-create-delegates-to-workers":{n:7}}}))' "$TH/trips/v2.json" "$TR"
+cp "$TH/trips/s1.json" "$TH/trips/notes.txt"
+TSNAP=$(fsnap2 "$TH")
+out=$(FLIGHTWAKE_HOME="$TH" node "$CLI" traps stats) || fail "47 有資料的 stats 應成功"
+echo "$out" | grep -q 'Summary: 5 active · 3 anchored · 2 unanchored · 1 anchored but never tripped$' || fail "47 只算本 repo:wrangler 從未觸發(他 repo / symlink / v2 不算)(got: $out)"
+echo "$out" | grep -q '^Trip data: 2 session(s), ' || fail "47 資料範圍應為本 repo 的 2 個 session(got: $out)"
+echo "$out" | grep -E '^  smoke-needs-python-311 +confirmed +2026-10-05 +commands +2 +3 ' >/dev/null || fail "47 smoke-needs-python-311 應為 2 sessions、3 次(got: $out)"
+js=$(FLIGHTWAKE_HOME="$TH" node "$CLI" traps stats --json) || fail "47 stats --json 應成功"
+node -e '
+  const j=JSON.parse(process.argv[1]); const by=(n)=>j.entries.find((e)=>e.name===n);
+  const ok = j.tripData===true && j.sessions===2 && j.counts.anchoredNeverTripped===1 && j.range && j.days===null
+    && by("smoke-needs-python-311").trips===3 && by("smoke-needs-python-311").sessions===2
+    && by("plain-git-status-rewrites-index").trips===3 && by("wrangler-pages-create-delegates-to-workers").trips===0
+    && by("codex-exec-stdin-hang").anchored===false && !by("smoke-needs-python311-tomllib");
+  if (!ok) { console.log(JSON.stringify(j).slice(0,800)); process.exit(1); }' "$js" || fail "47 stats --json 計數不對"
+out=$(FLIGHTWAKE_HOME="$TH" node "$CLI" traps stats --days=10) || fail "47 stats --days 應成功"
+echo "$out" | grep -q '2 anchored but not tripped in the last 10 day(s)$' || fail "47 --days=10 應排除 20 天前的觸發(got: $out)"
+FLIGHTWAKE_HOME="$TH" node "$CLI" traps stats --lang=ja | grep -q '^概要:active 5' || fail "47 stats --lang=ja"
+rc=0; FLIGHTWAKE_HOME="$TH" node "$CLI" traps stats --days=0 >/dev/null 2>&1 || rc=$?; [ "$rc" = 1 ] || fail "47 --days=0 應 exit 1"
+rc=0; FLIGHTWAKE_HOME="$TH" node "$CLI" traps stats --name=x >/dev/null 2>&1 || rc=$?; [ "$rc" = 1 ] || fail "47 stats 不收 --name"
+[ "$(fsnap2 "$TH")" = "$TSNAP" ] && [ "$(fsnap2 "$TR")" = "$TRSNAP" ] || fail "47 similar / stats 必須唯讀"
+# uninstall:不帶 --purge 保留並說明;--purge 只刪本 repo 的 trip 檔(symlink 與其目標、他 repo、sessions 不動)
+UH="$TMP/traps-uhome"; newrepo "$TMP/traps-un" >/dev/null; UR="$PWD"
+FLIGHTWAKE_HOME="$UH" node "$CLI" init --agents=claude >/dev/null
+mkdir -p "$UH/trips" "$UH/sessions"; echo '{"keep":1}' > "$UH/sessions/x.json"
+TSEED "$UH/trips/m1.json" "$UR" '{"a":{n:1,first:iso(0),last:iso(0)}}'
+TSEED "$UH/trips/m2.json" "$UR/" '{"a":{n:1,first:iso(0),last:iso(0)}}'
+TSEED "$UH/trips/o1.json" "$TMP/other-repo" '{"a":{n:1,first:iso(0),last:iso(0)}}'
+TSEED "$TMP/traps-out/m3.json" "$UR" '{"a":{n:1,first:iso(0),last:iso(0)}}'; ln -s "$TMP/traps-out/m3.json" "$UH/trips/m3.json"
+SSNAP=$(fsnap2 "$UH/sessions")
+out=$(FLIGHTWAKE_HOME="$UH" node "$CLI" uninstall 2>&1) || fail "47 uninstall 應成功(got: $out)"
+echo "$out" | grep -qF "kept 2 trip file(s) of this repo in $UH/trips — \`npx flightwake uninstall --purge\` removes them" || fail "47 uninstall 應說明保留了本 repo 的 trip 檔(got: $out)"
+[ -f "$UH/trips/m1.json" ] && [ -f "$UH/trips/m2.json" ] || fail "47 不帶 --purge 不得刪 trip 檔"
+FLIGHTWAKE_HOME="$UH" node "$CLI" init --agents=claude >/dev/null
+out=$(FLIGHTWAKE_HOME="$UH" node "$CLI" uninstall --purge 2>&1) || fail "47 uninstall --purge 應成功(got: $out)"
+echo "$out" | grep -qF "removed 2 trip file(s) of this repo from $UH/trips" || fail "47 --purge 應說明刪了本 repo 的 trip 檔(got: $out)"
+[ ! -e "$UH/trips/m1.json" ] && [ ! -e "$UH/trips/m2.json" ] || fail "47 --purge 應刪掉本 repo 的 trip 檔"
+[ -f "$UH/trips/o1.json" ] && [ -L "$UH/trips/m3.json" ] && [ -f "$TMP/traps-out/m3.json" ] || fail "47 --purge 不得碰他 repo 的檔、symlink 或其目標"
+[ "$(fsnap2 "$UH/sessions")" = "$SSNAP" ] || fail "47 --purge 不得改動 sessions"
+# base 就是本 repo 的 .flightwake(FLIGHTWAKE_HOME=<repo>/.flightwake):--purge 繞開 trips 資料夾,只刪本 repo 的檔
+newrepo "$TMP/traps-un2" >/dev/null; UR2="$PWD"
+FLIGHTWAKE_HOME="$UR2/.flightwake" node "$CLI" init --agents=claude >/dev/null
+mkdir -p .flightwake/trips
+TSEED "$UR2/.flightwake/trips/mine.json" "$UR2" '{"a":{n:1,first:iso(0),last:iso(0)}}'
+TSEED "$UR2/.flightwake/trips/theirs.json" "$TMP/other-repo" '{"a":{n:1,first:iso(0),last:iso(0)}}'
+out=$(FLIGHTWAKE_HOME="$UR2/.flightwake" node "$CLI" uninstall --purge 2>&1) || fail "47 base 在 .flightwake 時 --purge 應成功(got: $out)"
+[ ! -e .flightwake/STATE.md ] && [ ! -e .flightwake/trips/mine.json ] && [ -f .flightwake/trips/theirs.json ] || fail "47 base 在 .flightwake 時 --purge 只留下他 repo 的 trip 檔(got: $out; $(find .flightwake 2>&1))"
+cd "$TMP"
+pass "47 traps:parser 與 mod 一致;similar 近似/同名/無關/--json/路徑重疊/用法錯誤/唯讀;stats 無資料不宣稱從未觸發、只算本 repo、--days;uninstall 保留或 --purge 只刪本 repo 的 trip 檔"
+
 echo ""
 echo "✅ smoke 全過"

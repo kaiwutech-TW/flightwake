@@ -257,7 +257,7 @@ describe('lifecycle: all features side by side', () => {
     expect(w.fleetWrites).toEqual([])
   })
 
-  test('read scope: only .flightwake/, the instruction-file markers, package.json, the sessions folder, transcripts under ~/.claude/projects (existence only), the "is the base someone\'s repo" probes (<base>/STATE.md, <each folder up>/.git and /.flightwake/STATE.md) and where the root and the folder really land are read', ALL_ON, async ($, on) => {
+  test('read scope: only .flightwake/, the instruction-file markers, package.json, the sessions and trips folders, transcripts under ~/.claude/projects (existence only), the "is the base someone\'s repo" probes (<base>/STATE.md, <each folder up>/.git and /.flightwake/STATE.md) and where the root and the folder really land are read', ALL_ON, async ($, on) => {
     const w = installWorld(on, { files: { ...files(), 'package.json': '{"scripts":{"test":"vitest"}}', 'AGENTS.md': MARKER('ja') }, git: gitBehind(0) })
     mock.env(on, { HOME: HOME_OUT })
     // another session that stopped uncleanly: /fw-fleet checks that its transcript exists before offering it
@@ -280,9 +280,10 @@ describe('lifecycle: all features side by side', () => {
     expect(w.reads).toContain(transcript)
     expect(w.contentReads).not.toContain(transcript) // another session's transcript: whether it exists, never what it says
     // the root itself and the folders above the base: stat { resolve } only (where they really land)
-    const allowed = /^\/repo$|^\/repo\/(\.flightwake\/|CLAUDE\.md$|\.claude\/CLAUDE\.md$|CLAUDE\.local\.md$|AGENTS\.md$|GEMINI\.md$|package\.json$)|^\/home\/u\/\.flightwake$|^\/home\/u\/\.flightwake\/sessions(\/|$)|^\/home\/u\/\.claude\/projects\/|^\/home\/u\/\.flightwake\/STATE\.md$|^(\/home\/u\/\.flightwake|\/home\/u|\/home|)\/(\.git|\.flightwake\/STATE\.md)$|^(\/home\/u|\/home|\/)$/
+    const allowed = /^\/repo$|^\/repo\/(\.flightwake\/|CLAUDE\.md$|\.claude\/CLAUDE\.md$|CLAUDE\.local\.md$|AGENTS\.md$|GEMINI\.md$|package\.json$)|^\/home\/u\/\.flightwake$|^\/home\/u\/\.flightwake\/(sessions|trips)(\/|$)|^\/home\/u\/\.claude\/projects\/|^\/home\/u\/\.flightwake\/STATE\.md$|^(\/home\/u\/\.flightwake|\/home\/u|\/home|)\/(\.git|\.flightwake\/STATE\.md)$|^(\/home\/u|\/home|\/)$/
     expect(w.reads.filter((p) => !allowed.test(p))).toEqual([])
     expect(w.fleetWrites.every((p) => p === `${FLEET_DIR}/session-1.json`)).toBe(true)
+    expect(w.tripWrites.every((p) => p === `${HOME_OUT}/.flightwake/trips/session-1.json`)).toBe(true)
     expect(w.writes).toEqual([])
   })
 })

@@ -8,6 +8,18 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ## [Unreleased]
 
+### Added
+- **`npx flightwake traps similar`** checks a new TRAPS entry against the existing ones before it is written (name,
+  tags, paths, commands and the symptom text; local and deterministic, threshold 0.40). `/fw-trap` now runs it first
+  and asks for a choice when it finds candidates: update the existing entry, supersede it, or record a new one with a
+  line on why it differs.
+- **`npx flightwake traps stats`** lists the active entries with whether each one is anchored (`paths` / `commands`)
+  and how often the mod's tripwire matched it. `/fw-coldstart`'s compaction proposal now starts from this data. It
+  says so plainly when there is no trip data, and never counts an unanchored entry as unused.
+- **Mod: trip counts.** The tripwire counts every match, hinted or not, and writes the counts per session to
+  `<base>/trips/<session id>.json` (outside the repo, same refusal rules as the session file; interactive sessions
+  only). Hints are unchanged. `uninstall --purge` deletes this repo's trip files.
+
 ### Fixed
 - **Fleet console "Wrap up" on Codex never submitted.** Codex's `$` skill picker took the Enter sent with `$fw-record`,
   leaving it in the input box. The panel now reads the box back once and presses Enter again only when it still holds

@@ -3,7 +3,9 @@
  * outside the repo (base = an absolute FLIGHTWAKE_HOME, else ~/.flightwake), for /fw-fleet, `npx flightwake fleet`,
  * the bottom gauge (hooks/statusline.mjs) and other tools (Orca). The question it answers is "who needs me".
  *
- * The one write the mod makes, and the only file in hooks/ that may call `$.fs.write` (a smoke grep enforces it):
+ * The only file in hooks/ that may call `$.fs.write` (a smoke grep enforces it). It writes two files, both under
+ * `<base>` and held to the same rules (guardOutside): this session file, and F4's trip file (registerTripLog below,
+ * switched with `tripwire`). The session file is
  * refused when the base lies inside the session root, by spelling or by real path (re-checked at every write: the
  * root follows /cd), or is a flightwake records folder or lies in any git repo or flightwake root; never through a
  * symbolic link, never over a file that is not ours (both re-checked at every heartbeat), never for a -p / SDK run;
@@ -27,8 +29,9 @@ import {
   HINT_TOAST_MS, hintCandidates, id8, inputPrint, isOursText, isSafeId, LIST_WINDOW_ALL_MS, LIST_WINDOW_MS, lastSeen,
   notReportingReason, parseRec, pickHint, recordText, repoMarkersOf, resumableOf, resumeCmd, rowOf, schemaMajor, selectFiles, selfAndAncestors,
   FLEET_SINCE, sessionsDirOf, staleAfter, STALE_FLOOR_MS, T, targetOf, tildePath, transcriptOf, turnReason, countOthers, otherRows, deriveState, SCHEMA,
+  isOursTripsText, tripFilePath, tripsDirOf, tripsText,
 } from '../lib/fleet'
-import type { Activity, BlockedKind, FleetEnv, Host, ListEntry, SessionRec } from '../lib/fleet'
+import type { Activity, BlockedKind, FleetEnv, Host, ListEntry, SessionRec, Trips } from '../lib/fleet'
 import type { FwFleet, FwFleetStatus } from '../../types/index'
 
 // The loader holds every $.state reference to literal plugin/key values written in this file
@@ -108,14 +111,20 @@ function fleetIoOf($: EngineInterface): FleetIo {
   }
 }
 
-/** The env F7 reads, each by its literal name (an unanswered read counts as unset). */
-async function readEnv($: EngineInterface): Promise<FleetEnv & { host: Host }> {
+/** The env that places `<base>`, each by its literal name (an unanswered read counts as unset). */
+async function readBaseEnv($: EngineInterface): Promise<FleetEnv> {
   let FLIGHTWAKE_HOME: string | undefined
   let HOME: string | undefined
   let USERPROFILE: string | undefined
   try { FLIGHTWAKE_HOME = await $.env.get('FLIGHTWAKE_HOME') } catch { FLIGHTWAKE_HOME = undefined }
   try { HOME = await $.env.get('HOME') } catch { HOME = undefined }
   try { USERPROFILE = await $.env.get('USERPROFILE') } catch { USERPROFILE = undefined }
+  return { FLIGHTWAKE_HOME, HOME, USERPROFILE }
+}
+
+/** The env F7 reads, each by its literal name (an unanswered read counts as unset). */
+async function readEnv($: EngineInterface): Promise<FleetEnv & { host: Host }> {
+  const { FLIGHTWAKE_HOME, HOME, USERPROFILE } = await readBaseEnv($)
   const host: Host = {}
   try { const v = await $.env.get('ORCA_TERMINAL_HANDLE'); if (typeof v === 'string' && v !== '') host.orcaTerminal = v } catch {}
   try { const v = await $.env.get('ORCA_WORKSPACE_ID'); if (typeof v === 'string' && v !== '') host.orcaWorkspace = v } catch {}
@@ -310,14 +319,62 @@ async function apply($: EngineInterface, why: string): Promise<void> {
 // ── guards (spec §2): run at session.start and at adoption, never at session.end ──────────────────────────────
 type Guard = { status: FwFleetStatus; base: string | null; path: string | null; existing: SessionRec | null }
 
+/** Where `dir` really lands, and the root resolved the same way; `isOutside` false when inside or not placeable. */
+async function placeDir(io: FleetIo, root: string, dir: string): Promise<{ root: string | null; dir: string | null; isOutside: boolean }> {
+  const realRoot = await io.place(root)
+  const realDir = await io.place(dir)
+  return { root: realRoot, dir: realDir, isOutside: realRoot !== null && realDir !== null && relToRoot(realRoot, realDir) === null && relToRoot(root, realDir) === null }
+}
+
 /**
  * Where the sessions folder really lands, against the root resolved the same way (a spelling check misses a link
  * above the base): refreshes W.realRoot / W.realSessions; false when it lands inside the root or cannot be placed.
  */
 async function placeOutside(io: FleetIo, root: string, base: string): Promise<boolean> {
-  W.realRoot = await io.place(root)
-  W.realSessions = await io.place(sessionsDirOf(base))
-  return W.realRoot !== null && W.realSessions !== null && relToRoot(W.realRoot, W.realSessions) === null && relToRoot(root, W.realSessions) === null
+  const p = await placeDir(io, root, sessionsDirOf(base))
+  W.realRoot = p.root
+  W.realSessions = p.dir
+  return p.isOutside
+}
+
+/** The base rules' answer: `at` is the path a refusal names (the link for 'symlink'); `real` once placing ran. */
+type BaseVerdict = {
+  status: 'active' | 'inside-repo' | 'other-repo' | 'symlink' | 'foreign-file'
+  at: string
+  /** The file's text when it is there and ours; null when absent. */
+  text: string | null
+  real: { root: string | null; dir: string | null } | null
+}
+
+/**
+ * The rules every file the mod writes is held to — F7's session file and F4's trip file, `path` in `dir` under
+ * `base`: outside the session root by spelling and by real path; `base` not a records folder nor in any git repo or
+ * flightwake root (under its spelling and its real path); no link at `base`, `dir` or the file; and the file, when
+ * there, ours by `isOurs`. A probe or stat that cannot be answered refuses.
+ */
+async function guardOutside(io: FleetIo, root: string, base: string, dir: string, path: string, isOurs: (text: string) => boolean): Promise<BaseVerdict> {
+  // the file must lie outside the repo: the base, and the file itself (a root inside the base is fine)
+  if (!root || relToRoot(root, base) !== null || relToRoot(root, path) !== null) return { status: 'inside-repo', at: path, text: null, real: null }
+  // ...and by real path (a link or a relative spelling above the base); denied when it cannot be placed
+  const real = await placeDir(io, root, dir)
+  const placed = { root: real.root, dir: real.dir }
+  if (!real.isOutside) return { status: 'inside-repo', at: path, text: null, real: placed }
+  // ...and outside every other repo and records folder: a repo at $HOME, or FLIGHTWAKE_HOME=<some repo>/.flightwake;
+  // probed under the base's spelling and its real path; a probe that cannot be answered refuses
+  const realBase = await io.place(base)
+  if (realBase === null) return { status: 'inside-repo', at: path, text: null, real: placed }
+  for (const p of new Set([...repoMarkersOf(base), ...repoMarkersOf(realBase)])) {
+    if ((await io.probe(p)) !== 'no') return { status: 'other-repo', at: path, text: null, real: placed }
+  }
+  for (const p of [base, dir, path]) {
+    if ((await io.isLink(p)) !== 'no') return { status: 'symlink', at: p, text: null, real: placed }
+  }
+  const isThere = await io.probe(path)
+  if (isThere === 'unknown') return { status: 'foreign-file', at: path, text: null, real: placed }
+  if (isThere === 'no') return { status: 'active', at: path, text: null, real: placed }
+  const text = await io.read(path)
+  if (text === null || !isOurs(text)) return { status: 'foreign-file', at: path, text: null, real: placed }
+  return { status: 'active', at: path, text, real: placed }
 }
 
 async function guard($: EngineInterface, io: FleetIo, id: string, isInteractive: boolean): Promise<Guard> {
@@ -329,30 +386,10 @@ async function guard($: EngineInterface, io: FleetIo, id: string, isInteractive:
   if (base === null) return { status: 'no-home', base: null, path: null, existing: null }
   const path = fleetFilePath(base, id)
   if (path === null) return { status: 'bad-id', base, path: null, existing: null }
-  const root = await io.root()
-  // the file must lie outside the repo: the base, and the file itself (a root inside the base is fine)
-  if (!root || relToRoot(root, base) !== null || relToRoot(root, path) !== null) return { status: 'inside-repo', base, path, existing: null }
-  // ...and by real path (a link or a relative spelling above the base); denied when it cannot be placed
-  if (!(await placeOutside(io, root, base))) return { status: 'inside-repo', base, path, existing: null }
-  // ...and outside every other repo and records folder: a repo at $HOME, or FLIGHTWAKE_HOME=<some repo>/.flightwake;
-  // probed under the base's spelling and its real path; a probe that cannot be answered refuses
-  const realBase = await io.place(base)
-  if (realBase === null) return { status: 'inside-repo', base, path, existing: null }
-  for (const p of new Set([...repoMarkersOf(base), ...repoMarkersOf(realBase)])) {
-    if ((await io.probe(p)) !== 'no') return { status: 'other-repo', base, path, existing: null }
-  }
-  for (const p of [base, sessionsDirOf(base), path]) {
-    if ((await io.isLink(p)) !== 'no') return { status: 'symlink', base, path: p, existing: null }
-  }
-  let existing: SessionRec | null = null
-  const isThere = await io.probe(path)
-  if (isThere === 'unknown') return { status: 'foreign-file', base, path, existing: null }
-  if (isThere === 'yes') {
-    const text = await io.read(path)
-    if (text === null || !isOursText(text)) return { status: 'foreign-file', base, path, existing: null }
-    existing = parseRec(text)
-  }
-  return { status: 'active', base, path, existing }
+  const v = await guardOutside(io, await io.root(), base, sessionsDirOf(base), path, isOursText)
+  if (v.real !== null) { W.realRoot = v.real.root; W.realSessions = v.real.dir }
+  if (v.status !== 'active') return { status: v.status, base, path: v.at, existing: null }
+  return { status: 'active', base, path, existing: v.text === null ? null : parseRec(v.text) }
 }
 
 /** Another live process holds this id: its own fresh, not-ended record. */
@@ -696,6 +733,57 @@ async function settle($: EngineInterface, key: string, tool: string): Promise<vo
   }
   // also when a ToolProgress clear took this call's evidence and its after(0) has not re-derived the state yet
   if ((isRemoved || (F !== null && F.state === 'blocked' && evidence.size === 0)) && isTracking()) await apply($, 'unblocked:tool-done')
+}
+
+// ── F4's trip file (switched with `tripwire`; written here because this is the mod's one writing file) ─────────
+// The tripwire counts each match in $.state `trapsTripped`; this hook sits outside it (register.ts registers it
+// first, and a plugin's registrations nest first-outermost), so after `next(e)` the count of this very call is in.
+const TRIPS_REF = { plugin: 'flightwake-mod', key: 'trapsTripped' } as const
+
+/** session.start's isInteractive: null until seen (a hot reload sees it again); only true lets the file be written. */
+let tripsInteractive: boolean | null = null
+/** The last text attempted per path (module memory): an unchanged count is not written again. */
+let tripsLast: { path: string; text: string } | null = null
+let tripsChain: Promise<void> = Promise.resolve()
+
+/**
+ * Write the count as it stands, whole, when it changed: interactive sessions only (as the session file), and under
+ * every rule of guardOutside, run again before each write (the root follows /cd). A refusal or a failed write is
+ * silent and not retried until the count changes again; nothing here touches the tool result or the hint.
+ */
+async function flushTrips($: EngineInterface): Promise<void> {
+  if (tripsInteractive !== true) return
+  let t: Trips | null = null
+  try { t = (await $.state.get(TRIPS_REF)).value ?? null } catch { return }
+  if (t === null || !isSafeId(t.sessionId)) return
+  const sessionId = t.sessionId
+  const base = fleetBase(await readBaseEnv($))
+  if (base === null) return
+  const path = tripFilePath(base, sessionId)
+  if (path === null) return
+  const text = tripsText(t)
+  if (tripsLast !== null && tripsLast.path === path && tripsLast.text === text) return
+  tripsLast = { path, text }
+  const io = fleetIoOf($)
+  const v = await guardOutside(io, await io.root(), base, tripsDirOf(base), path, (x) => isOursTripsText(x, sessionId))
+  if (v.status === 'active') await io.write(path, text)
+}
+
+export function registerTripLog(on: On): void {
+  on('session.start', {}, async ($, e, next) => {
+    const r = await next(e)
+    tripsInteractive = e.isInteractive === true
+    return r
+  })
+
+  on('tool.call', {}, async ($, e, next) => {
+    const r = await next(e)
+    if (r.deny === undefined && tripsInteractive === true) {
+      // queued, never awaited here: the tool result does not wait on the guard or the write
+      tripsChain = tripsChain.then(() => flushTrips($)).catch(noop)
+    }
+    return r
+  })
 }
 
 export function registerFleet(on: On): void {

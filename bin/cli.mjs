@@ -14,13 +14,14 @@
  * The install itself lives in install.mjs (one code path for init, update and setup); setup.mjs only resolves
  * options by asking; doctor.mjs is read-only.
  */
-import { existsSync, readFileSync, readdirSync, statSync, rmdirSync, lstatSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, rmdirSync, lstatSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { runRoles, removeRoleArtifacts } from './roles.mjs';
 import { removeShippedTree } from './remove.mjs';
 import { runFleet, fleetBase, isWithin, realish } from './fleet.mjs';
+import { runTraps, tripFilesFor, tripsDir } from './traps.mjs';
 import {
   LANGS, PROFILES, GROUPS, isAgentName, INSTRUCTION_CANDIDATES, ORCA_BLOCK_RE, MOD_REL, modShips, modSrc, noJunk, makeM, gitAvailable, repoState, excludePath,
   addPrivateExcludes, gitMissingMessage, monorepoMessage, notRepoMessage, detectInstall, resolveOptions, install,
@@ -35,7 +36,7 @@ const TARGET = process.cwd();
 const args = process.argv.slice(2);
 const cmd = args.find((a) => !a.startsWith('-')) ?? 'init';
 const VERSION = JSON.parse(readFileSync(join(FW_SRC, 'package.json'), 'utf8')).version;
-const COMMANDS = ['init', 'update', 'uninstall', 'roles', 'doctor', 'setup', 'fleet'];
+const COMMANDS = ['init', 'update', 'uninstall', 'roles', 'doctor', 'setup', 'fleet', 'traps'];
 
 const log = (s) => console.log(s);
 
@@ -45,6 +46,7 @@ if (!COMMANDS.includes(cmd) || args.includes('--help') || args.includes('-h')) {
   npx flightwake init [flags]      non-interactive install (a bare \`npx flightwake\` does the same; never asks anything)
   npx flightwake update | doctor | uninstall [--purge] | roles [install|apply [--dry-run]|card <id>|assign <repo>:<vendor> <id> [--add] [--dry-run]|remove]
   npx flightwake fleet [--json] [--all] [--root=<path>] [--prune [--days=N] [--dry-run]]   (runs anywhere; needs no repo)
+  npx flightwake traps similar --name=<slug> [--tags=…] [--paths=…] [--commands=…] [--text="…"] [--json] | traps stats [--json] [--days=N]
   Run at the target repo root.
   setup       interactive (needs a terminal): the language question starts on your terminal locale (LC_ALL / LC_MESSAGES / LANG);
               add-ons are one list with the recommended ones marked * (Enter keeps them, numbers pick exactly those, 0 = none);
@@ -65,7 +67,10 @@ if (!COMMANDS.includes(cmd) || args.includes('--help') || args.includes('-h')) {
   roles       opt-in add-on: install the fw-roles skill; apply renders .flightwake/ROLES.md — seats into CLAUDE.md/AGENTS.md/GEMINI.md,
               on-call (unseated) roles into native agents (.claude/agents, .codex/agents); card prints a dispatch card; assign changes a seat;
               remove strips this repo's role output (ROLES.md kept). Roles are guidance, not permissions
-  fleet       read-only list of Claude Code sessions reporting to ~/.flightwake/sessions (blocked first); --json for tools; --all; --root=<path>; --prune [--days=N] [--dry-run] deletes ended/stale files older than N days (default 7)`);
+  fleet       read-only list of Claude Code sessions reporting to ~/.flightwake/sessions (blocked first); --json for tools; --all; --root=<path>; --prune [--days=N] [--dry-run] deletes ended/stale files older than N days (default 7)
+  traps       read-only views of .flightwake/TRAPS.md: similar scores existing entries against one you are about to add (run by /fw-trap
+              before writing; pick update in place / supersede / record new); stats shows how often each active entry's tripwire fired
+              (Claude Code sessions with the mod only), anchored vs unanchored, for compaction proposals`);
   process.exit([...COMMANDS, 'help'].includes(cmd) ? 0 : 1);
 }
 
@@ -75,6 +80,12 @@ if (cmd === 'fleet') {
   let markerLang = null;
   try { markerLang = readMarkers(TARGET).find((m) => !m.orphanOrca)?.lang ?? null; } catch {}
   process.exit(await runFleet({ args, lang: markerLang ?? 'en' }));
+}
+// ── traps: read-only (bin/traps.mjs), dispatched the same way: reads <cwd>/.flightwake/TRAPS.md and <base>/trips, no git ──
+if (cmd === 'traps') {
+  let markerLang = null;
+  try { markerLang = readMarkers(TARGET).find((m) => !m.orphanOrca)?.lang ?? null; } catch {}
+  process.exit(runTraps({ args, lang: markerLang ?? 'en', cwd: TARGET }));
 }
 
 const flagValue = (name) => args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -269,16 +280,17 @@ if (cmd === 'uninstall') {
     } catch {}
     // 5. Remove now-empty directories
     for (const rel of ['.claude/skills', '.claude', '.agents/skills', '.agents', '.codex', '.gemini']) rmdirQuiet(rel);
-    // 6. User data only on --purge. The session fleet folder is never part of it, even when it lies in here (a repo
-    //    installed at $HOME, or FLIGHTWAKE_HOME=<this repo>/.flightwake): then .flightwake goes entry by entry around it
+    // 6. User data only on --purge. The session fleet folder and the trip folder (both shared by every repo) are never
+    //    part of it, even when they lie in here (a repo installed at $HOME, or FLIGHTWAKE_HOME=<this repo>/.flightwake):
+    //    then .flightwake goes entry by entry around them (this repo's own trip files are removed below, one by one)
     if (PURGE) {
       const fb = fleetBase(process.env);
-      const keep = fb === null ? null : realish(`${fb}/sessions`);
+      const keeps = fb === null ? [] : [realish(`${fb}/sessions`), realish(`${fb}/trips`)];
       const rmAround = (rel) => {
         const p = join(TARGET, ...rel.split('/'));
         const real = realish(p);
-        if (keep === null || !isWithin(real, keep)) return rm(rel);
-        if (real === keep || isLink(p)) return;
+        if (!keeps.some((k) => isWithin(real, k))) return rm(rel);
+        if (keeps.includes(real) || isLink(p)) return;
         let names = [];
         try { names = readdirSync(p); } catch { return; }
         for (const n of names) rmAround(`${rel}/${n}`);
@@ -306,6 +318,32 @@ if (cmd === 'uninstall') {
         'zh-TW': `保留 ${sdir}——session 檔由所有 repo 共用;\`npx flightwake fleet --prune\` 可刪舊檔`,
         'zh-CN': `保留 ${sdir}——session 文件由所有 repo 共用;\`npx flightwake fleet --prune\` 可删旧文件`,
         ja: `${sdir} は残す——セッションファイルは全リポジトリ共有。古いものは \`npx flightwake fleet --prune\` で削除`,
+      })}`);
+    }
+  } catch {}
+  // Tripwire counts (<base>/trips/<sessionId>.json, written by the mod; read by `traps stats`): shared folder, so only
+  // the files whose `repo` is this repo, and only regular files directly in it (traps.mjs tripFilesFor: no links, never
+  // a folder). --purge removes them (best-effort); otherwise they are kept and named
+  try {
+    const tdir = tripsDir(process.env);
+    const mine = tripFilesFor(tdir, TARGET);
+    if (mine.length && PURGE) {
+      let n = 0;
+      for (const f of mine) {
+        try { const st = lstatSync(f.path); if (!st.isFile() || st.isSymbolicLink()) continue; rmSync(f.path); n++; } catch {}
+      }
+      log(`  ${M({
+        en: `removed ${n} trip file(s) of this repo from ${tdir} (files of other repos kept)`,
+        'zh-TW': `已從 ${tdir} 刪除本 repo 的 ${n} 個觸發紀錄檔(其他 repo 的檔沒動)`,
+        'zh-CN': `已从 ${tdir} 删除本 repo 的 ${n} 个触发记录文件(其他 repo 的文件没动)`,
+        ja: `${tdir} からこの repo の発火記録ファイル ${n} 件を削除(他の repo のファイルはそのまま)`,
+      })}`);
+    } else if (mine.length) {
+      log(`  ${M({
+        en: `kept ${mine.length} trip file(s) of this repo in ${tdir} — \`npx flightwake uninstall --purge\` removes them`,
+        'zh-TW': `保留 ${tdir} 裡本 repo 的 ${mine.length} 個觸發紀錄檔——\`npx flightwake uninstall --purge\` 會刪掉`,
+        'zh-CN': `保留 ${tdir} 里本 repo 的 ${mine.length} 个触发记录文件——\`npx flightwake uninstall --purge\` 会删掉`,
+        ja: `${tdir} にあるこの repo の発火記録ファイル ${mine.length} 件は残す——\`npx flightwake uninstall --purge\` で削除`,
       })}`);
     }
   } catch {}

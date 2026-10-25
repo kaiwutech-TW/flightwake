@@ -30,8 +30,8 @@ export type World = {
   /** Every path whose content the plugin read (fs.read only, not exists / stat / list): "existence only" checks. */
   contentReads: string[]
   /**
-   * Forbidden writes — anything other than the mod's own `<base>/sessions/<id>.json` outside the repo; must stay
-   * empty. (Those few allowed writes land in `fleetWrites` / `outside` instead.)
+   * Forbidden writes — anything other than the mod's own `<base>/sessions/<id>.json` and `<base>/trips/<id>.json`
+   * outside the repo; must stay empty. (Those few allowed writes land in `fleetWrites` / `tripWrites` and `outside`.)
    */
   writes: string[]
   /** Absolute paths outside root → content (the fleet's sessions folder, a transcript, a seeded file). */
@@ -47,6 +47,9 @@ export type World = {
   existsDenied: string[]
   /** Every allowed fleet write (`<base>/sessions/<id>.json`, outside root), in order. */
   fleetWrites: string[]
+  /** Every allowed trip-file write (F4's `<base>/trips/<id>.json`, outside root), in order; refused / thrown ones too land in `tripWriteAttempts`. */
+  tripWrites: string[]
+  tripWriteAttempts: string[]
   /** When true, an allowed fleet write is refused (EACCES) — a full disk, a read-only home. */
   isFleetWriteFailing: boolean
   /** When true, fs.write / fs.list / fs.stat outside root throw (not a refusal: the capability itself blows up). */
@@ -96,10 +99,13 @@ const isOutside = (w: World, p: string): boolean =>
  * included) is a forbidden write.
  */
 const FILE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json$/
-const isFleetPath = (w: World, p: string): boolean => {
-  const pre = `${w.fleetHome ?? `${HOME_OUT}/.flightwake`}/sessions/`
+const isBasePath = (w: World, p: string, dir: 'sessions' | 'trips'): boolean => {
+  const pre = `${w.fleetHome ?? `${HOME_OUT}/.flightwake`}/${dir}/`
   return rel(w, p) === null && p.startsWith(pre) && FILE_NAME_RE.test(p.slice(pre.length)) && !p.split('/').includes('..')
 }
+const isFleetPath = (w: World, p: string): boolean => isBasePath(w, p, 'sessions')
+/** F4's trip file, `<base>/trips/<id>.json`: the mod's second allowed write, same base and name rule. */
+const isTripPath = (w: World, p: string): boolean => isBasePath(w, p, 'trips')
 
 /** Where `p` really lands: the longest `aliases` spelling it starts with, swapped for its target. */
 const realOf = (w: World, p: string): string => {
@@ -175,6 +181,14 @@ export function installWorld(on: On, init: Partial<World> = {}): World {
   })
   let inFlight = 0
   on('fs.write', async ($, e) => {
+    if (isTripPath(w, e.path)) {
+      w.tripWriteAttempts.push(e.path)
+      if (w.isFleetIoThrowing || w.isFleetWriteThrowing === true) throw new Error(`write blew up: ${e.path}`)
+      if (w.isFleetWriteFailing) return { deny: `EACCES: ${e.path}` }
+      w.outside[e.path] = e.text
+      w.tripWrites.push(e.path)
+      return { value: undefined }
+    }
     if (isFleetPath(w, e.path)) {
       w.fleetWriteAttempts.push(e.path)
       if (w.isFleetIoThrowing || w.isFleetWriteThrowing === true) throw new Error(`write blew up: ${e.path}`)
@@ -298,7 +312,7 @@ export function fakeIo(w: World): Io {
 export function newWorld(init: Partial<World> = {}): World {
   return {
     root: '/repo', files: {}, git: {}, settings: {}, sessionId: 'session-1', gitCalls: [], reads: [], contentReads: [], writes: [], failReads: [], isSettingsFailing: false, gitWithoutNoLocks: [],
-    outside: {}, mtimes: {}, links: [], aliases: {}, statDenied: [], existsDenied: [], fleetWrites: [], isFleetWriteFailing: false, isFleetIoThrowing: false, fleetWriteAttempts: [],
+    outside: {}, mtimes: {}, links: [], aliases: {}, statDenied: [], existsDenied: [], fleetWrites: [], tripWrites: [], tripWriteAttempts: [], isFleetWriteFailing: false, isFleetIoThrowing: false, fleetWriteAttempts: [],
     isFleetWriteHeld: false, heldWrites: [], maxFleetWritesInFlight: 0, orcaCalls: [],
     ...init,
   }

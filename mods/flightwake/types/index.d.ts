@@ -1,7 +1,8 @@
 // flightwake-mod's $.state contract: every value any feature keeps for the session. Per-session values carry the
 // session id they were made for; a value with another id is stale (a /clear starts a new id) and is replaced.
 // Nothing here is kept across sessions, except F7's own session file (<base>/sessions/<id>.json, outside the repo,
-// read by other processes) and F8's one $.store key `panelOpen` (a boolean preference, not history).
+// read by other processes), F4's trip file (<base>/trips/<id>.json, `trapsTripped` written whole, read by
+// `npx flightwake traps stats`) and F8's one $.store key `panelOpen` (a boolean preference, not history).
 
 export type FwHealth = 'green' | 'yellow' | 'red' | 'unknown'
 export type FwLang = 'en' | 'zh-TW' | 'zh-CN' | 'ja'
@@ -81,6 +82,16 @@ export type FwFlightLog = {
 
 /** F4 — trap hints already shown this session, keyed `<name>@<content version>`. */
 export type FwTrapsHinted = { sessionId: string; keys: string[] }
+
+/** F4 — one TRAPS entry's matches this session: tool calls that matched it, hinted or not; ISO times. */
+export type FwTrapTrip = { n: number; first: string; last: string }
+
+/**
+ * F4 — every match this session, keyed by entry name (not version), for compaction evidence. Counted by the
+ * tripwire; written whole to `<base>/trips/<sessionId>.json` as `{ v: 1, ...this }` by hooks/features/fleet.ts (the
+ * mod's one writing file). `repo` is the session root of the latest match; `updated` the latest match's time.
+ */
+export type FwTrapsTripped = { sessionId: string; repo: string; updated: string; trips: Record<string, FwTrapTrip> }
 
 /** F5 — the role guard's session snapshot. */
 export type FwRoleGuard = {
@@ -218,6 +229,7 @@ declare module 'claude-code' {
       bandToastSession: string | null
       flightLog: FwFlightLog | null
       trapsHinted: FwTrapsHinted | null
+      trapsTripped: FwTrapsTripped | null
       roleGuard: FwRoleGuard | null
       spend: FwSpend | null
       fleet: FwFleet | null

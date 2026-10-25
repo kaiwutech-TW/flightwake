@@ -2,6 +2,9 @@
  * F4 TRAPS tripwires: when an Edit/Write/NotebookEdit or Bash call matches an active TRAPS entry's `paths` or
  * `commands`, a compact hint is appended to the tool result's `context` (what the model reads after the result).
  * It NEVER blocks: a denied call passes through untouched, and every failure falls through to the plain result.
+ * Every match is also counted in $.state `trapsTripped` (each matching call, hinted or not, by entry name): the
+ * evidence a TRAPS compaction reads. This file only counts; hooks/features/fleet.ts (registerTripLog, outside this
+ * hook) writes the count to `<base>/trips/<id>.json`, since that file is the mod's only writer.
  * Contract: docs/plans/mods.md (revised) and the header of hooks/lib/core.ts. Read scope: .flightwake/TRAPS.md only.
  */
 import { atom, update } from 'claude-code'
@@ -9,12 +12,14 @@ import type { EngineInterface, On } from 'claude-code'
 
 import { M, fwContext, readRel, relToRoot, TRAPS_REL } from '../lib/core'
 import type { Io, Lang } from '../lib/core'
+import { bumpTrips } from '../lib/fleet'
 import { matchAny } from '../lib/glob'
 import { parseCommand, startsWithTokens } from '../lib/shell'
 import { hasMatchers, isActive, parseTraps } from '../lib/traps'
 import type { TrapEntry } from '../lib/traps'
 
 const hinted = atom({ plugin: 'flightwake-mod', key: 'trapsHinted' } as const, null)
+const tripped = atom({ plugin: 'flightwake-mod', key: 'trapsTripped' } as const, null)
 
 const MAX_ENTRIES = 5
 const MAX_LINE = 300
@@ -209,6 +214,15 @@ async function hintFor($: EngineInterface, e: Record<string, unknown>): Promise<
   if (!hits.length) return null
 
   const sessionId = await io.sessionId()
+  // counted before the dedup below: a match not hinted again is still a match
+  try {
+    let ms = Date.now()
+    try { const t = await $.clock.now(); if (typeof t === 'number' && Number.isFinite(t)) ms = t } catch {}
+    const iso = new Date(ms).toISOString()
+    await update($, tripped, (cur) => bumpTrips(cur, sessionId, ctx.root, hits.map((h) => h.entry.name), iso))
+  } catch {
+    // a count that cannot be kept never costs the hint
+  }
   const key = (h: Hit) => `${h.entry.name}@${h.entry.version}`
   let shown: Hit[] = []
   let more = 0

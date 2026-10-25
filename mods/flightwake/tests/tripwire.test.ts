@@ -1,8 +1,9 @@
 // F4 tripwire: hints appended to tool results from TRAPS paths/commands matches; never blocks.
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
+import type { MockClock } from 'claude-code/testing'
 
-import { installWorld, MARKER, STATE_FILLED, STATE_TEMPLATE } from './world'
+import { HOME_OUT, installWorld, MARKER, STATE_FILLED, STATE_TEMPLATE } from './world'
 import type { World } from './world'
 
 type Fields = { paths?: string; commands?: string; status?: string; confidence?: string | null; note?: string }
@@ -259,5 +260,190 @@ describe('tripwire: caveats and results', () => {
     await $.tool.call(write('/repo/a.sql'))
     expect(w.writes).toEqual([])
     expect(w.reads.every((p) => p.startsWith('/repo/.flightwake/') || p.startsWith('/repo/CLAUDE') || p.startsWith('/repo/.claude/') || p === '/repo/AGENTS.md' || p === '/repo/GEMINI.md')).toBe(true)
+  })
+})
+
+// ── trip file: every match counted per entry, written to <base>/trips/<id>.json outside the repo ───────────────
+const NOW = 1_760_000_000_000
+const TRIPS = `${HOME_OUT}/.flightwake/trips`
+const MINE = `${TRIPS}/session-1.json`
+const iso = (ms: number) => new Date(ms).toISOString()
+const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
+/** The fleet's own session file is not under test here: `fleet` off keeps its writes out of the way. */
+const ONLY_F4 = { options: { fleet: false } } as const
+
+type Trip = { w: World; clock: MockClock }
+
+/** A world with a home outside the repo, a clock and an interactive session start, so the trip file can be written. */
+async function tripWorld($: any, on: On, t: string, init: Partial<World> = {}, opts: { env?: Record<string, string>; start?: object } = {}): Promise<Trip> {
+  const w = setup(on, t, init)
+  const clock = mock.clock(on, { now: NOW })
+  mock.env(on, opts.env ?? { HOME: HOME_OUT })
+  on('session.start', () => ({ cwd: w.root }))
+  await $.session.start(opts.start ?? START)
+  await clock.settle()
+  return { w, clock }
+}
+
+/** One tool call, then let the queued trip write run. */
+async function hit($: any, k: Trip, input: never): Promise<string> {
+  const r = await $.tool.call(input)
+  await k.clock.settle()
+  return ctx(r)
+}
+
+const tripFile = (w: World, path = MINE): Record<string, any> | null => {
+  const t = w.outside[path]
+  if (t === undefined) return null
+  try { return JSON.parse(t) as Record<string, any> } catch { return null }
+}
+
+const TWO = () => traps(entry('sql', { paths: '["db/**"]' }), entry('pub', { commands: '["npm publish"]' }))
+
+describe('tripwire: trip file', () => {
+  test('every matching call counts, including repeats not hinted again; the file shape is exact', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO())
+    expect(await hit($, k, { tool: 'Edit', file_path: '/repo/db/a.sql', old_string: 'a', new_string: 'b' } as never)).toContain('`sql`')
+    await k.clock.advance(1000)
+    expect(await hit($, k, write('/repo/db/b.sql'))).toBe('')
+    await k.clock.advance(1000)
+    expect(await hit($, k, bash('npm publish --tag next'))).toContain('`pub`')
+    await k.clock.advance(1000)
+    expect(await hit($, k, bash('sed -i s/a/b/ db/c.sql'))).toBe('')
+    await k.clock.advance(1000)
+    expect(await hit($, k, bash('cd pkg && npm publish'))).toBe('')
+    const text = k.w.outside[MINE]!
+    expect(text.endsWith('}\n')).toBe(true)
+    const f = JSON.parse(text) as Record<string, unknown>
+    expect(Object.keys(f)).toEqual(['v', 'sessionId', 'repo', 'updated', 'trips'])
+    expect(f).toEqual({
+      v: 1, sessionId: 'session-1', repo: '/repo', updated: iso(NOW + 4000),
+      trips: {
+        sql: { n: 3, first: iso(NOW), last: iso(NOW + 3000) },
+        pub: { n: 2, first: iso(NOW + 2000), last: iso(NOW + 4000) },
+      },
+    })
+    expect(text).toBe(`${JSON.stringify(f, null, 2)}\n`)
+    expect(k.w.tripWrites).toEqual([MINE, MINE, MINE, MINE, MINE])
+    expect(k.w.writes).toEqual([])
+  })
+
+  test('a call matching no entry neither counts nor writes; one call matching two entries counts each once', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, traps(entry('sql', { paths: '["*.sql"]' }), entry('db', { paths: '["db/**"]' })))
+    await hit($, k, write('/repo/src/a.ts'))
+    expect(k.w.tripWriteAttempts).toEqual([])
+    await hit($, k, write('/repo/db/a.sql'))
+    await hit($, k, write('/repo/src/b.ts'))
+    expect(tripFile(k.w)?.trips).toEqual({ sql: { n: 1, first: iso(NOW), last: iso(NOW) }, db: { n: 1, first: iso(NOW), last: iso(NOW) } })
+    expect(k.w.tripWrites).toEqual([MINE])
+  })
+
+  test('the base inside the repo → nothing written, the hint still shown', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO(), {}, { env: { FLIGHTWAKE_HOME: '/repo/.fwhome', HOME: HOME_OUT } })
+    expect(await hit($, k, write('/repo/db/a.sql'))).toContain('`sql`')
+    expect(k.w.tripWriteAttempts).toEqual([])
+    expect(k.w.writes).toEqual([])
+  })
+
+  test('a link above the base that lands in the repo → nothing written (real path)', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO(), { links: ['/home/u/lnk'], aliases: { '/home/u/lnk': '/repo' } }, { env: { FLIGHTWAKE_HOME: '/home/u/lnk/fw', HOME: HOME_OUT } })
+    expect(await hit($, k, write('/repo/db/a.sql'))).toContain('`sql`')
+    expect(k.w.tripWriteAttempts).toEqual([])
+    expect(k.w.writes).toEqual([])
+  })
+
+  test('a base that is a records folder or lies in a git repo → nothing written', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO(), { outside: { '/home/u/.git/HEAD': 'ref' } })
+    expect(await hit($, k, write('/repo/db/a.sql'))).toContain('`sql`')
+    k.w.outside['/home/u/.flightwake/STATE.md'] = 'x'
+    delete k.w.outside['/home/u/.git/HEAD']
+    await hit($, k, write('/repo/db/b.sql'))
+    expect(k.w.tripWriteAttempts).toEqual([])
+  })
+
+  test('a symlinked trips folder → never written through', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO(), { links: [TRIPS] })
+    expect(await hit($, k, write('/repo/db/a.sql'))).toContain('`sql`')
+    expect(k.w.tripWriteAttempts).toEqual([])
+  })
+
+  test('a file at our path that is not ours (another version, another id, another tool) is left untouched', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO())
+    let i = 0
+    for (const foreign of ['{"v":2,"sessionId":"session-1","trips":{}}', '{"v":1,"sessionId":"session-9","trips":{}}', 'not json', '[1]']) {
+      k.w.outside[MINE] = foreign
+      await hit($, k, write(`/repo/db/a${i++}.sql`))
+      expect(k.w.outside[MINE]).toBe(foreign)
+    }
+    expect(k.w.tripWriteAttempts).toEqual([])
+  })
+
+  test('our own file (or a torn write of it) from earlier in this session is overwritten', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO(), { outside: { [MINE]: '{\n  "v": 1,\n  "sessionId": "session-1",\n  "repo": "/re' } })
+    await hit($, k, write('/repo/db/a.sql'))
+    expect(tripFile(k.w)?.trips.sql.n).toBe(1)
+  })
+
+  test('tripwire off → nothing counted, nothing written', { options: { tripwire: false, fleet: false } }, async ($, on) => {
+    const k = await tripWorld($, on, TWO())
+    expect(await hit($, k, write('/repo/db/a.sql'))).toBe('')
+    expect(await hit($, k, bash('npm publish'))).toBe('')
+    expect(k.w.tripWriteAttempts).toEqual([])
+    expect(k.w.writes).toEqual([])
+  })
+
+  test('a -p / SDK run (not interactive) writes nothing; the hint is unchanged', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO(), {}, { start: { cwd: '/repo', surface: null, isInteractive: false } })
+    expect(await hit($, k, write('/repo/db/a.sql'))).toContain('`sql`')
+    expect(k.w.tripWriteAttempts).toEqual([])
+  })
+
+  test('a denied call is not counted', ONLY_F4, async ($, on) => {
+    const w = installWorld(on, { files: FILES(TWO()) })
+    on('tool.call', () => ({ deny: 'blocked elsewhere' }))
+    const clock = mock.clock(on, { now: NOW })
+    mock.env(on, { HOME: HOME_OUT })
+    on('session.start', () => ({ cwd: w.root }))
+    await $.session.start(START)
+    await $.tool.call(write('/repo/db/a.sql'))
+    await clock.settle()
+    expect(w.tripWriteAttempts).toEqual([])
+  })
+
+  test('/clear (a new session id) starts a new file from zero; the old one keeps its count', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO())
+    await hit($, k, write('/repo/db/a.sql'))
+    await hit($, k, write('/repo/db/a.sql'))
+    k.w.sessionId = 'session-2'
+    expect(await hit($, k, write('/repo/db/a.sql'))).toContain('`sql`')
+    expect(tripFile(k.w)?.trips.sql.n).toBe(2)
+    expect(tripFile(k.w, `${TRIPS}/session-2.json`)).toMatchObject({ v: 1, sessionId: 'session-2', trips: { sql: { n: 1 } } })
+  })
+
+  test('a failing or throwing write never touches the result or the hint, and is tried again on the next count', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO())
+    k.w.isFleetWriteFailing = true
+    const r = await $.tool.call(write('/repo/db/a.sql'))
+    await k.clock.settle()
+    expect(r.text).toBe('ok')
+    expect(ctx(r)).toContain('`sql`')
+    expect(k.w.tripWrites).toEqual([])
+    k.w.isFleetWriteFailing = false
+    k.w.isFleetWriteThrowing = true
+    expect((await $.tool.call(bash('npm publish'))).text).toBe('ok')
+    await k.clock.settle()
+    k.w.isFleetWriteThrowing = false
+    await hit($, k, write('/repo/db/b.sql'))
+    expect(tripFile(k.w)?.trips).toMatchObject({ sql: { n: 2 }, pub: { n: 1 } })
+    expect(k.w.tripWriteAttempts.length).toBe(3)
+  })
+
+  test('the hints themselves are exactly as without a home (dedup unchanged)', ONLY_F4, async ($, on) => {
+    const k = await tripWorld($, on, TWO())
+    const seen = [
+      await hit($, k, write('/repo/db/a.sql')), await hit($, k, write('/repo/db/a.sql')),
+      await hit($, k, bash('npm publish')), await hit($, k, bash('npm publish')),
+    ]
+    expect(seen.map((c) => c.includes('flightwake TRAPS'))).toEqual([true, false, true, false])
   })
 })

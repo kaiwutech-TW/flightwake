@@ -20,12 +20,13 @@ mod が読むのは次のもの:
 - 実際に有効な `statusLine` 設定
 - `spend` 用:このセッション自身の `~/.claude/projects/` 配下の transcript(トークンの集計だけ)
 - `fleet` 用:`<base>/sessions/*.json` のセッションファイル(下の「セッション状態の報告」を参照)、ほかのセッションの `~/.claude/projects/` 配下の transcript がまだあるか(存在の確認だけ。そのセッション自身の transcript のパスに限る)、`<base>` が記録フォルダーか git リポジトリ内か(`<base>/STATE.md` と、`<base>` とその上の各フォルダーの `.git` と `.flightwake/STATE.md`。存在の確認だけ)、repo のルートと `<base>/sessions` が実際にどこに着くか(リンクをたどる `stat`)
+- `tripwire` の一致回数用:`<base>/trips` とこのセッション自身のファイルに対する同じ確認
 - `panel` 用(Orca の中だけ):Orca のターミナル一覧(`orca` CLI 経由)と、一覧にある各 repo の `.flightwake/STATE.md` および指示ファイルのマーカー(読み取りのみ)
 
 ネットワークは使わない。repo の中にも、あなたの記録(STATE / DECISIONS / TRAPS / records / ROLES.md)にも**決して書き込まない**。
-mod 自身が持つ状態は session ごとのもの(`$.state`)で、例外は 2 つ:**ファイルへの書き込みは、対話セッションごとに 1 つ、repo の外の
-`<base>/sessions/<id>.json` だけ**(`fleet` 機能。`<base>` は絶対パスの `FLIGHTWAKE_HOME`、なければ `~/.flightwake`)。もう 1 つは `panel` 機能で、サイドパネルを最後に開いたか閉じたかという「はい / いいえ」を 1 つ、mod 自身の Claude Code プラグインストアに持つ。`<base>` が session の
-repo の中に解決されるとき、flightwake の記録フォルダーのとき、どこかの git リポジトリ内にあるときは何も書かない。mod の中で起きたエラーは黙って無害化される。
+mod 自身が持つ状態は session ごとのもの(`$.state`)で、例外は 2 つ:**ファイルへの書き込みは、対話セッションごとに 2 つ、どちらも repo の外の
+`<base>` の下だけ**——`<base>/sessions/<id>.json`(`fleet` 機能)と `<base>/trips/<id>.json`(`tripwire` 機能の一致回数)。`<base>` は絶対パスの `FLIGHTWAKE_HOME`、なければ `~/.flightwake`。もう 1 つは `panel` 機能で、サイドパネルを最後に開いたか閉じたかという「はい / いいえ」を 1 つ、mod 自身の Claude Code プラグインストアに持つ。`<base>` が session の
+repo の中に解決されるとき、flightwake の記録フォルダーのとき、どこかの git リポジトリ内にあるときは、どちらのファイルも書かない。mod の中で起きたエラーは黙って無害化される。
 `.flightwake/STATE.md` のないフォルダーでは、何もしない。表示言語は、インストール時に指示ファイルのマーカーへ記録された言語に従う。
 
 ## 読み込まれる条件
@@ -126,6 +127,12 @@ commands: ["npm run migrate", "psql"]
 - `paths`:repo 相対の glob。`/` を含まないパターンは、どの深さでもそのファイル名に一致する。
 - `commands`:コマンドの先頭部分(プレフィックス)で、トークンごとに比較する。正規表現は使えない。
 - superseded になったエントリは、決して一致の対象にならない。
+
+**一致回数の記録。** エントリに一致したツール呼び出しは、すべて数える——「session ごとに 1 回」のヒントが黙っている 2 回目以降も含めて。エントリ名ごとに回数と最初・最後の時刻を、
+repo の外の `<base>/trips/<session id>.json` に書く。`<base>` と書き込みを断る規則はセッション状態の報告ファイルと同じ(repo の中、記録フォルダー、どこかの git リポジトリの中には書かない。
+シンボリックリンク越しには書かない。自分のものでないファイルは上書きしない)。対話セッションだけで、一致した呼び出しのたびにファイル全体を書き直す。形式は下の「trip ファイル」を参照。
+これは後で TRAPS を圧縮するときの根拠になり、`npx flightwake traps stats` がファイルを合計する。数えることでブロックすることはなく、ヒントも変わらない。書き込みを断ったときや失敗したときも黙っている。
+`tripwire` がオンのときだけ記録するので、記録が残るのは mod の入った Claude Code のセッションだけ——Codex、Gemini CLI、mod のない Claude Code は残さないため、合計は下限として読むこと。`/clear` の後は新しいファイルになる。
 
 ### 何をしているかを確認する:`/fw-mod`
 
@@ -317,6 +324,25 @@ Orca などのツール向けの指針:
 - `/clear` をまたぐときは `parent.sessionId` をたどる。
 - 再開ボタン:`launchCwd` で `claude --resume ${resume.id}` を実行する。
 
+#### trip ファイル
+
+`<base>/trips/<session id>.json`。書くのは `tripwire`(`fleet` ではない)で、`<base>`、ファイル名の規則、書き込みの防護はセッションファイルと同じ。
+セッション ID ごとに 1 ファイル、エントリに一致したツール呼び出しのたびに全体を書き直す(`JSON.stringify(t, null, 2)` と改行 1 つ):
+
+```json
+{
+  "v": 1,
+  "sessionId": "<id>",
+  "repo": "/abs/path/of/the/repo",
+  "updated": "2026-10-26T08:00:00.000Z",
+  "trips": { "<trap name>": { "n": 3, "first": "<ISO>", "last": "<ISO>" } }
+}
+```
+
+- `repo` は最後に一致したときのセッションのルート(絶対パス、Claude Code が報告するとおり)、`updated` は最後に一致した時刻。時刻は ISO 8601、UTC。
+- `trips` のキーはエントリの `name`(内容を直したエントリも同じ名前で数え続ける)。`n` ≥ 1 は、そのエントリに一致したツール呼び出しの回数で、ヒントを出したかどうかは問わない。1 回の呼び出しは、エントリごとに 1 回だけ数える。
+- そのパスにあるファイルが `v: 1` で同じ `sessionId` のものでなければ、決して上書きしない。mod が trip ファイルを削除することはない。
+
 ## 下部ゲージと帯を一緒に使う
 
 `setup` では両者は同じ一覧の別々の行(1 行目がゲージ、2 行目が mod)なので、片方だけ・両方・どちらもなしを選べる。両方をインストールした場合、終了時のメッセージはこう説明する:下部ゲージは health / STATE の遅れ / コンテキスト使用率を表示し、
@@ -349,7 +375,7 @@ mod を選んでもゲージが外れることはない。
   片方が終了してもう片方が動いていると、もう片方の次のハートビートまで最大 30 秒、ファイルは終了と表示する。
 - **セッションの途中で `fleet` をオフにする**と、ファイルは応答なしになり、再開候補として 1 回示されることがある。`npx flightwake fleet --prune` で削除できる。
 - **ポリシー面。** `fleet` があると、hooks モジュールは `fs.write`、`fs.list`、6 つの環境変数の読み取り(`FLIGHTWAKE_HOME`、`HOME`、
-  `USERPROFILE`、`ORCA_TERMINAL_HANDLE`、`ORCA_WORKSPACE_ID`、`TMUX_PANE`)を使う。`panel` があると、さらに `ORCA_CLI_BIN_DIR` を読み、
+  `USERPROFILE`、`ORCA_TERMINAL_HANDLE`、`ORCA_WORKSPACE_ID`、`TMUX_PANE`)を使う。`tripwire` があると、trip ファイルのために `fs.write` とそのうち最初の 3 つの環境変数を使う。`panel` があると、さらに `ORCA_CLI_BIN_DIR` を読み、
   Orca の中で `orca` CLI を実行する(上の「サイドパネル」を参照)。ファイルを書く、またはプロセスを実行するプラグインを拒否する管理ポリシーは、
   この機能だけでなく mod **全体**を拒否する。
 - **Fleet パネルの状態は一部が推測。** fleet ファイルのないエージェント(Codex、ほかの CLI、mod のない Claude Code)の作業中 / 待機中 / 応答待ちは、タブのタイトルと直近の出力から読むので、最大 10 秒遅れることがあり、エージェントがタイトルの形式を変えると外れることもある。**締め**は送る前に取り直して確かめるが、使うのは同じ推測でしかない。

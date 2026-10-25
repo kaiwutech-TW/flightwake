@@ -18,15 +18,16 @@ this session's own transcript under `~/.claude/projects/` (token totals only); f
 `~/.claude/projects/` still exists (existence only, and only a path that is that session's own transcript), and whether
 `<base>` is a records folder or lies in a git repo (`<base>/STATE.md`, and `.git` and `.flightwake/STATE.md` on `<base>`
 or a folder above it; existence only), and where the repo root and `<base>/sessions` really land (a `stat` that follows
-links); for `panel` inside Orca, Orca's terminal list (through the `orca` CLI) and each listed repo's
+links); for `tripwire`'s trip counts, the same probes over `<base>/trips` and this session's own file there; for `panel` inside Orca, Orca's terminal list (through the `orca` CLI) and each listed repo's
 `.flightwake/STATE.md` and instruction-file markers (read-only). No network.
 
 What it never does: write inside the repo or your records (STATE, DECISIONS, TRAPS, records, ROLES.md). Its state is
-per session, with two exceptions: **its only file write is one file per interactive session, `<base>/sessions/<id>.json`,
-outside the repo** (the `fleet` feature; `<base>` is an absolute `FLIGHTWAKE_HOME`, else `~/.flightwake`), and the
+per session, with two exceptions: **its only file writes are two files per interactive session, both outside the repo
+under `<base>`** — `<base>/sessions/<id>.json` (the `fleet` feature) and `<base>/trips/<id>.json` (the `tripwire`
+feature's match counts); `<base>` is an absolute `FLIGHTWAKE_HOME`, else `~/.flightwake` — and the
 `panel` feature keeps one yes/no — whether you last opened or closed the side panel — in the mod's own Claude Code
 plugin store. If `<base>`
-resolves inside the session's repo, is a flightwake records folder, or lies in any git repo, nothing is written. Any error in it degrades silently, and in a folder without `.flightwake/STATE.md` it does nothing at all. Its display
+resolves inside the session's repo, is a flightwake records folder, or lies in any git repo, neither file is written. Any error in it degrades silently, and in a folder without `.flightwake/STATE.md` it does nothing at all. Its display
 language follows the language recorded in the instruction-file marker at install time.
 
 ## Requirements
@@ -118,6 +119,15 @@ commands: ["npm run migrate", "psql"]
 - `paths` — repo-relative globs. A pattern without `/` matches that file name at any depth.
 - `commands` — command prefixes, compared token by token. No regex.
 - Superseded entries are never matched.
+
+**Trip counts.** Every tool call that matches an entry is also counted — including the calls the once-per-session hint
+stays quiet for — by entry name, with the first and last time, in `<base>/trips/<session id>.json` outside the repo:
+the same `<base>` and the same refusal rules as the [session fleet](#session-fleet-fleet) file (not inside the repo, not
+in a records folder or any git repo, never through a symlink, never over a file that is not ours), interactive sessions
+only, and rewritten after each matching call. Shape: [Trip file](#trip-file). It is evidence for compacting TRAPS later:
+`npx flightwake traps stats` adds the files up. Counting never blocks and never changes the hint; a refused or failed
+write is silent. It runs only while `tripwire` is on, so only Claude Code sessions with the mod record trips — Codex,
+Gemini CLI and Claude Code without the mod leave none, and the totals are a floor. `/clear` starts a new file.
 
 ## Side panel (`panel`)
 
@@ -347,6 +357,29 @@ Guidance for Orca and other tools:
 - Follow `parent.sessionId` across `/clear`.
 - Resume button: `claude --resume ${resume.id}`, run in `launchCwd`.
 
+#### Trip file
+
+`<base>/trips/<session id>.json`, written by `tripwire` (not `fleet`), under the same `<base>`, file-name rule and write
+guards as the session files; one file per session id, rewritten whole (`JSON.stringify(t, null, 2)` plus a newline)
+after each tool call that matched an entry:
+
+```json
+{
+  "v": 1,
+  "sessionId": "<id>",
+  "repo": "/abs/path/of/the/repo",
+  "updated": "2026-10-26T08:00:00.000Z",
+  "trips": { "<trap name>": { "n": 3, "first": "<ISO>", "last": "<ISO>" } }
+}
+```
+
+- `repo` is the session's root (absolute, as Claude Code reports it) at the latest match; `updated` is the latest match.
+  Times are ISO 8601, UTC.
+- `trips` is keyed by the entry's `name` (an edited entry keeps counting under its name). `n` ≥ 1 counts the tool calls
+  that matched the entry, hinted or not; one call counts once per entry.
+- A file at that path that is not `v: 1` with the same `sessionId` is never overwritten. The mod never deletes trip
+  files.
+
 ## Checking what it is doing: /fw-mod
 
 `/fw-mod` is read-only. It lists each of the eight features as on, off or idle, with the reason and what to do to make it
@@ -409,7 +442,8 @@ Claude Code that the mod loaded — run `/fw-mod`.
 - **Turning `fleet` off mid-session** leaves the file to go stale; it may be offered once as a resume candidate.
   `npx flightwake fleet --prune` removes it.
 - **Policy surface.** With `fleet`, the hooks module uses `fs.write`, `fs.list` and six environment reads
-  (`FLIGHTWAKE_HOME`, `HOME`, `USERPROFILE`, `ORCA_TERMINAL_HANDLE`, `ORCA_WORKSPACE_ID`, `TMUX_PANE`). With `panel`, it
+  (`FLIGHTWAKE_HOME`, `HOME`, `USERPROFILE`, `ORCA_TERMINAL_HANDLE`, `ORCA_WORKSPACE_ID`, `TMUX_PANE`); with
+  `tripwire`, `fs.write` and the first three of those reads, for the trip file. With `panel`, it
   also reads `ORCA_CLI_BIN_DIR` and runs the `orca` CLI inside Orca (see [Side panel](#side-panel-panel)). A managed policy
   that refuses plugins which write files or run processes refuses the **whole** mod, not only this feature.
 - **Fleet console states are partly guessed.** For agents without a fleet file (Codex, other CLIs, Claude Code without

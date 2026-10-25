@@ -20,11 +20,12 @@ Gemini CLI 沒有對應的機制;而 flightwake 其他一切(skill、Stop hook�
 - 實際生效的 `statusLine` 設定
 - `spend` 用:本 session 自己在 `~/.claude/projects/` 下的 transcript(只加總 token)
 - `fleet` 用:`<base>/sessions/*.json` 的 session 檔(見下方「session 狀態回報」)、別的 session 在 `~/.claude/projects/` 下的 transcript 是否還在(只看存不存在,而且只認那個 session 自己的 transcript 路徑),以及 `<base>` 是不是紀錄資料夾或位在 git repo 裡(`<base>/STATE.md`,和 `<base>` 及其上層各資料夾的 `.git` 與 `.flightwake/STATE.md`;只看存不存在),還有 repo 根目錄與 `<base>/sessions` 實際落在哪裡(會跟著連結走的 `stat`)
+- `tripwire` 的命中次數用:對 `<base>/trips` 與本 session 自己那個檔做同樣的檢查
 - `panel` 用(只在 Orca 裡):Orca 的終端機清單(透過 `orca` CLI),以及清單上每個 repo 的 `.flightwake/STATE.md` 與指令檔標記(唯讀)
 
 不連網。它**從不寫 repo 裡的東西,也不寫你的紀錄**(STATE、DECISIONS、TRAPS、records、ROLES.md),狀態是每個 session 各自一份(`$.state`),
-有兩個例外:**它唯一寫入的檔案是每個互動 session 一個檔 `<base>/sessions/<id>.json`,放在 repo 外**(`fleet` 功能;`<base>` 是絕對路徑的
-`FLIGHTWAKE_HOME`,否則是 `~/.flightwake`),以及 `panel` 功能會在 mod 自己的 Claude Code 外掛儲存區記一個是/否——你上次是開啟還是關閉側邊面板。`<base>` 落在 session 的 repo 裡、是 flightwake 紀錄資料夾、或位在任何 git repo 裡時,什麼都不寫。
+有兩個例外:**它唯一寫入的檔案是每個互動 session 兩個檔,都放在 repo 外的 `<base>` 底下**——`<base>/sessions/<id>.json`(`fleet` 功能)與
+`<base>/trips/<id>.json`(`tripwire` 功能的命中次數);`<base>` 是絕對路徑的 `FLIGHTWAKE_HOME`,否則是 `~/.flightwake`——以及 `panel` 功能會在 mod 自己的 Claude Code 外掛儲存區記一個是/否——你上次是開啟還是關閉側邊面板。`<base>` 落在 session 的 repo 裡、是 flightwake 紀錄資料夾、或位在任何 git repo 裡時,兩個檔都不寫。
 它出任何錯都會悄悄降級,不打擾你。在沒有 `.flightwake/STATE.md` 的資料夾裡,它什麼都不做。
 顯示語言跟著安裝當時記在指令檔標記裡的語言走。
 
@@ -114,6 +115,12 @@ commands: ["npm run migrate", "psql"]  # 指令前綴,逐個 token 比對
 ```
 
 不支援正規表示式。已被 superseded 的條目永遠不會被比對。
+
+**命中次數。** 每一次符合某則條目的工具呼叫也會被計數——包括「每個 session 只提示一次」而沒再提示的那幾次——依條目名稱記下次數與第一次、最後一次的時間,
+寫到 repo 外的 `<base>/trips/<session id>.json`:`<base>` 與拒寫規則都跟 session 狀態回報檔相同(不在 repo 裡、不是紀錄資料夾也不在任何 git repo 裡、
+絕不經由 symlink、絕不覆蓋不是自己的檔),只限互動 session,每次命中的呼叫之後整檔重寫。格式見下方「trip 檔」。它是日後壓縮 TRAPS 的依據:
+`npx flightwake traps stats` 會把這些檔加總。計數從不阻擋,也不改變提示;拒寫或寫入失敗都不出聲。只有 `tripwire` 開著時才記,所以只有裝了 mod 的
+Claude Code session 會留下命中紀錄——Codex、Gemini CLI 與沒裝 mod 的 Claude Code 不會,總數只能當下限看。`/clear` 之後會開一個新檔。
 
 ### 查看它現在在做什麼:`/fw-mod`
 
@@ -294,6 +301,25 @@ schema `flightwake.session/1`。JSON(`JSON.stringify(rec, null, 2)` 加一個換
 - `/clear` 之後沿著 `parent.sessionId` 接續。
 - 接回按鈕:在 `launchCwd` 執行 `claude --resume ${resume.id}`。
 
+#### trip 檔
+
+`<base>/trips/<session id>.json`,由 `tripwire`(不是 `fleet`)寫入;`<base>`、檔名規則與寫入防護都與 session 檔相同。每個 session id 一個檔,
+每次有工具呼叫命中條目之後整檔重寫(`JSON.stringify(t, null, 2)` 加一個換行):
+
+```json
+{
+  "v": 1,
+  "sessionId": "<id>",
+  "repo": "/abs/path/of/the/repo",
+  "updated": "2026-10-26T08:00:00.000Z",
+  "trips": { "<trap name>": { "n": 3, "first": "<ISO>", "last": "<ISO>" } }
+}
+```
+
+- `repo` 是最近一次命中時 session 的根目錄(絕對路徑,照 Claude Code 回報的);`updated` 是最近一次命中的時間。時間是 ISO 8601、UTC。
+- `trips` 以條目的 `name` 為鍵(條目改過內容仍記在同一個名稱下)。`n` ≥ 1,是命中該條目的工具呼叫次數,不論有沒有提示;一次呼叫對每則條目只算一次。
+- 該路徑上若有檔案不是 `v: 1` 且 `sessionId` 相同,就絕不覆蓋。mod 從不刪除 trip 檔。
+
 ## 限制——請先讀這段
 
 - **`/fw-log` 裡的「pass」** 的意思是:一個被直接呼叫、認得出的測試執行器,以可辨識的方式跑完並回傳 0。它看不到設定檔或環境裡讓測試
@@ -315,7 +341,7 @@ schema `flightwake.session/1`。JSON(`JSON.stringify(rec, null, 2)` 加一個換
   檔案最多有 30 秒顯示已結束,直到另一個的下一次心跳。
 - **session 中途關掉 `fleet`**:檔案會變成失聯,可能被當成接回候選提示一次。`npx flightwake fleet --prune` 可刪掉。
 - **政策面。** 有 `fleet` 時,hooks 模組會用到 `fs.write`、`fs.list` 與六個環境變數讀取(`FLIGHTWAKE_HOME`、`HOME`、`USERPROFILE`、
-  `ORCA_TERMINAL_HANDLE`、`ORCA_WORKSPACE_ID`、`TMUX_PANE`)。有 `panel` 時,還會讀 `ORCA_CLI_BIN_DIR`,並在 Orca 裡執行 `orca` CLI(見上方「側邊面板」)。拒絕會寫檔或執行程序的外掛的受管政策會拒絕**整個** mod,不只這個功能。
+  `ORCA_TERMINAL_HANDLE`、`ORCA_WORKSPACE_ID`、`TMUX_PANE`);有 `tripwire` 時,為了 trip 檔會用到 `fs.write` 與其中前三個環境變數。有 `panel` 時,還會讀 `ORCA_CLI_BIN_DIR`,並在 Orca 裡執行 `orca` CLI(見上方「側邊面板」)。拒絕會寫檔或執行程序的外掛的受管政策會拒絕**整個** mod,不只這個功能。
 - **Fleet 面板的狀態有一部分是猜的。** 沒有 session 狀態回報檔的 agent(Codex、其他 CLI、沒裝 mod 的 Claude Code),工作中 / 閒置 / 等你回覆是從分頁標題和最近的輸出判斷的,最多可能慢 10 秒,agent 改了標題格式時也可能判斷錯。**收尾**在送出前會重新檢查,但用的仍是同一套推測。
 - 只支援 Claude Code。需要 2.1.287 以上、已接受資料夾信任提示、而且從 repo 根目錄開始。
 - 已在一個真實的 Claude Code session 裡驗證過一次(前五個功能都生效)。**還沒有**在真實 session 驗證的:`spend` 功能、重啟後接續 session、compaction
