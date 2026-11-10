@@ -6,6 +6,7 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
+| 2026-11-11 | **示範影片直式版沿用橫式的 hook 影片**(置中放、上下模糊底,不另畫 9:16 首尾幀、不另生成);畫風維持現在的咖啡金屬色調(B2,Kai 2026-11-11) | 直接裁成 9:16 會讓 720p 只剩 405 寬、H2/H3 的主要動作出框;另生一套要再畫八張首尾幀、再生四支(約 42 點),角色漂移也要再對一次。上下空間本來就要放標題與字幕 | 短影片成為主要管道,或置中版成效明顯差 |
 | 2026-11-11 | **Claude Code plugin:repo 根目錄就是 plugin,市集指向 npm 套件;只出英文;`init --plugin` 建 `.flightwake/` 與義務表**(A9,Kai 2026-11-11「做」) | 不在 git 多放一份(manifest 的 `skills` 指到 `skills/en/`,探針證實只載入 4 個英文 skill);npm 來源讓 plugin 只會是已發佈、有 provenance 的版本;plugin 沒有 i18n;義務表是核心,plugin 自己寫不了 CLAUDE.md,所以交給 init。兩種安裝並存時 plugin 的 hook 讓位給 repo 自己那份 | 官方加入 plugin i18n;或使用者回報 npm 來源安裝失敗 |
 | 2026-11-11 | **Antigravity 的坑提示走 `model_decision` 規則檔,由 TRAPS.md 產生**(A6):`.agents/rules/flightwake-trap-<name>.md`,init/update 與 `traps rules` 整檔重產;只動有產生標記的檔。這是「同一事實只寫一處」的例外:TRAPS.md 是唯一正本,規則檔是不可手改的產生物 | agy 的 PreToolUse 不能附加 context;探針(agy CLI 1.5.3/1.5.5)裡 `glob` 規則讀檔、改檔都沒載入,`model_decision` 規則在沒有提示的改檔前就被讀了、改無關檔時沒讀(`docs/plans/agy-rules.md`)。只做 agy:Claude Code 與 Codex 已有 A5 的 hook | agy 的 glob 規則開始在改檔時載入(可改用 glob,省掉常駐的描述);或 agy 的 PreToolUse 能附加 context |
 | 2026-11-11 | **A5 照審查後的修訂範圍做**(`docs/plans/tripwire-hook.md` 選項 a):一份共用的 TRAPS 核心、一般 hook `trap-check.mjs` 給 Claude Code 與 Codex、hints 紀錄去重;順序是先探針(Q5 mod 能否 import `.mjs`、Codex 的 Q2–Q4 與 nonce 時序)再寫程式,探針否定哪一段就砍哪一段 | Kai 2026-11-11「根據順序繼續改 A5 往下做」;不擱置(c)是因為 A6、A9 都要共用核心,只做核心(b)會讓 Codex 繼續沒有提示 | Codex 的 PreToolUse 不能注入 context:一般 hook 只留沒裝 mod 的 Claude Code,Codex 改走 A6 式規則檔 |
