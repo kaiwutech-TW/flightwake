@@ -62,7 +62,7 @@ EOF
    `.flightwake/TRAPS.md`,有相近條目一樣三選一
 2. 依 `.flightwake/TRAPS.md` 檔頭示範的條目格式(OKF 式 frontmatter:name/type/status/confidence/tags/discovered)
    寫進 `.flightwake/TRAPS.md` **最上面**
-   選填 `paths` / `commands`——坑綁在特定檔案或指令上時才填,讓 Claude Code mod 的絆線在有人碰到時把這條提示出來:
+   選填 `paths` / `commands`——坑綁在特定檔案或指令上時才填,讓坑提示(Claude Code 與 Codex 的 PreToolUse hook,以及選配的 Claude Code mod)在 agent 碰到之後把這條提示出來:
    `paths: ["src/db/**", "*.sql"]`(repo 相對路徑的 glob;不含 `/` 的樣式比對任何深度的同名檔)、
    `commands: ["npm run migrate", "psql"]`(指令前綴,逐字比對)。不支援 regex。拿不準、或坑是觀念而不是某個位置?留空即可——
    不填的條目照常運作

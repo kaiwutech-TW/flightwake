@@ -122,6 +122,8 @@ your-repo/
 │   ├── TRAPS.md             # 坑 registry(OKF 式 frontmatter 條目)
 │   ├── TEMPLATE-record.md   # 飛行紀錄模板
 │   ├── hooks/state-check.mjs  # Stop hook:STATE 落後 ≥3 commits 時提醒收尾
+│   ├── hooks/trap-check.mjs   # PreToolUse hook(Claude Code、Codex):呼叫碰到有錨點的坑時,把那條 TRAPS 提示出來
+│   ├── hooks/traps-core.mjs   # trap-check.mjs 用的 TRAPS 解析與比對(和 CLI、mod 同一份)
 │   └── records/             # 飛行紀錄(每次有意義的收尾一份)
 ├── .claude/skills/fw-*/     # 四個 skill(Claude Code)
 ├── .claude/settings.json    # init 併入 Stop hook 設定

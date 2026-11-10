@@ -47,7 +47,7 @@ npx flightwake update --mod                     # 升級並加上 Claude Code mo
 
 ## `init` 寫了什麼
 
-init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claude/skills/`、把 Stop hook 併入 `.claude/settings.json`、把觸發義務表(含 `<!-- flightwake:begin/end -->` 標記)附加到**偵測到的 agent 指令檔**(CLAUDE.md / AGENTS.md / GEMINI.md,有哪個貼哪個;全都沒有就建 AGENTS.md;`--agents=claude,codex,agy,gemini` 可明確指定)。**每個平台都拿到同一套 skill 與 hook,用它自己的方言**:Codex、Antigravity 與 Gemini CLI 從 `.agents/skills/fw-*` 讀 skill,STATE 檢查分別進 `.codex/hooks.json`(Stop)、`.agents/hooks.json`(Antigravity,Stop)與 `.gemini/settings.json`(AfterAgent),義務表對 Codex 寫 `$fw-coldstart`、對 Claude Code 寫 `/fw-coldstart`、對 Antigravity 與 Gemini 寫裸 skill 名。Codex 首次執行會要你信任這個 repo hook 一次;Antigravity 第一次開會問一次是否信任這個資料夾。各平台細節:[multi-agent.zh-TW.md](multi-agent.zh-TW.md)。**純檔案複製,零執行期依賴**(Node ≥18 只在安裝與 hook 時用)。使用者資料(STATE/DECISIONS/TRAPS)任何情況下都不覆蓋;`--force` 只更新框架擁有的檔案。
+init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claude/skills/`、把 Stop hook 併入 `.claude/settings.json`、把觸發義務表(含 `<!-- flightwake:begin/end -->` 標記)附加到**偵測到的 agent 指令檔**(CLAUDE.md / AGENTS.md / GEMINI.md,有哪個貼哪個;全都沒有就建 AGENTS.md;`--agents=claude,codex,agy,gemini` 可明確指定)。**每個平台都拿到同一套 skill 與 hook,用它自己的方言**:Codex、Antigravity 與 Gemini CLI 從 `.agents/skills/fw-*` 讀 skill,STATE 檢查分別進 `.codex/hooks.json`(Stop)、`.agents/hooks.json`(Antigravity,Stop)與 `.gemini/settings.json`(AfterAgent),義務表對 Codex 寫 `$fw-coldstart`、對 Claude Code 寫 `/fw-coldstart`、對 Antigravity 與 Gemini 寫裸 skill 名。Claude Code 與 Codex 另外有**坑提示**:一條 `PreToolUse`(`.flightwake/hooks/trap-check.mjs`,旁邊放共用的 `traps-core.mjs`),呼叫編輯到符合某條 active TRAPS `paths` 的檔、執行開頭符合它 `commands` 的指令、或用 shell 寫入這種路徑時,把那條提示出來。提示跟著工具結果送到 agent——是給下一步看的,不會擋;每條每個 session 只提示一次,紀錄放在 repo 外的私有資料夾(`~/.flightwake/hints`,0700;`FLIGHTWAKE_HOME` 可改位置)。`FLIGHTWAKE_TRIPWIRE=off` 可關掉;在 Claude Code 裡 mod 的 `"tripwire": false` 也會關掉它。Codex 首次執行會要你信任這些 repo hook 一次,之後若 `hooks.json` 裡的條目被改過,那條會被默默停用(`/hooks` 會顯示 needs review),所以 `update` 從不改寫這些條目。Antigravity 第一次開會問一次是否信任這個資料夾。各平台細節:[multi-agent.zh-TW.md](multi-agent.zh-TW.md)。**純檔案複製,零執行期依賴**(Node ≥18 只在安裝與 hook 時用)。使用者資料(STATE/DECISIONS/TRAPS)任何情況下都不覆蓋;`--force` 只更新框架擁有的檔案。
 
 ## 選項
 
@@ -63,7 +63,7 @@ init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claud
 
 **`--git-init`** 讓 `init` 在目錄不是 git repo 時先建立它——只有明確給旗標才會做;沒給就停下並告知。`init` 與 `setup` 都會先檢查 git 是否已安裝,沒有則依平台給出安裝提示。
 
-**`uninstall`** 反向清除 init 的固定寫入範圍:刪 skill 與框架檔(只刪發行的檔——你在 skill 資料夾裡自己加的檔,或發行檔位置變成目錄的,都保留並列出)、從 settings 摘除 flightwake 的 Stop hook(使用者其他 hook 原樣保留)、移除指令檔與 `.git/info/exclude` 的標記區塊(由 flightwake 建的檔案清空後刪除)。**`.flightwake/` 是使用者資料,預設保留**,`uninstall --purge` 才連同刪除。
+**`uninstall`** 反向清除 init 的固定寫入範圍:刪 skill 與框架檔(只刪發行的檔——你在 skill 資料夾裡自己加的檔,或發行檔位置變成目錄的,都保留並列出)、從 settings 摘除 flightwake 的 Stop 與 PreToolUse hook(使用者其他 hook 原樣保留)、移除指令檔與 `.git/info/exclude` 的標記區塊(由 flightwake 建的檔案清空後刪除)。**`.flightwake/` 是使用者資料,預設保留**,`uninstall --purge` 才連同刪除。
 
 **monorepo 政策:單 repo 一份,裝在 git root。** 工作是 session 形狀的——一個 session 常橫跨多個 package,記錄跟著 session 走;拆到子目錄各裝會把同一段工作切碎成多份 record,也讓「該讀哪份 STATE」變成新的冷啟動歧義。子目錄執行 init 會擋下並指路 root。submodule 有自己的 `.git`,視為獨立 repo 各裝各的。多團隊高流量 monorepo 若覺得 CI 落後檢查誤報,先調 `--threshold`。
 

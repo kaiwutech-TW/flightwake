@@ -3,7 +3,8 @@
  * (written by flightwake-mod's F7 `fleet` feature; base = absolute FLIGHTWAKE_HOME, else $HOME/.flightwake).
  * Blocked first, then working, idle, stale, ended. `--json` for tools (Orca), `--prune` is the only delete path for
  * session files: it removes ended/stale (and old unreadable) files, never a file written in the last 120 s; it also
- * removes trip files (<base>/trips, traps.mjs pruneTrips) not updated in N days.
+ * removes trip files (<base>/trips, traps.mjs pruneTrips) and the trap check's hint records (<base>/hints, pruneHints) not
+ * updated in N days.
  * Zero dependencies: Node built-ins only. Never creates the folder, never writes anything except `--prune`'s deletes.
  *
  * The base-dir rules (§2) and the display constants (§8) MIRROR mods/flightwake/hooks/lib/fleet.ts and
@@ -12,7 +13,7 @@
 import { readdirSync, lstatSync, readFileSync, existsSync, rmSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 // a cycle (traps.mjs imports this file's helpers); safe: neither module calls the other while loading
-import { pruneTrips } from './traps.mjs';
+import { pruneHints, pruneTrips } from './traps.mjs';
 
 // ── §8 constants (mirrors hooks/lib/fleet.ts and hooks/statusline.mjs) ──
 export const HEARTBEAT_MS = 30000;
@@ -352,13 +353,14 @@ export async function runFleet({ args = [], env = process.env, now = Date.now(),
   if (o.prune) {
     // the only delete path for session files, and the age-based one for trip files (<base>/trips, traps.mjs pruneTrips):
     // never inside a repo or a records folder (the mod's write guard, applied to deletes) — checked for both folders
-    for (const sub of ['sessions', 'trips']) if (fleetDirInRepo(cwd, b, sub)) { log(M(T.pruneInRepo(`${b}/${sub}`))); return 1; }
+    for (const sub of ['sessions', 'trips', 'hints']) if (fleetDirInRepo(cwd, b, sub)) { log(M(T.pruneInRepo(`${b}/${sub}`))); return 1; }
     if (isDir) {
       let files;
       try { files = listFiles(dir); } catch { files = []; }
       prune({ files, now, days: o.days, dry: o.dry, log, M });
     } else log(M(T.missing(dir)));
     pruneTrips({ base: b, now, days: o.days, dry: o.dry, log, M });
+    pruneHints({ base: b, now, days: o.days, dry: o.dry, log, M });
     return 0;
   }
   if (!isDir) {

@@ -8,6 +8,27 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ## [Unreleased]
 
+### Added
+- **Trap check for Claude Code and Codex, without the mod.** Every install now gets `.flightwake/hooks/trap-check.mjs`
+  as a `PreToolUse` hook (`.claude/settings.json`: Edit, Write, NotebookEdit, Bash; `.codex/hooks.json`: Bash,
+  apply_patch). When a call edits a file matching an active TRAPS entry's `paths`, runs a command starting with one of
+  its `commands`, or writes such a path through the shell (or an apply_patch header names one), the entry's root cause and
+  workaround reach the agent with the tool result. It never blocks; read-only commands that merely mention a path stay
+  quiet. Both hosts deliver the hint after the call ran — measured on Codex 0.167.0 with a nonce probe, and stated by the
+  Claude Code hooks reference — so it is for the next step, not a gate on this one (`docs/plans/tripwire-hook.probe.md`).
+  Each entry is shown once per session per repo, through a best-effort record in `<base>/hints` (0700 folder that
+  `init` / `update` create, 0600 files, keys only); `fleet --prune` removes old records. `FLIGHTWAKE_TRIPWIRE=off`
+  silences it, and in Claude Code so does the mod's `"tripwire": false`. Measured at about 80 ms per matching call.
+- **One TRAPS core.** The parser, globs, shell reader and matchers now live in
+  `mods/flightwake/hooks/lib/traps-core.mjs`, used by the mod, the CLI and the trap check (copied next to it). The two
+  mirrored parsers are gone.
+
+### Changed
+- **Mod tripwire and the trap check coexist**: the mod leaves out what the trap check already showed for the same call.
+- **Codex hook entries are appended last and never rewritten.** Codex keys hook trust by position and content and
+  silently stops running an entry that changed; `update` only refreshes the scripts. `doctor` names `/hooks` → "needs
+  review" as the place to look.
+
 ## [0.18.0] — 2026-11-10
 
 ### Added

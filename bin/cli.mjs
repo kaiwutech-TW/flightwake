@@ -241,9 +241,21 @@ if (cmd === 'uninstall') {
     removeRoleArtifacts(TARGET, out, W, { fwSrc: FW_SRC, M });
     rm('.flightwake/hooks/state-check.mjs');
     rm('.flightwake/hooks/statusline.mjs');
+    rm('.flightwake/hooks/trap-check.mjs');
+    rm('.flightwake/hooks/traps-core.mjs');
     rmdirQuiet('.flightwake/hooks');
-    // 2. Settings: pluck only flightwake's hook (Stop for Claude/Codex, AfterAgent for Gemini) and statusLine,
-    //    keep everything else; delete the file only if empty after
+    // 2. Settings: pluck only flightwake's hooks (Stop for Claude/Codex, AfterAgent for Gemini, the trap check's
+    //    PreToolUse for Claude/Codex) and statusLine, keep everything else; delete the file only if empty after
+    const pluck = (st, event, script) => {
+      const list = st.hooks?.[event];
+      if (!Array.isArray(list) || !JSON.stringify(list).includes(script)) return false;
+      const cleaned = list
+        .map((e) => ({ ...e, hooks: (Array.isArray(e?.hooks) ? e.hooks : []).filter((h) => !String(h?.command ?? '').includes(script)) }))
+        .filter((e) => e.hooks.length);
+      if (cleaned.length) st.hooks[event] = cleaned; else delete st.hooks[event];
+      if (st.hooks && !Object.keys(st.hooks).length) delete st.hooks;
+      return true;
+    };
     for (const [rel, event] of [
       ['.claude/settings.json', 'Stop'], ['.claude/settings.local.json', 'Stop'],
       ['.codex/hooks.json', 'Stop'], ['.gemini/settings.json', 'AfterAgent'],
@@ -254,16 +266,8 @@ if (cmd === 'uninstall') {
       try { st = JSON.parse(readFileSync(p, 'utf8')); }
       catch { out(`  ⚠️  ${rel} is not valid JSON — remove the state-check.mjs ${event} hook and statusline.mjs statusLine manually`); continue; }
       if (!st || typeof st !== 'object' || Array.isArray(st)) continue;
-      let changed = false;
-      const stop = st.hooks?.[event];
-      if (Array.isArray(stop) && JSON.stringify(stop).includes('state-check.mjs')) {
-        const cleaned = stop
-          .map((e) => ({ ...e, hooks: (Array.isArray(e?.hooks) ? e.hooks : []).filter((h) => !String(h?.command ?? '').includes('state-check.mjs')) }))
-          .filter((e) => e.hooks.length);
-        if (cleaned.length) st.hooks[event] = cleaned; else delete st.hooks[event];
-        if (st.hooks && !Object.keys(st.hooks).length) delete st.hooks;
-        changed = true;
-      }
+      let changed = pluck(st, event, 'state-check.mjs');
+      if (event === 'Stop' && pluck(st, 'PreToolUse', 'trap-check.mjs')) changed = true;
       if (JSON.stringify(st.statusLine ?? null).includes('statusline.mjs')) { delete st.statusLine; changed = true; }
       if (!changed) continue;
       if (!Object.keys(st).length) rm(rel, ' (empty after removal)');

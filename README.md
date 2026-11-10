@@ -18,7 +18,8 @@ cd your-repo && npx flightwake setup
 flightwake keeps four plain Markdown files in your repo's `.flightwake/`: a short STATE (where things are, what's next), a
 decision log (one line per choice, with the why), a list of known traps (each with how sure its root cause is), and a
 flight record per stretch of work. The agent writes them as it works; Claude Code, Codex and Antigravity read them at
-the start of every session. Everything is in git, so it travels with the repo. **See what four months of it look like
+the start of every session. When an agent in Claude Code or Codex edits a file or runs a command that a known trap is
+anchored to, the trap shows up right after that call (a PreToolUse hook; it never blocks). Everything is in git, so it travels with the repo. **See what four months of it look like
 in this repo: [docs/evidence.md](docs/evidence.md).**
 
 [Illustrated website](https://flightwake.kaiwu.com.tw/en/) · [Website source](website/)
@@ -126,6 +127,8 @@ your-repo/
 │   ├── TRAPS.md             # trap registry (OKF-style frontmatter entries)
 │   ├── TEMPLATE-record.md   # flight-record template
 │   ├── hooks/state-check.mjs  # Stop hook: reminds you to wrap up when STATE lags ≥3 commits
+│   ├── hooks/trap-check.mjs   # PreToolUse hook (Claude Code, Codex): shows a TRAPS entry anchored to what a call touches
+│   ├── hooks/traps-core.mjs   # the TRAPS parser and matcher trap-check.mjs uses (same code as the CLI and the mod)
 │   └── records/             # flight records (one per meaningful wrap-up)
 ├── .claude/skills/fw-*/     # the four skills (Claude Code)
 ├── .claude/settings.json    # init merges the Stop hook config here

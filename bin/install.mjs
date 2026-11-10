@@ -36,6 +36,15 @@ export const AGY_HOOK_NAME = 'flightwake-state-check';
 export const isAgentName = (x) => typeof x === 'string' && PLATFORMS.includes(x);
 export const HOOK_CMD = 'node "$CLAUDE_PROJECT_DIR/.flightwake/hooks/state-check.mjs"';
 export const HOOK_CMD_GIT = 'node "$(git rev-parse --show-toplevel)/.flightwake/hooks/state-check.mjs"';
+// The trap check (A5): a PreToolUse hook in Claude Code and Codex. Its entry is written once and never changed afterwards —
+// Codex silently stops running a hook whose hooks.json entry changed (TRAPS codex-hook-entry-change-silently-untrusted),
+// so `update` only refreshes the two scripts. Codex's matcher is a regex; Claude Code's is the usual `A|B` list.
+export const TRAP_CMD = 'node "$CLAUDE_PROJECT_DIR/.flightwake/hooks/trap-check.mjs" claude';
+export const TRAP_CMD_GIT = 'node "$(git rev-parse --show-toplevel)/.flightwake/hooks/trap-check.mjs" codex';
+export const TRAP_MATCHER = 'Edit|Write|NotebookEdit|Bash';
+export const TRAP_MATCHER_CODEX = '^(Bash|apply_patch)$';
+/** The shared TRAPS core inside the package; copied next to trap-check.mjs, which imports it. */
+export const TRAPS_CORE_SRC = ['mods', 'flightwake', 'hooks', 'lib', 'traps-core.mjs'];
 export const SL_CMD = 'node "$CLAUDE_PROJECT_DIR/.flightwake/hooks/statusline.mjs"';
 export const ORCA_BEGIN = '<!-- flightwake-orca:begin';
 export const ORCA_END = '<!-- flightwake-orca:end -->';
@@ -684,6 +693,9 @@ export function install(o) {
 
   // 2. Framework-owned files: record template + hooks (--force updates them).
   //    Hooks are stamped at copy time: LANG picks their message language, FW_VERSION feeds the statusline update check.
+  /** Both trap-check scripts are in the repo (or would be, in a dry run): only then is the hook registered. */
+  const trapReady = () => dry || (existsSync(join(TARGET, '.flightwake', 'hooks', 'trap-check.mjs')) && existsSync(join(TARGET, '.flightwake', 'hooks', 'traps-core.mjs')));
+  const TRAP_ADDED = M({ en: ' (trap check: TRAPS hints)', 'zh-TW': '(坑提示:TRAPS 絆線)', 'zh-CN': '(坑提示:TRAPS 绊线)', ja: '(落とし穴チェック:TRAPS の知らせ)' });
   const stamp = (src) => readFileSync(src, 'utf8')
     .replace(/^const LANG = '[^']*';$/m, `const LANG = '${LANG}';`)
     .replace(/^const FW_VERSION = '[^']*';$/m, `const FW_VERSION = '${VERSION}';`);
@@ -691,6 +703,9 @@ export function install(o) {
     [() => readFileSync(join(FW_SRC, 'templates', LANG, 'TEMPLATE-record.md'), 'utf8'), join('.flightwake', 'TEMPLATE-record.md')],
     [() => stamp(join(FW_SRC, 'hooks', 'state-check.mjs')), join('.flightwake', 'hooks', 'state-check.mjs')],
     [() => stamp(join(FW_SRC, 'hooks', 'statusline.mjs')), join('.flightwake', 'hooks', 'statusline.mjs')],
+    // the trap check and the core it imports: a pair, refreshed together (a hook is registered below only when both are there)
+    [() => stamp(join(FW_SRC, 'hooks', 'trap-check.mjs')), join('.flightwake', 'hooks', 'trap-check.mjs')],
+    [() => readFileSync(join(FW_SRC, ...TRAPS_CORE_SRC), 'utf8'), join('.flightwake', 'hooks', 'traps-core.mjs')],
   ]) {
     const dst = join(TARGET, rel);
     const existed = existsSync(dst);
@@ -774,6 +789,23 @@ export function install(o) {
           ja: '(STATE 遅れチェック)',
         })}`);
       }
+      // The trap check (A5): one PreToolUse entry, appended after any others and never rewritten; same other-mode rule
+      if (trapReady()) {
+        const trapInOther = (() => { try { return existsSync(otherPath) && readFileSync(otherPath, 'utf8').includes('trap-check.mjs'); } catch { return false; } })();
+        const pre = Array.isArray(settings.hooks.PreToolUse) ? settings.hooks.PreToolUse : null;
+        if (trapInOther) {
+          log(`  skip PreToolUse hook${M({ en: ` (already set in ${otherRel})`, 'zh-TW': `(${otherRel} 已設定)`, 'zh-CN': `(${otherRel} 已设定)`, ja: `(${otherRel} に設定済)` })}`);
+        } else if (settings.hooks.PreToolUse !== undefined && pre === null) {
+          log(`  ⚠️  ${settingsRel} hooks.PreToolUse is not a list — skipping the trap check; add it yourself: ${TRAP_CMD}`);
+        } else if (JSON.stringify(pre ?? []).includes('trap-check.mjs')) {
+          log(`  skip ${settingsRel} PreToolUse hook${M({ en: ' (already set)', 'zh-TW': '(已設定)', 'zh-CN': '(已设定)', ja: '(設定済)' })}`);
+        } else {
+          settings.hooks.PreToolUse = [...(pre ?? []), { matcher: TRAP_MATCHER, hooks: [{ type: 'command', command: TRAP_CMD }] }];
+          if (Array.isArray(settings.hooks.Stop) && !settings.hooks.Stop.length) delete settings.hooks.Stop;
+          W.mkdir(dirname(settingsPath));
+          if (W.write(settingsPath, JSON.stringify(settings, null, 2) + '\n')) log(`  add  ${settingsRel} ← PreToolUse hook${TRAP_ADDED}`);
+        }
+      }
       // --statusline: the bottom gauge (opt-in). statusLine is a single-value setting — never overwrite someone else's
       if (STATUSLINE) {
         const slInOther = (() => {
@@ -843,6 +875,20 @@ export function install(o) {
         'zh-CN': '(STATE 过期检查)',
         ja: '(STATE 遅れチェック)',
       })}`);
+    }
+    // Codex also gets the trap check (A5). Appended LAST and never rewritten: Codex keys hook trust by position and
+    // content, so inserting before or editing an entry silently untrusts it (docs/plans/tripwire-hook.probe.md Q3).
+    if (name === 'codex' && trapReady()) {
+      const pre = Array.isArray(s.hooks.PreToolUse) ? s.hooks.PreToolUse : null;
+      if (s.hooks.PreToolUse !== undefined && pre === null) {
+        log(`  ⚠️  ${rel} hooks.PreToolUse is not a list — skipping the trap check; add it yourself: ${TRAP_CMD_GIT}`);
+      } else if (JSON.stringify(pre ?? []).includes('trap-check.mjs')) {
+        log(`  skip ${rel} PreToolUse hook${M({ en: ' (already set)', 'zh-TW': '(已設定)', 'zh-CN': '(已设定)', ja: '(設定済)' })}`);
+      } else {
+        s.hooks.PreToolUse = [...(pre ?? []), { matcher: TRAP_MATCHER_CODEX, hooks: [{ type: 'command', command: TRAP_CMD_GIT }] }];
+        W.mkdir(dirname(p));
+        if (W.write(p, JSON.stringify(s, null, 2) + '\n')) log(`  add  ${rel} ← PreToolUse hook${TRAP_ADDED}`);
+      }
     }
     privateExcludes?.push(rel);
   }
@@ -1186,6 +1232,30 @@ export function install(o) {
         })}`);
         if (e?.message === 'symlink') break; // the base itself is a link: one line is enough
       }
+    }
+  }
+
+  // 9. The trap check's hint record folder (<base>/hints, A5): created 0700 when absent, so trap-check.mjs can keep its
+  //    once-per-session record (it never creates the folder itself, and writes nothing into a folder that is not private).
+  //    Same base and refusals as step 8; never through a link, never inside this repo or any repo. Best-effort: without
+  //    the folder the hook still hints, only without dedup. Skipped when no trap check was installed.
+  if (trapReady()) {
+    const fb = (() => { try { return fleetBase(process.env); } catch { return null; } })();
+    const hdir = fb === null ? null : `${fb}/hints`;
+    try {
+      const present = (p) => { try { lstatSync(p); return true; } catch { return false; } };
+      if (hdir !== null && !present(hdir) && !fleetDirInRepo(TARGET, fb, 'hints')) {
+        if (isLink(fb)) throw new Error('symlink');
+        writes.push(`${hdir}/`);
+        if (!dry) {
+          mkdirSync(hdir, { recursive: true, mode: 0o700 });
+          log(`  add  ${hdir}/${M({ en: ' (0700; trap check, once per session)', 'zh-TW': '(0700;坑提示,每個 session 一次)', 'zh-CN': '(0700;坑提示,每个 session 一次)', ja: '(0700;落とし穴チェック、セッションごとに一度)' })}`);
+        }
+      }
+    } catch (e) {
+      log(`  ⚠️  ${e?.message === 'symlink'
+        ? M({ en: `${hdir} (or the folder holding it) is a symbolic link — not created; the trap check hints on every matching call`, 'zh-TW': `${hdir}(或它所在的資料夾)是符號連結——不建立;坑提示會在每次命中時都出現`, 'zh-CN': `${hdir}(或它所在的文件夹)是符号链接——不创建;坑提示会在每次命中时都出现`, ja: `${hdir}(またはその親)はシンボリックリンク——作成せず。落とし穴チェックは該当のたびに知らせる` })
+        : M({ en: 'the trap check folder could not be created — skipped; it hints on every matching call', 'zh-TW': '坑提示資料夾建不起來 — 略過;每次命中都會提示', 'zh-CN': '坑提示文件夹建不起来 — 略过;每次命中都会提示', ja: '落とし穴チェックのフォルダを作れなかった — スキップ。該当のたびに知らせる' })}`);
     }
   }
 

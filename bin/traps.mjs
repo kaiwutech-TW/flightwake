@@ -343,6 +343,41 @@ export function pruneTrips({ base, now = Date.now(), days, dry = false, log, M }
   return 0;
 }
 
+/**
+ * `fleet --prune`'s age-based delete for the trap check's hint records (`<base>/hints/<host>-<session>.json`, written by
+ * .flightwake/hooks/trap-check.mjs): a cache of which hints a session already saw, so any file of ours not updated in
+ * `days` days goes. Only files that parse as ours (v 1, host claude|codex, the session id of the file name); never a
+ * link, never a file written in the last 2 minutes. Same folder guard as the trip files (the caller checks the repo rule).
+ */
+export function pruneHints({ base, now = Date.now(), days, dry = false, log, M }) {
+  const dir = `${base}/hints`;
+  if (isLinkPath(base) || isLinkPath(dir)) { log(M(T.pruneHintsLink(dir))); return 0; }
+  try { if (!lstatSync(dir).isDirectory()) return 0; } catch { return 0; }
+  const files = tripListing(dir);
+  const cutoff = now - days * DAY_MS;
+  const isLive = (m) => m > now - LIVE_WRITER_MS || m > Date.now() - LIVE_WRITER_MS;
+  let n = 0;
+  for (const f of files) {
+    if (isLive(f.mtimeMs)) continue;
+    let d;
+    try { d = JSON.parse(readFileSync(f.path, 'utf8')); } catch { continue; }
+    const isOurs = isObj(d) && d.v === 1 && (d.host === 'claude' || d.host === 'codex') && `${d.host}-${d.sessionId}` === f.id && isObj(d.repos);
+    if (!isOurs) continue;
+    const at = isIso(d.updated) ? Date.parse(d.updated) : f.mtimeMs;
+    if (at >= cutoff) continue;
+    if (dry) { log(M(T.pWouldRemove(f.name))); n++; continue; }
+    try {
+      const st = lstatSync(f.path);
+      if (!st.isFile() || st.isSymbolicLink() || isLive(st.mtimeMs)) continue;
+      rmSync(f.path);
+      log(M(T.pRemoved(f.name)));
+      n++;
+    } catch {}
+  }
+  log(M(T.prunedHints(n, files.length, days, dir, dry)));
+  return 0;
+}
+
 // ── strings ──
 const T = {
   usage: {
@@ -496,6 +531,18 @@ const T = {
     'zh-TW': `${dry ? '將刪' : '已刪'} ${n}/${total} 個超過 ${days} 天沒更新的觸發紀錄檔(${dir});近 2 分鐘寫過的沒動`,
     'zh-CN': `${dry ? '将删' : '已删'} ${n}/${total} 个超过 ${days} 天没更新的触发记录文件(${dir});近 2 分钟写过的没动`,
     ja: `${days} 日更新のない発火記録ファイル ${total} 件中 ${n} 件を${dry ? '削除予定' : '削除'}(${dir})。直近 2 分に書かれたものはそのまま`,
+  }),
+  prunedHints: (n, total, days, dir, dry) => ({
+    en: `${dry ? 'would prune' : 'pruned'} ${n} of ${total} hint record(s) not updated in ${days} day(s) (${dir}); files written in the last 2 minutes untouched`,
+    'zh-TW': `${dry ? '將刪' : '已刪'} ${n}/${total} 個超過 ${days} 天沒更新的坑提示紀錄(${dir});近 2 分鐘寫過的沒動`,
+    'zh-CN': `${dry ? '将删' : '已删'} ${n}/${total} 个超过 ${days} 天没更新的坑提示记录(${dir});近 2 分钟写过的没动`,
+    ja: `${days} 日更新のない落とし穴チェック記録 ${total} 件中 ${n} 件を${dry ? '削除予定' : '削除'}(${dir})。直近 2 分に書かれたものはそのまま`,
+  }),
+  pruneHintsLink: (dir) => ({
+    en: `⚠️  fleet --prune: ${dir} (or the folder holding it) is a symbolic link — never followed; hint records untouched`,
+    'zh-TW': `⚠️  fleet --prune:${dir}(或它所在的資料夾)是符號連結——不跟隨;坑提示紀錄沒動`,
+    'zh-CN': `⚠️  fleet --prune:${dir}(或它所在的文件夹)是符号链接——不跟随;坑提示记录没动`,
+    ja: `⚠️  fleet --prune:${dir}(またはその親)はシンボリックリンク——辿らない。落とし穴チェックの記録はそのまま`,
   }),
   pruneTripsLink: (dir) => ({
     en: `⚠️  fleet --prune: ${dir} (or the folder holding it) is a symbolic link — never followed; trip files untouched`,

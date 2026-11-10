@@ -11,7 +11,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import {
-  LANGS, GROUPS, TABLE_GROUP, AGY_HOOKS_REL, AGY_HOOK_NAME, INSTRUCTION_CANDIDATES, HOOK_CMD, HOOK_CMD_GIT, SL_CMD, MOD_REL, MOD_MIN_CLAUDE, makeM, gitIn, gitAvailable,
+  LANGS, GROUPS, TABLE_GROUP, AGY_HOOKS_REL, AGY_HOOK_NAME, INSTRUCTION_CANDIDATES, HOOK_CMD, HOOK_CMD_GIT, TRAP_CMD, TRAP_CMD_GIT, SL_CMD, MOD_REL, MOD_MIN_CLAUDE, makeM, gitIn, gitAvailable,
   repoState, readMarkers, detectInstall, modShipList, modSrc, atLeast, claudeVersion,
 } from './install.mjs';
 
@@ -215,6 +215,38 @@ export function runDoctor({ target, fwSrc, version, lang, log, claudeVersion: re
     }));
   }
   if (platforms.has('gemini')) checkHook('Gemini CLI', ['.gemini/settings.json'], 'AfterAgent', HOOK_CMD_GIT, { optionalIfTracked: true });
+  // ── the trap check (A5): two scripts as a pair, one PreToolUse entry per host. Installs before it existed only get a
+  //    warning — update adds it. Never a failure: the core (STATE, records, the Stop hook) works without it.
+  {
+    const hasCheck = existsSync(at('.flightwake/hooks/trap-check.mjs'));
+    const hasCore = existsSync(at('.flightwake/hooks/traps-core.mjs'));
+    const UPDATE = 'npx flightwake update';
+    if (!hasCheck && !hasCore) {
+      warn(M({ en: `trap check not installed (TRAPS hints for Claude Code without the mod, and for Codex) — ${UPDATE}`, 'zh-TW': `沒有坑提示(給沒裝 mod 的 Claude Code 與 Codex 的 TRAPS 提示)— ${UPDATE}`, 'zh-CN': `没有坑提示(给没装 mod 的 Claude Code 与 Codex 的 TRAPS 提示)— ${UPDATE}`, ja: `落とし穴チェックがない(mod なしの Claude Code と Codex への TRAPS の知らせ)— ${UPDATE}` }));
+    } else if (!hasCheck || !hasCore) {
+      fail(M({ en: `.flightwake/hooks/${hasCheck ? 'traps-core.mjs' : 'trap-check.mjs'} missing (the two come as a pair) — ${UPDATE}`, 'zh-TW': `缺 .flightwake/hooks/${hasCheck ? 'traps-core.mjs' : 'trap-check.mjs'}(兩支成對)— ${UPDATE}`, 'zh-CN': `缺 .flightwake/hooks/${hasCheck ? 'traps-core.mjs' : 'trap-check.mjs'}(两支成对)— ${UPDATE}`, ja: `.flightwake/hooks/${hasCheck ? 'traps-core.mjs' : 'trap-check.mjs'} がない(2 つで 1 組)— ${UPDATE}` }));
+    } else {
+      ok('.flightwake/hooks/trap-check.mjs + traps-core.mjs');
+      const registered = (files, cmd) => files.some((rel) => {
+        if (!existsSync(at(rel))) return false;
+        const j = readJson(rel);
+        const pre = j.ok ? j.value?.hooks?.PreToolUse : null;
+        return Array.isArray(pre) && pre.some((e) => Array.isArray(e?.hooks) && e.hooks.some((h) => h?.type === 'command' && h?.command === cmd));
+      });
+      const hosts = [['Claude Code', ['.claude/settings.json', '.claude/settings.local.json'], TRAP_CMD]];
+      if (platforms.has('codex')) hosts.push(['Codex', ['.codex/hooks.json'], TRAP_CMD_GIT]);
+      for (const [label, files, cmd] of hosts) {
+        if (registered(files, cmd)) ok(`${label}: PreToolUse trap check`);
+        else warn(M({ en: `${label}: trap check not registered (PreToolUse) — ${UPDATE}`, 'zh-TW': `${label}:坑提示未登記(PreToolUse)— ${UPDATE}`, 'zh-CN': `${label}:坑提示未登记(PreToolUse)— ${UPDATE}`, ja: `${label}:落とし穴チェックが未登録(PreToolUse)— ${UPDATE}` }));
+      }
+      if (platforms.has('codex')) info(M({
+        en: 'Codex runs a project hook only once you trust it, and stops running it silently if its hooks.json entry changes — if the trap check seems quiet in Codex, open /hooks and look for "needs review"',
+        'zh-TW': 'Codex 要你信任過才會跑專案 hook;hooks.json 裡的條目一改就會默默停掉——Codex 裡沒看到坑提示時,開 /hooks 看有沒有 needs review',
+        'zh-CN': 'Codex 要你信任过才会跑项目 hook;hooks.json 里的条目一改就会默默停掉——Codex 里没看到坑提示时,开 /hooks 看有没有 needs review',
+        ja: 'Codex は信頼したプロジェクト hook だけを実行し、hooks.json の項目が変わると黙って止める——Codex で知らせが出ないときは /hooks で needs review を確認',
+      }));
+    }
+  }
   // Antigravity: top-level keys are hook names, each holding its events; Stop is a plain list of handlers
   if (platforms.has('agy')) {
     const j = existsSync(at(AGY_HOOKS_REL)) ? readJson(AGY_HOOKS_REL) : { ok: true, value: {} };

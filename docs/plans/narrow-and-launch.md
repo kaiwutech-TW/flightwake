@@ -125,6 +125,7 @@
 
 - **為什麼**:現在的絆線只在 Claude Code 加 mod 生效,而且是工具跑完才提示。B1 想主打「換一個 agent 改到同一個檔之前會先看到」,目前做不到。
 - **2026-11-10 審查結果**:「執行前」在 Claude Code 上依官方文件不成立,A5 的範圍與承諾見 `tripwire-hook.md` 的「審查後的修訂」;做不做、做多少待 Kai 決定。
+- **2026-11-11 已實作(未發版)**:Kai 選照修訂範圍做。探針 `tripwire-hook.probe.md`:Codex 也是工具跑完才讀到提示,所以兩家都只能說「下一步就會看到」。共用核心 `traps-core.mjs`、一般 hook `trap-check.mjs`、hints 去重、安裝/移除/doctor、smoke 第 50 節;延遲中位數約 80 ms。
 - **方向**:新增一支獨立的 `hooks/trap-check.mjs`,掛在 Claude Code 與 Codex 的 `PreToolUse`,比對 TRAPS 的 `paths` / `commands`,用 hook 的附加 context 欄位在執行前提示。永不擋。
 - **設計關要回答的問題**
   1. Codex 的 `PreToolUse` 能不能注入 context、matcher 只比對工具名時怎麼拿到路徑與指令、專案 hook 的信任流程(TRAPS `codex-exec-project-hooks-not-loaded`、`codex-project-trust-exact-path`)。先做探針。

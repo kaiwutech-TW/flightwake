@@ -29,6 +29,10 @@
  * everything else stays in $.state / $.store.
  */
 
+import { contentHash, parseFlatYaml, parseInlineList, relToRoot } from './traps-core.mjs'
+/** Pure helpers shared with the CLI and the plain trap-check hook (traps-core.mjs). */
+export { contentHash, parseFlatYaml, parseInlineList, relToRoot }
+
 export const PLUGIN = 'flightwake-mod' as const
 /** Mirrors .claude-plugin/plugin.json `version` (the mod cannot read its own manifest); test/smoke.sh checks they match. */
 export const MOD_VERSION = '0.4.0'
@@ -94,26 +98,6 @@ export type Io = {
 
 export const joinPath = (root: string, rel: string): string => `${root}/${rel.replace(/^\/+/, '')}`
 
-/**
- * `abs` relative to `root` with forward slashes, or null when it lies outside root.
- * Purely lexical: collapses `.`/`..` segments; does not resolve links.
- */
-export function relToRoot(root: string, abs: string): string | null {
-  const norm = (p: string) => {
-    const out: string[] = []
-    for (const seg of p.split('/')) {
-      if (seg === '' || seg === '.') continue
-      if (seg === '..') out.pop()
-      else out.push(seg)
-    }
-    return out
-  }
-  const r = norm(root)
-  const a = norm(abs.startsWith('/') ? abs : `${root}/${abs}`)
-  if (a.length < r.length || r.some((s, i) => a[i] !== s)) return null
-  return a.slice(r.length).join('/')
-}
-
 /** A text file under the root, or null when absent/unreadable. */
 export const readRel = (io: Io, root: string, rel: string): Promise<string | null> => io.read(joinPath(root, rel))
 
@@ -125,34 +109,6 @@ export function parseFrontmatter(text: string): Record<string, string> | null {
   const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)
   if (!m || m[1] === undefined) return null
   return parseFlatYaml(m[1])
-}
-
-/** `key: value` lines → record; `# comment` tails and surrounding quotes removed; nested/continuation lines ignored. */
-export function parseFlatYaml(block: string): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const line of block.split(/\r?\n/)) {
-    const m = /^([A-Za-z_][\w-]*):\s*(.*)$/.exec(line)
-    if (!m || m[1] === undefined) continue
-    let v = (m[2] ?? '').replace(/\s+#.*$/, '').trim()
-    if (/^(['"]).*\1$/.test(v)) v = v.slice(1, -1)
-    out[m[1]] = v
-  }
-  return out
-}
-
-/** An inline YAML list (`[a, "b c", 'd']`) or a single scalar → items; empty input → []. */
-export function parseInlineList(v: string | undefined): string[] {
-  if (!v) return []
-  const s = v.trim()
-  const body = s.startsWith('[') && s.endsWith(']') ? s.slice(1, -1) : s
-  const items: string[] = []
-  const re = /\s*("([^"\\]*(?:\\.[^"\\]*)*)"|'([^']*)'|([^,]+))\s*(?:,|$)/g
-  let m: RegExpExecArray | null
-  while ((m = re.exec(body)) !== null && m[0] !== '') {
-    const item = (m[2] ?? m[3] ?? m[4] ?? '').trim()
-    if (item) items.push(item)
-  }
-  return items
 }
 
 /**
@@ -303,16 +259,6 @@ export async function packageScripts(io: Io, root: string, dirRel = ''): Promise
   } catch {
     return null
   }
-}
-
-/** FNV-1a 32-bit, hex — a cheap content version for dedup keys (not a security hash). */
-export function contentHash(text: string): string {
-  let h = 0x811c9dc5
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i)
-    h = Math.imul(h, 0x01000193) >>> 0
-  }
-  return h.toString(16).padStart(8, '0')
 }
 
 /**

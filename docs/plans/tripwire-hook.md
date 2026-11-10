@@ -1,6 +1,6 @@
 # 設計:絆線改成一般 hook,在工具執行前提示(A5)
 
-- 狀態:**實作中**(2026-11-11,Kai 選 (a),DECISIONS 同日)。探針結果見 [`tripwire-hook.probe.md`](tripwire-hook.probe.md):Codex 也沒有執行前提示;Q5 成立。審查完於 2026-11-10。審查:Codex(GPT-6.1-Sol),原文 [`tripwire-hook.review-codex.md`](tripwire-hook.review-codex.md)。
+- 狀態:**已實作,未發版**(2026-11-11,Kai 選 (a),DECISIONS 同日;CHANGELOG `[Unreleased]`)。探針結果見 [`tripwire-hook.probe.md`](tripwire-hook.probe.md):Codex 也沒有執行前提示;Q5 成立。審查完於 2026-11-10。審查:Codex(GPT-6.1-Sol),原文 [`tripwire-hook.review-codex.md`](tripwire-hook.review-codex.md)。
   下面「審查後的修訂」一節優先於本稿其他段落;兩者衝突時以那一節為準。
 - 計畫來源:`docs/plans/narrow-and-launch.md` A5。決定:DECISIONS 2026-11-10(絆線只對瞄準的目標提示;A5 不承諾執行前提示)。
 

@@ -2785,5 +2785,94 @@ EOF
 cd "$TMP"
 pass "49 TRAPS 的 retire_when 欄位不影響 stats / similar"
 
+
+# 50. 坑提示 trap-check(A5):成對安裝、Claude Code 與 Codex 各一條 PreToolUse(Codex 附加在最後、update 不改條目)、
+#     執行期只對瞄準的目標提示、每 session 一次(hints 0600、資料夾需私有)、開關、uninstall 只拿自己的;延遲量中位數與 p90
+newrepo "$TMP/trap1" >/dev/null && git commit -q --allow-empty -m init
+mkdir -p .codex && printf '%s\n' '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo mine"}]}]}}' > .codex/hooks.json
+TH="$TMP/trap-home"; mkdir -p "$TH"
+FLIGHTWAKE_HOME="$TH" node "$CLI" init --lang=en --agents=claude,codex >/dev/null || fail "50 init 應成功"
+[ -f .flightwake/hooks/trap-check.mjs ] && [ -f .flightwake/hooks/traps-core.mjs ] || fail "50 trap-check.mjs 與 traps-core.mjs 應成對安裝"
+cmp -s .flightwake/hooks/traps-core.mjs "$SRC/mods/flightwake/hooks/lib/traps-core.mjs" || fail "50 複製出去的 traps-core.mjs 應與 mod 用的那份相同"
+[ "$(stat -f %Lp "$TH/hints" 2>/dev/null || stat -c %a "$TH/hints")" = 700 ] || fail "50 init 應建立 0700 的 <base>/hints"
+node -e '
+  const c = require("./.claude/settings.json").hooks.PreToolUse;
+  const x = require("./.codex/hooks.json").hooks.PreToolUse;
+  const ok = c.length === 1 && c[0].matcher === "Edit|Write|NotebookEdit|Bash" && c[0].hooks[0].command === "node \"$CLAUDE_PROJECT_DIR/.flightwake/hooks/trap-check.mjs\" claude"
+    && x.length === 2 && x[0].hooks[0].command === "echo mine" && x[1].matcher === "^(Bash|apply_patch)$" && x[1].hooks[0].command.endsWith("/.flightwake/hooks/trap-check.mjs\" codex");
+  if (!ok) process.exit(1)' || fail "50 Claude Code 與 Codex 應各有一條 PreToolUse;Codex 的附加在使用者自己那條之後"
+cp .codex/hooks.json "$TMP/trap1-codex.json"
+FLIGHTWAKE_HOME="$TH" node "$CLI" update >/dev/null || fail "50 update 應成功"
+cmp -s .codex/hooks.json "$TMP/trap1-codex.json" || fail "50 update 不得改動 .codex/hooks.json(改條目會讓 Codex 默默停用 hook)"
+[ "$(node -e 'console.log(require("./.claude/settings.json").hooks.PreToolUse.length)')" = 1 ] || fail "50 update 不得重複登記"
+FLIGHTWAKE_HOME="$TH" node "$CLI" doctor 2>&1 | grep -q 'ok  Codex: PreToolUse trap check' || fail "50 doctor 應認得 Codex 的坑提示登記"
+cat >> .flightwake/TRAPS.md <<'TRAPEOF'
+
+---
+name: db-order
+type: gotcha
+status: active
+confidence: confirmed
+paths: ["db/**"]
+commands: ["npm run migrate"]
+---
+
+**Symptom**: migrations ran out of order
+**Root cause**: two scripts share one counter
+**Fix**: run them one at a time
+TRAPEOF
+mkdir -p db
+R1=$(pwd -P)
+tc() { printf '%s' "$1" | FLIGHTWAKE_HOME="$TH" node .flightwake/hooks/trap-check.mjs "$2"; }
+call() { printf '{"session_id":"%s","tool_use_id":"%s","cwd":"%s","tool_name":"%s","tool_input":%s}' "$1" "$2" "$3" "$4" "$5"; }
+out=$(tc "$(call s1 t1 "$R1" Write "{\"file_path\":\"$R1/db/001.sql\"}")" claude)
+echo "$out" | node -e '
+  const j = JSON.parse(require("fs").readFileSync(0, "utf8")); const t = j.hookSpecificOutput;
+  if (t.hookEventName !== "PreToolUse" || !t.additionalContext.includes("`db-order` [confirmed] matches db/001.sql") || !t.additionalContext.includes("after this call ran") || t.permissionDecision !== undefined) process.exit(1)' \
+  || fail "50 Write 命中 paths 應回 additionalContext(不擋)(got: $out)"
+[ "$(stat -f %Lp "$TH/hints/claude-s1.json" 2>/dev/null || stat -c %a "$TH/hints/claude-s1.json")" = 600 ] || fail "50 hints 紀錄應為 0600"
+H1="$TH/hints/claude-s1.json" R1="$R1" node -e '
+  const d = require(process.env.H1); const repo = d.repos[process.env.R1] || {}; const k = Object.keys(repo);
+  if (d.v !== 1 || d.host !== "claude" || k.length !== 1 || !k[0].startsWith("db-order@") || repo[k[0]].toolUseId !== "t1" || JSON.stringify(d).includes("001.sql")) process.exit(1)' \
+  || fail "50 hints 只存鍵與 tool_use_id,不存路徑或內文"
+[ -z "$(tc "$(call s1 t2 "$R1" Edit "{\"file_path\":\"$R1/db/002.sql\"}")" claude)" ] || fail "50 同一 session 第二次命中不應再提示"
+[ -n "$(tc "$(call s2 t3 "$R1" Edit "{\"file_path\":\"$R1/db/002.sql\"}")" claude)" ] || fail "50 新 session 應再提示"
+[ -z "$(tc "$(call s3 t4 "$R1" Bash '{"command":"cat db/001.sql && git diff -- db/"}')" codex)" ] || fail "50 只讀或提到路徑的指令不應提示(DECISIONS 2026-11-10)"
+tc "$(call s3 t5 "$R1" Bash '{"command":"npm run migrate -- --all"}')" codex | grep -q 'matches npm run migrate' || fail "50 指令前綴應提示(Codex)"
+tc "$(call s4 t6 "$R1" Bash '{"command":"echo x > db/003.sql"}')" codex | grep -q 'matches db/003.sql' || fail "50 指令寫入的路徑應提示"
+tc "$(call s5 t7 "$R1" apply_patch "{\"command\":\"*** Begin Patch\\n*** Update File: $R1/db/004.sql\\n@@\\n-a\\n+b\\n*** End Patch\"}")" codex | grep -q 'matches db/004.sql' || fail "50 apply_patch 的檔名標頭(絕對路徑)應提示"
+tc "$(call s6 t8 "$R1/db" apply_patch '{"command":"*** Begin Patch\n*** Add File: 005.sql\n+x\n*** End Patch"}')" codex | grep -q 'matches db/005.sql' || fail "50 apply_patch 的相對路徑以 session cwd 解析"
+[ -z "$(FLIGHTWAKE_TRIPWIRE=off tc "$(call s7 t9 "$R1" Write "{\"file_path\":\"$R1/db/1.sql\"}")" claude)" ] || fail "50 FLIGHTWAKE_TRIPWIRE=off 應完全安靜"
+MH="$TMP/trap-modhome"; mkdir -p "$MH/.claude" && printf '%s' '{"pluginConfigs":{"flightwake-mod@skills-dir":{"options":{"tripwire":false}}}}' > "$MH/.claude/settings.json"
+[ -z "$(call s8 t10 "$R1" Write "{\"file_path\":\"$R1/db/1.sql\"}" | HOME="$MH" FLIGHTWAKE_HOME="$TH" node .flightwake/hooks/trap-check.mjs claude)" ] || fail "50 mod 設了 tripwire:false 時,Claude Code 端的坑提示也應安靜"
+chmod 755 "$TH/hints"
+tc "$(call s9 t11 "$R1" Write "{\"file_path\":\"$R1/db/1.sql\"}")" claude | grep -q db-order || fail "50 hints 資料夾不私有時照樣提示"
+[ ! -e "$TH/hints/claude-s9.json" ] || fail "50 hints 資料夾不私有時不得寫紀錄"
+chmod 700 "$TH/hints"
+printf 'not json' | FLIGHTWAKE_HOME="$TH" node .flightwake/hooks/trap-check.mjs claude || fail "50 壞的 stdin 應安靜地 exit 0"
+# 延遲:20 次 Write 命中的牆鐘時間(中位數與 p90);只當參考,寬鬆上限防退化
+R1="$R1" TH="$TH" node -e '
+  const { execFileSync } = require("node:child_process");
+  const ms = [];
+  for (let i = 0; i < 20; i++) {
+    const t = process.hrtime.bigint();
+    execFileSync("node", [".flightwake/hooks/trap-check.mjs", "claude"], { input: JSON.stringify({ session_id: "perf" + i, cwd: process.env.R1, tool_name: "Write", tool_input: { file_path: process.env.R1 + "/db/x.sql" } }), env: { ...process.env, FLIGHTWAKE_HOME: process.env.TH } });
+    ms.push(Number(process.hrtime.bigint() - t) / 1e6);
+  }
+  ms.sort((a, b) => a - b);
+  console.log("  · trap-check latency: median " + ms[10].toFixed(0) + " ms, p90 " + ms[17].toFixed(0) + " ms (20 runs)");
+  if (ms[17] > 1500) process.exit(1)' || fail "50 trap-check 延遲過高"
+# fleet --prune 清掉舊的 hints 紀錄(只清我們的、不清近 2 分鐘寫過的);外來檔不動
+printf '%s' '{"v":1,"host":"codex","sessionId":"old1","updated":"2020-01-01T00:00:00.000Z","repos":{}}' > "$TH/hints/codex-old1.json"
+printf '%s' '{"not":"ours"}' > "$TH/hints/codex-foreign.json"
+touch -t 202001010000 "$TH/hints/codex-old1.json" "$TH/hints/codex-foreign.json"
+FLIGHTWAKE_HOME="$TH" node "$CLI" fleet --prune >/dev/null 2>&1 || fail "50 fleet --prune 應成功"
+[ ! -e "$TH/hints/codex-old1.json" ] && [ -e "$TH/hints/codex-foreign.json" ] && [ -e "$TH/hints/claude-s1.json" ] || fail "50 fleet --prune 應只刪舊的、我們的 hints 紀錄"
+FLIGHTWAKE_HOME="$TH" node "$CLI" uninstall >/dev/null || fail "50 uninstall 應成功"
+[ ! -e .flightwake/hooks/trap-check.mjs ] && [ ! -e .flightwake/hooks/traps-core.mjs ] || fail "50 uninstall 應移除兩支腳本"
+node -e 'const x = require("./.codex/hooks.json").hooks.PreToolUse; if (x.length !== 1 || x[0].hooks[0].command !== "echo mine") process.exit(1)' || fail "50 uninstall 只拿掉自己那條 PreToolUse"
+cd "$TMP"
+pass "50 坑提示 trap-check:成對安裝、兩家各一條 PreToolUse(Codex 附加在最後、update 不改)、只對瞄準的目標提示、每 session 一次、開關、uninstall 只拿自己的"
+
 echo ""
 echo "✅ smoke 全過"

@@ -15,11 +15,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On } from 'claude-code'
 
-import { M, fwContext, readRel, relToRoot, TRAPS_REL } from '../lib/core'
+import { M, fwContext, readRel, TRAPS_REL } from '../lib/core'
 import type { Io, Lang } from '../lib/core'
-import { addTrips, hasTrip } from '../lib/fleet'
-import { matchAny } from '../lib/glob'
-import { parseCommand, segmentWrites, startsWithTokens } from '../lib/shell'
+import { addTrips, fleetBase, hasTrip } from '../lib/fleet'
+import { matchBash, matchFile } from '../lib/traps-core.mjs'
 import { hasMatchers, isActive, parseTraps, REFUSAL_RE } from '../lib/traps'
 import type { TrapEntry } from '../lib/traps'
 
@@ -50,99 +49,9 @@ type Hit = { entry: TrapEntry; via: string; isAimed: boolean }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
 
-function matchFile(entries: TrapEntry[], root: string, filePath: string): Hit[] {
-  const rel = relToRoot(root, filePath)
-  if (rel === null || rel === '') return []
-  const out: Hit[] = []
-  for (const entry of entries) if (entry.paths.length && matchAny(entry.paths, rel) !== null) out.push({ entry, via: rel, isAimed: true })
-  return out
-}
-
-/**
- * Coarse match used once the cwd is no longer tracked: does `glob` match the path word itself or any tail of the
- * glob match it (`pkg/src/**` → `src/**` → `**`)? Leans to hinting — once per entry per session.
- */
-function tailMatch(globs: readonly string[], word: string): boolean {
-  const w = word.replace(/^\.\//, '')
-  for (const g of globs) {
-    const segs = g.replace(/^\.?\//, '').split('/')
-    for (let k = 0; k < segs.length; k++) {
-      const tail = segs.slice(k).join('/')
-      if (tail && tail !== '**' && matchAny([tail], w) !== null) return true
-    }
-  }
-  return false
-}
-
-/** At most this many possible cwds are tracked; past it, matching degrades to glob tails (no cwd at all). */
-const MAX_CWDS = 16
-
-/**
- * Bash (DECISIONS 2026-11-10): only what the command aims at — a segment's command prefix (`commands`), or a path a
- * segment writes (`paths`): output redirections, cp/mv/tee/rm and `sed -i`, read as F3's recorder reads them
- * (segmentWrites). A path the command only reads or mentions (`cat db/x.sql`, `grep -n x db/`, `git diff -- db/`)
- * neither hints nor records. A written path is resolved against every directory the shell could be in; when the cwd is
- * uncertain this leans to hinting (once per entry per session):
- * - only a plain chain `cd X && …` is a certain move (the set of cwds is replaced);
- * - a `cd` followed by `||`, `&`, `|`, `;` or a newline, or after any such operator, may or may not have moved this
- *   shell: the moved directories are ADDED to the set;
- * - `( … )` subshells are walked: inside, cds apply as above; after the `)`, the set from before the `(` is back;
- * - a `cd` that can't be resolved without guessing (`cd -`, `~`, `$VAR`, bare `cd`) leaves the set as it is;
- * - the set is bounded (MAX_CWDS): past it, matching degrades to glob tails (tailMatch) for the rest.
- */
-function matchBash(entries: TrapEntry[], root: string, cwd0: string, command: string): Hit[] {
-  const parsed = parseCommand(command)
-  const out = new Map<TrapEntry, string>()
-  let cwds: Set<string> | null = new Set<string>([cwd0]) // null = degraded: cwd no longer tracked
-  let isCertain = true
-  const stack: Array<{ cwds: Set<string> | null; isCertain: boolean }> = []
-  for (const seg of parsed.segments) {
-    if (seg.group === 'open') {
-      stack.push({ cwds: cwds === null ? null : new Set(cwds), isCertain })
-      continue
-    }
-    if (seg.group === 'close') {
-      const saved = stack.pop()
-      if (saved) ({ cwds, isCertain } = saved)
-      if (seg.op && seg.op !== '&&') isCertain = false
-      continue
-    }
-    const writes = segmentWrites(seg.tokens)
-    for (const entry of entries) {
-      if (out.has(entry)) continue
-      const prefix = entry.commands.find((p) => startsWithTokens(seg.tokens, p))
-      if (prefix !== undefined) { out.set(entry, prefix.trim().split(/\s+/).join(' ')); continue }
-      if (!entry.paths.length) continue
-      search: for (const { path: word } of writes) {
-        if (word.startsWith('/')) {
-          const rel = relToRoot(root, word)
-          if (rel !== null && rel !== '' && matchAny(entry.paths, rel) !== null) { out.set(entry, rel); break search }
-          continue
-        }
-        if (cwds === null) {
-          if (tailMatch(entry.paths, word)) { out.set(entry, word); break search }
-          continue
-        }
-        for (const cwd of cwds) {
-          const rel = relToRoot(root, `${cwd}/${word}`)
-          if (rel !== null && rel !== '' && matchAny(entry.paths, rel) !== null) { out.set(entry, rel); break search }
-        }
-      }
-    }
-    if (seg.tokens[0] === 'cd' && cwds !== null) {
-      const args = seg.tokens[1] === '--' ? seg.tokens.slice(2) : seg.tokens.slice(1)
-      const dir = args[0]
-      const isResolvable = args.length === 1 && dir !== undefined && dir !== '-' && !dir.startsWith('~') && !dir.includes('$')
-      if (isResolvable) {
-        const moved = [...cwds].map((c) => (dir.startsWith('/') ? dir : `${c}/${dir}`))
-        const next: Set<string> = isCertain && seg.op === '&&' ? new Set(moved) : new Set([...cwds, ...moved])
-        cwds = next.size > MAX_CWDS ? null : next
-      }
-    }
-    if (seg.op && seg.op !== '&&') isCertain = false
-  }
-  return [...out].map(([entry, via]) => ({ entry, via, isAimed: true }))
-}
+// Matching (which entries a call aims at, the cwd tracking for Bash) is the shared TRAPS core: traps-core.mjs matchFile /
+// matchBash, the same code the plain trap-check hook and the CLI run (A5, docs/plans/tripwire-hook.md).
+const aimed = (hits: ReadonlyArray<{ entry: TrapEntry; via: string }>): Hit[] => hits.map((h) => ({ ...h, isAimed: true }))
 
 const clip = (s: string): string => (s.length > MAX_LINE ? `${s.slice(0, MAX_LINE)}…` : s)
 
@@ -205,6 +114,43 @@ async function recordTrips($: EngineInterface, sessionId: string, repo: string, 
   }
 }
 
+/**
+ * The `name@version` keys the plain trap-check hook (.flightwake/hooks/trap-check.mjs, A5) already showed for this very
+ * call: its hint record `<base>/hints/claude-<session id>.json` names the tool_use_id each key was shown for. A settings
+ * PreToolUse hook runs inside next(e), so its record is there by the time this hook reads it. Best effort: anything
+ * unreadable answers "none", and the mod hints as before (a duplicate beats a miss).
+ */
+async function shownByHook($: EngineInterface, sessionId: string, toolUseId: unknown): Promise<Set<string>> {
+  const out = new Set<string>()
+  if (typeof toolUseId !== 'string' || toolUseId === '' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(sessionId)) return out
+  try {
+    let FLIGHTWAKE_HOME: string | undefined
+    let HOME: string | undefined
+    let USERPROFILE: string | undefined
+    try { FLIGHTWAKE_HOME = await $.env.get('FLIGHTWAKE_HOME') } catch {}
+    try { HOME = await $.env.get('HOME') } catch {}
+    try { USERPROFILE = await $.env.get('USERPROFILE') } catch {}
+    const base = fleetBase({ FLIGHTWAKE_HOME, HOME, USERPROFILE })
+    if (base === null) return out
+    const file = `${base}/hints/claude-${sessionId}.json`
+    if (!(await $.fs.exists(file))) return out
+    const text = await $.fs.read(file)
+    const d: unknown = typeof text === 'string' ? JSON.parse(text) : null
+    if (!d || typeof d !== 'object') return out
+    const rec = d as { v?: unknown; host?: unknown; sessionId?: unknown; repos?: unknown }
+    if (rec.v !== 1 || rec.host !== 'claude' || rec.sessionId !== sessionId || !rec.repos || typeof rec.repos !== 'object') return out
+    for (const repo of Object.values(rec.repos as Record<string, unknown>)) {
+      if (!repo || typeof repo !== 'object') continue
+      for (const [k, v] of Object.entries(repo as Record<string, unknown>)) {
+        if (v && typeof v === 'object' && (v as { toolUseId?: unknown }).toolUseId === toolUseId) out.add(k)
+      }
+    }
+  } catch {
+    // unreadable: the mod hints as before
+  }
+  return out
+}
+
 /** tool_use_ids a settings PreToolUse hook or the auto-mode classifier refused, until their tool.call settles. */
 const refusedIds = new Set<string>()
 const REFUSED_CAP = 256
@@ -234,21 +180,28 @@ async function hintFor($: EngineInterface, e: Record<string, unknown>, mayRecord
   if (!isFile) {
     try { cwd0 = (await $.session.cwd()).replace(/\/+$/, '') || ctx.root } catch {}
   }
-  const hits = isFile ? matchFile(entries, ctx.root, target) : matchBash(entries, ctx.root, cwd0, target)
+  const hits = aimed(isFile ? matchFile(entries, ctx.root, target) : matchBash(entries, ctx.root, cwd0, target))
   if (!hits.length) return null
 
   const sessionId = await io.sessionId()
   // recorded before the dedup below: a trap not hinted again is still tripped (in this repo, if new here)
   if (mayRecord) await recordTrips($, sessionId, ctx.root, hits)
   const key = (h: Hit) => `${h.entry.name}@${h.entry.version}`
+  // what the plain hook already showed for this call counts as shown here too (never printed twice); its record is read
+  // only when something here is new this session, so a repeat costs nothing outside the repo
+  const prior = await read($, hinted)
+  const priorSeen = prior && prior.sessionId === sessionId ? prior.keys : []
+  if (hits.every((h) => priorSeen.includes(key(h)))) return null
+  const byHook = await shownByHook($, sessionId, e.tool_use_id)
   let shown: Hit[] = []
   let more = 0
   await update($, hinted, (cur) => {
     const seen = cur && cur.sessionId === sessionId ? cur.keys : []
     const fresh = hits.filter((h) => !seen.includes(key(h)))
-    shown = fresh.slice(0, MAX_ENTRIES)
-    more = fresh.length - shown.length
-    return { sessionId, keys: [...seen, ...shown.map(key)] }
+    const mine = fresh.filter((h) => !byHook.has(key(h)))
+    shown = mine.slice(0, MAX_ENTRIES)
+    more = mine.length - shown.length
+    return { sessionId, keys: [...seen, ...fresh.filter((h) => byHook.has(key(h))).map(key), ...shown.map(key)] }
   })
   if (!shown.length) return null
   return render(ctx.lang, shown, more)
