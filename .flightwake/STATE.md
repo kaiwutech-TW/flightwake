@@ -1,8 +1,8 @@
 ---
 updated: 2026-11-10
-updated_by: Claude Code (Fable 5.2)
-latest_record: records/261026-review-fixes.md
-health: yellow  # max review 15 項已修、smoke 全綠;仍黃:mod 測試套件在 Claude Code 2.1.310 有 25 個 fleet 失敗(clean HEAD 同一組,測試環境改變)所以不算綠、v2 觸發紀錄與面板修正未真機驗、未發版、TRAPS active 超過 20
+updated_by: Claude Code (Opus 5.5)
+latest_record: records/261110-narrow-a1-a2-tripwire.md
+health: yellow  # 測試全綠(mod 546/546 on 2.1.321、smoke 含 48、tsc、validate);仍黃:agy 的 Stop hook 未在真機觸發過、[Unreleased] 未發版、TRAPS active 32 條超過 20
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
 <!-- 規則:只寫「現在」與「下一步」;歷史去 records/,決策去 DECISIONS.md。 -->
@@ -10,39 +10,28 @@ health: yellow  # max review 15 項已修、smoke 全綠;仍黃:mod 測試套件
 
 # 現在在哪
 
-flightwake **v0.17.0 已發佈(2026-10-11,npm latest,provenance;release run 38139683264;證據見 [[261011-fleet-console]] 發佈補記)**:mod 0.3.0 側邊面板與機隊中控台。前版 v0.16.0(同日,[[261011-fleet-and-setup-flow]]):mod 0.2.0(spend + fleet)、語系預選與附加元件多選的 setup、update 的附加元件提示。前版 v0.15.0(2026-10-05):引導式 `setup`、`doctor`、`--profile=notes`、Orca 協作、roles v2、mod 0.1.0。
-歷史里程碑(開源 2026-07-18、i18n、tower/registry、Codex/Gemini 原生、OKF export、roles)各有 record,從 `records/` 依日期讀。
+npm latest 是 **v0.17.0**(2026-10-11,mod 0.3.0 側邊面板與機隊中控台;發佈證據見 [[261011-fleet-console]])。之前的版本與里程碑各有 record,從 `records/` 依日期讀:0.16.0 [[261011-fleet-and-setup-flow]]、0.17.0 [[261011-mod-side-panel]]、真機驗證 [[261019-console-realmachine]]、traps similar/stats [[261026-traps-similar-and-trips]]、max review 修正 [[261026-review-fixes]]。
 
-**0.16.0 的內容(2026-10-09 → 10-11,commit 3048dc6 起四個 + c6c486b,詳見 [[261011-fleet-and-setup-flow]])**:
-- **mod 0.2.0**:F6 `spend`(`/fw-cost`、band 與儀表費用欄)+ F7 `fleet`(每個互動 session 寫 repo 外 `<base>/sessions/<id>.json`:working/blocked/idle/ended;`/fw-fleet`、`npx flightwake fleet [--json|--prune]`、儀表 `⛔` 欄、意外中斷後一次性 `claude --resume` 提示)。
-- **安裝流程升級**:setup 依終端機語系(LC_ALL > LC_MESSAGES > LANG)預選語言、附加元件一次多選(精確集合;儀表/mod 預勾有條件、roles 不勾、Orca 只認 `ORCA_*`)、已安裝 repo 三選一、`update` 結尾點名未裝的附加元件並要 agent 先問人、init 偵測到語系差異提示 `update --lang=X`;`registryPath` 改與 `fleetBase` 同規則;private 安裝的語言寫進排除標頭。
-- 關卡(2026-10-11 主導者重跑):smoke 46 節全過、plugin test 465/465、validate 過、tsc clean、readonly 三項 ok、doctor 0/0;本 repo dogfood 副本已刷新。設計規格在 session scratchpad,不入版控。
+**2026-11-10 方向收窄**(計畫 `docs/plans/narrow-and-launch.md`,決定見 DECISIONS 同日五條):守住 Markdown 核心與 TRAPS;fleet、面板、spend、roles 進維護模式;Antigravity(`agy`)成為第三家平台、Gemini CLI 降級保留;zh-CN 與 ja 停在現版;研究報告留在本機 `reports/`、`research_notes/`(不進版控)。
 
-**0.17.0 的內容:mod 0.3.0(2026-10-11,b4376a8..9777586,詳見 [[261011-mod-side-panel]]、[[261011-fleet-console]])**:F8 側邊面板 `/fw-panel`(開過就記住、手動關即撤銷),卡片式:本 repo(health、context 長條、費用、`!` 注意事項)、**機隊中控台**(Orca 裡讀 `orca terminal list` 列所有 Claude/Codex 分頁,依 repo 分卡,跨 repo 唯讀讀 health/版本;按鈕「跳過去」與兩段確認的「收尾」)、STATE 進行中/下一步、本 session;fleet 狀態檔多 `context` / `role` / `fwVersion`。CHANGELOG 已分出 `[0.17.0]`。
+**已完成**(詳見 [[261110-narrow-a1-a2-tripwire]]):A1 mod 測試回綠(測試 kit 改變,TRAPS 升 confirmed)、A2 agy 平台(`--agents=…,agy`)、絆線在 Bash 只對指令前綴與寫入的路徑提示。這些和 10-19、10-26 的修正一起在 CHANGELOG `[Unreleased]`。
 
-**2026-10-19 真機驗證(詳見 [[261019-console-realmachine]])**:中控台的跳過去、兩段確認收尾、Codex 狀態、手動關閉,以及 F7 的 blocked、`/clear`、`/exit`、`kill -9` 接回,都在 Orca 實測通過。修了兩個 bug:Codex 收尾不送出、接回 toast 被截斷(ac9031e,在 `[Unreleased]`,尚未發版)。TRAPS 依實測壓實。
-
-**2026-10-26 TRAPS 寫前查重與觸發次數(詳見 [[261026-traps-similar-and-trips]])**:參考 dsh-plugin.org 的記憶插件,新增 `npx flightwake traps similar`(`/fw-trap` 寫入前查重、三選一)與 `npx flightwake traps stats`(各條有無錨點、被絆線比對幾次;`/fw-coldstart` 壓實提案從它出發);mod 絆線把次數寫到 repo 外 `<base>/trips/<id>.json`(DECISIONS 2026-10-26)。都在 `[Unreleased]`。同日 `/code-review max` 確認 15 項問題,已全修(詳見 [[261026-review-fixes]]):觸發紀錄改成每 session 每 repo 最多一次(trip 檔 v2、開關 `trips`、資料夾須 0700)、`npx flightwake traps forget`、`/fw-trap` 範本改 heredoc、面板與 `/fw-fleet` 的修正。
-
-**展示網站**:四語 Astro 網站已推 main 並部署 Cloudflare Pages Direct Upload;目前包含飛行記錄器 Logo、語言偏好、匿名多 agent 案例、0.17.0 側邊面板匿名示意與 `/fw-mod` 0.3.0 實測輸出。自訂網域四語/SEO 路由 HTTPS 200;網站已標示 npm 0.17.0,最新部署證據見 [[261011-mod-017-site]]。後續更新須重建並手動部署(指令見 `website/README.md`)。
+**展示網站**:四語 Astro 網站在 Cloudflare Pages(Direct Upload),標示 npm 0.17.0;部署證據 [[261011-mod-017-site]],指令見 `website/README.md`。
 
 # 進行中(未完成勿刪)
 
-- **mod 測試在 Claude Code 2.1.310 有 25 個 fleet 失敗**:clean HEAD 同一組,是測試環境對沒人回答的權限請求改判拒絕(TRAPS `plugin-test-kit-denies-unanswered-permission-request`,probable)。要修得找 2.1.310 的 testing 文件;另需真機確認互動 session 的 F7 blocked 仍正常。
-- **v2 觸發紀錄未真機驗**:dogfood 副本已刷新、`~/.flightwake/trips` 已收成 0700;下一個 session 改到有 `paths` 錨點的檔或跑有 `commands` 錨點的指令後,看 `~/.flightwake/trips/` 是否為 v2、`node bin/cli.mjs traps stats` 的 sessions 欄。另待真機:權限對話框按「否」不被記、面板對 Codex 收尾的讀回與連按防護。
-- **待發版**:ac9031e 的兩個修正與 10-26 的 traps 功能都在 CHANGELOG `[Unreleased]`,下次 release 時 mod 版號從 0.3.0 往上推。
-- **一處小 bug 待決定修不修**:面板「本 session」列寫死工作中(`features/panel.ts` 的 `isSelf ? 'working'`)。(`/fw-fleet` 反斜線加倍已在 10-26 修好)
-- **仍未驗**:`/fw-fleet` 四語輸出;真引擎 PermissionRequest 的 `tool_input` 是否等於 `tool.check` 的 input;Codex hook trust 的 bypass 對照重跑。
-- **spend 熱重載後「token 不明」但費用有值**:待查(record 未完節)。
-- 慣例演進採讀取端容忍(DECISIONS 2026-07-18),容忍不了時再議遷移工具;zh-CN/ja 安裝內容待 issue 需求再擴。
+- **agy 的 Stop hook 未真機驗**:等 Kai 照 `docs/plans/agy.probe.md` 跑 P1–P8;最大未知是 hook 的工作目錄。
+- **A3 TRAPS 壓實**:active 32 條、13 條無錨點(`node bin/cli.mjs traps stats`);逐條處置提案要 Kai 放行才動 TRAPS.md。
+- **dogfood 副本是舊的**:`.flightwake/hooks/state-check.mjs` 與 `.claude/skills/flightwake-mod` 還沒刷新,發版前跑 `node bin/cli.mjs update`(TRAPS `dogfood-dual-copy-drift`)。
+- **仍未驗**:F7 blocked 的直接觀察(今天只有間接證據);權限對話框按「否」不被記;`/fw-fleet` 四語輸出;Codex hook trust 的 bypass 對照;spend 熱重載後「token 不明」但費用有值。
+- **小 bug 不修**(維護模式):面板「本 session」列寫死工作中(`features/panel.ts` 的 `isSelf ? 'working'`)。
+- 慣例演進採讀取端容忍(DECISIONS 2026-07-18),容忍不了時再議遷移工具。
 
 # 下一步入口
 
-00. **接下來照 `docs/plans/narrow-and-launch.md` 做**(2026-11-10 規劃,未開工):先程式端(A1 替 25 個失敗測試定案 → A2 支援 agy → A3 TRAPS 壓實 → 發 0.18.0),再線上資訊(README 第一屏、英文示範、網站),推廣由 Kai 最後做。開工前先問完該檔的 D1–D5。依據是 `reports/` 下兩份研究報告(未進版控)。
-0. **Kai 決定**:①TRAPS active 32 條超過 20:現在可先跑 `traps stats` 看錨點分布(13 條沒錨點)再決定壓實或調門檻;②上面兩處小 bug 修不修、何時發版;③舊待決:roles 座位設計對只有 AGENTS.md 的 repo 的影響、`~/.claude/projects` 下的 scratch session 資料夾是否刪除。
-0a. 網站維護:未來改版依 `website/README.md` 執行 Direct Upload。
-1. 常用 repo `npx flightwake update`(npm latest 0.17.0;有 AGENTS.md 的 16 個機隊 repo 會長出 `.agents/skills` 與 `.codex/hooks.json`,每個 repo 首次開 Codex 會被問一次信任 hook);觀察下游 `/clear` 後角色派工。
-2. Orca 側:讀 `<base>/sessions/*.json`(契約見 `docs/mod.md`「Fleet file contract」)做 blocked 通知與 `--until blocked` 等待——herdr 分析的最後一塊。
-3. 未驗證平台:Windows(含 Intl 語系)、Linux Intl、Gemini CLI hook 真機(AfterAgent 是否觸發,見 [[260902-codex-gemini-native]])、真正的 resume/compact 體驗。
-4. 宣傳:順序與素材見 `docs/plans/narrow-and-launch.md` 的 C 段;原本放在桌面的三稿已不存在(Kai 2026-11-10 確認),文案要重寫且對外文字由 Kai 本人寫;HN 作者留言仍 auto-flag 待 hn@ 回覆;之後盯 issues(含徵求日文/簡中母語校對)。
-5. 低優先:SCOPE+ 格式向使用者確認(機隊零筆)、向使用者要「最近重複踩到的 trap」驗證 confidence 三型、GSD 側對照實測(benchmarks 公平性)、範例 repo。
+1. **照 `docs/plans/narrow-and-launch.md` 繼續**:A3(提案給 Kai)→ A7 `/fw-trap` 入選門檻 → A8 套件關鍵字 → A10 凍結標示與 setup 瘦身(setup 那題要 Kai 決定)→ A12 發 0.18.0(對外動作,先確認)。之後是 B 段線上資訊、C 段推廣(Kai 本人寫對外文字)。
+2. **[Kai]** agy 探針 `docs/plans/agy.probe.md`;結果決定 A2 是否要改 hook 指令。
+3. 舊待決:roles 座位設計對只有 AGENTS.md 的 repo 的影響、`~/.claude/projects` 下的 scratch session 資料夾是否刪除。
+4. 發版後:常用 repo 跑 `npx flightwake update`;用 agy 的 repo 要明確加 `--agents=…,agy`(agy 不會被自動偵測)。
+5. 未驗證平台:Windows(含 Intl 語系)、Linux Intl、Gemini CLI hook 真機。
+6. 低優先:SCOPE+ 格式向使用者確認、向使用者要「最近重複踩到的 trap」驗證 confidence 三型、範例 repo。
