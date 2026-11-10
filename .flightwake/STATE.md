@@ -1,7 +1,7 @@
 ---
 updated: 2026-11-10
 updated_by: Claude Code (Opus 5.5)
-latest_record: records/261110-narrow-a3-a10.md
+latest_record: records/261110-narrow-b3-a5-draft.md
 health: yellow  # 測試全綠(mod 546/546 on 2.1.321、smoke 含 48、tsc、validate);仍黃:agy 的 Stop hook 未在真機觸發過、[Unreleased] 未發版(Kai:探針跑完再發 0.18.0)
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
@@ -14,7 +14,7 @@ npm latest 是 **v0.17.0**(2026-10-11,mod 0.3.0 側邊面板與機隊中控台;�
 
 **2026-11-10 方向收窄**(計畫 `docs/plans/narrow-and-launch.md`,決定見 DECISIONS 同日五條):守住 Markdown 核心與 TRAPS;fleet、面板、spend、roles 進維護模式;Antigravity(`agy`)成為第三家平台、Gemini CLI 降級保留;zh-CN 與 ja 停在現版;研究報告留在本機 `reports/`、`research_notes/`(不進版控)。
 
-**已完成**(詳見 [[261110-narrow-a1-a2-tripwire]]、[[261110-narrow-a3-a10]]):A1 mod 測試回綠(測試 kit 改變,TRAPS 升 confirmed)、A2 agy 平台(`--agents=…,agy`)、絆線在 Bash 只對指令前綴與寫入的路徑提示;A3 TRAPS 壓實(Kai 放行):32 → 20 條 active、只剩 `unquoted-heredoc-runs-backticks` 無錨點(寫了理由);A7 `/fw-trap` 入選門檻與 `retire_when`;A8 npm 關鍵字;A10 維護模式標示(含 setup 清單上的 roles 與 Orca)、zh-CN/ja 標明停在 v0.17.0。這些和 10-19、10-26 的修正一起在 CHANGELOG `[Unreleased]`。
+**已完成**(詳見 [[261110-narrow-a1-a2-tripwire]]、[[261110-narrow-a3-a10]]、[[261110-narrow-b3-a5-draft]]):A1 mod 測試回綠(測試 kit 改變,TRAPS 升 confirmed)、A2 agy 平台(`--agents=…,agy`)、絆線在 Bash 只對指令前綴與寫入的路徑提示;A3 TRAPS 壓實(Kai 放行):32 → 20 條 active、只剩 `unquoted-heredoc-runs-backticks` 無錨點(寫了理由);A7 `/fw-trap` 入選門檻與 `retire_when`;A8 npm 關鍵字;A10 維護模式標示(含 setup 清單上的 roles 與 Orca)、zh-CN/ja 標明停在 v0.17.0;B3 證據頁 `docs/evidence.md`;A5 設計稿 `docs/plans/tripwire-hook.md`(待審)。這些和 10-19、10-26 的修正一起在 CHANGELOG `[Unreleased]`。
 
 **展示網站**:四語 Astro 網站在 Cloudflare Pages(Direct Upload),標示 npm 0.17.0;部署證據 [[261011-mod-017-site]],指令見 `website/README.md`。
 
@@ -28,7 +28,7 @@ npm latest 是 **v0.17.0**(2026-10-11,mod 0.3.0 側邊面板與機隊中控台;�
 # 下一步入口
 
 1. **[Kai]** agy 探針 `docs/plans/agy.probe.md`;結果決定 A2 是否要改 hook 指令,之後才發 0.18.0(A12,對外動作)。
-2. **照 `docs/plans/narrow-and-launch.md` 繼續**:B 段線上資訊(B1 README 第一屏的那句痛點由 Kai 從候選選;B2 英文示範由 Kai 錄;B4、B5 是對外動作)可先備草稿;第二批設計 A5 / A6 / A9 未開始。C 段推廣由 Kai 本人寫對外文字。
+2. **照 `docs/plans/narrow-and-launch.md` 繼續**:B1 README 第一屏等 Kai 從計畫裡的三句候選選一句;B2 英文示範由 Kai 錄;B4、B5 是對外動作。A5 設計稿要在可見的 Orca 分頁請另一個 agent 唯讀審,並做探針 Q1–Q5;A6 / A9 未開始。C 段推廣由 Kai 本人寫對外文字。
 3. 舊待決:roles 座位設計對只有 AGENTS.md 的 repo 的影響、`~/.claude/projects` 下的 scratch session 資料夾是否刪除。
 4. 發版後:常用 repo 跑 `npx flightwake update`;用 agy 的 repo 要明確加 `--agents=…,agy`(agy 不會被自動偵測)。
 5. 未驗證平台:Windows(含 Intl 語系)、Linux Intl、Gemini CLI hook 真機。
