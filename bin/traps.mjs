@@ -526,8 +526,8 @@ const T = {
     ja: `この repo の発火データはありません${dir ? `(${dir})` : ''}——ここに mod が入っていないか、まだ何も記録されていない。アンカーの有無だけを示し、どの項目が使われているかについては何も主張しない。`,
   }),
   noteSource: {
-    en: '  · sessions = how many sessions tripped the entry (once per session, whatever the repeats); only Edit/Write paths and Bash command prefixes count — read-only shell mentions do not. Trip data comes only from Claude Code sessions with the flightwake mod installed and its tripwire on; Codex / Gemini sessions never record trips.',
-    'zh-TW': '  · session 數 = 有幾個 session 觸發過這條(同一個 session 重複觸發只算一次);只有 Edit/Write 的路徑與 Bash 指令前綴算數——唯讀的 shell 提及不算。觸發資料只來自裝了 flightwake mod 且絆線開著的 Claude Code session;Codex / Gemini 的 session 永遠不會記錄觸發。',
+    en: '  · sessions = how many sessions tripped the entry (once per session, whatever the repeats); only Edit/Write paths, Bash command prefixes and paths a Bash command writes count — a path a command only reads or mentions does not. Trip data comes only from Claude Code sessions with the flightwake mod installed and its tripwire on; Codex / Gemini sessions never record trips.',
+    'zh-TW': '  · session 數 = 有幾個 session 觸發過這條(同一個 session 重複觸發只算一次);只有 Edit/Write 的路徑、Bash 指令前綴與 Bash 指令寫入的路徑算數——指令只讀或提到的路徑不算。觸發資料只來自裝了 flightwake mod 且絆線開著的 Claude Code session;Codex / Gemini 的 session 永遠不會記錄觸發。',
     'zh-CN': '  · session 数 = 有几个 session 触发过这条(同一个 session 重复触发只算一次);只有 Edit/Write 的路径与 Bash 命令前缀算数——只读的 shell 提及不算。触发数据只来自装了 flightwake mod 且绊线开着的 Claude Code session;Codex / Gemini 的 session 永远不会记录触发。',
     ja: '  · セッション = その項目を発火させたセッションの数(同じセッション内の繰り返しは 1 回)。数えるのは Edit/Write のパスと Bash コマンドの前方一致だけ——読み取りだけのシェルでの言及は数えない。発火データは flightwake mod を入れて検知線をオンにした Claude Code セッションからだけ来る。Codex / Gemini のセッションは発火を記録しない。',
   },

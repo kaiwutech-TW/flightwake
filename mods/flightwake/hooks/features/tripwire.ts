@@ -3,9 +3,10 @@
  * `commands`, a compact hint is appended to the tool result's `context` (what the model reads after the result).
  * It NEVER blocks: a denied call passes through untouched, and every failure falls through to the plain result.
  * With `trips` on, a trap is also recorded in $.state `trapsTripped` — at most once per session per repo, hinted or
- * not: the evidence a TRAPS compaction reads. Only what the call itself aimed at records: an Edit / Write /
- * NotebookEdit whose file matches `paths`, or a Bash command whose prefix matches `commands`. Path-like words inside
- * a Bash command (`cat db/x.sql`, `git diff -- db/`) still hint but do not record — that matching guesses on purpose.
+ * not: the evidence a TRAPS compaction reads. Hint and record follow one rule (DECISIONS 2026-11-10): what the call
+ * itself aims at — an Edit / Write / NotebookEdit whose file matches `paths`, a Bash command whose prefix matches
+ * `commands`, or a path a Bash command writes (redirect, cp/mv/tee/rm, sed -i) that matches `paths`. A path a
+ * command only reads or mentions (`cat db/x.sql`, `git diff -- db/`) does neither.
  * A call that did not run records nothing: a deny, or an error result that is a refusal (a settings PreToolUse hook's
  * deny, the auto-mode classifier's, or the permission prompt's — REFUSAL_RE). This file only records;
  * hooks/features/fleet.ts (registerTripLog, outside this hook) writes `<base>/trips/<id>.json`, the mod's only writer.
@@ -18,7 +19,7 @@ import { M, fwContext, readRel, relToRoot, TRAPS_REL } from '../lib/core'
 import type { Io, Lang } from '../lib/core'
 import { addTrips, hasTrip } from '../lib/fleet'
 import { matchAny } from '../lib/glob'
-import { parseCommand, startsWithTokens } from '../lib/shell'
+import { parseCommand, segmentWrites, startsWithTokens } from '../lib/shell'
 import { hasMatchers, isActive, parseTraps, REFUSAL_RE } from '../lib/traps'
 import type { TrapEntry } from '../lib/traps'
 
@@ -43,16 +44,11 @@ function ioOf($: EngineInterface): Io {
   }
 }
 
-/** `isAimed`: the call itself aimed at the entry (its file, or a command prefix) — what a trip records. */
+/** `isAimed`: the call itself aimed at the entry (its file, a command prefix, or a path a command writes). Every hit
+ *  is aimed since 2026-11-10 (a mere mention no longer matches); the field stays for recordTrips' filter. */
 type Hit = { entry: TrapEntry; via: string; isAimed: boolean }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
-
-/** A bash word that plausibly names a repo file: has `/` or `.`, isn't an option, a URL or a home shorthand. */
-function looksLikePath(t: string): boolean {
-  if (t.startsWith('-') || t.startsWith('~') || t.includes('://') || t.includes('=')) return false
-  return t.includes('/') || t.includes('.')
-}
 
 function matchFile(entries: TrapEntry[], root: string, filePath: string): Hit[] {
   const rel = relToRoot(root, filePath)
@@ -62,12 +58,9 @@ function matchFile(entries: TrapEntry[], root: string, filePath: string): Hit[] 
   return out
 }
 
-/** At most this many possible cwds are tracked; past it, matching degrades to glob tails (no cwd at all). */
-const MAX_CWDS = 16
-
 /**
  * Coarse match used once the cwd is no longer tracked: does `glob` match the path word itself or any tail of the
- * glob match it (`pkg/src/**` → `src/**` → `**`)? Over-hints by design — F4 only hints, once per entry per session.
+ * glob match it (`pkg/src/**` → `src/**` → `**`)? Leans to hinting — once per entry per session.
  */
 function tailMatch(globs: readonly string[], word: string): boolean {
   const w = word.replace(/^\.\//, '')
@@ -81,25 +74,25 @@ function tailMatch(globs: readonly string[], word: string): boolean {
   return false
 }
 
-/** The file a redirection names (`>out`, `2>>log`, `&>f`, `<in`), or the word itself. '' for a bare operator. */
-const redirectTarget = (tok: string): string => tok.replace(/^(?:\d*|&)?[<>]>?/, '')
+/** At most this many possible cwds are tracked; past it, matching degrades to glob tails (no cwd at all). */
+const MAX_CWDS = 16
 
 /**
- * Bash: command prefixes per segment, and path-like words resolved against every directory the shell could be in.
- * F4 only hints and hints once per entry per session, so when the cwd is uncertain it over-hints rather than miss:
+ * Bash (DECISIONS 2026-11-10): only what the command aims at — a segment's command prefix (`commands`), or a path a
+ * segment writes (`paths`): output redirections, cp/mv/tee/rm and `sed -i`, read as F3's recorder reads them
+ * (segmentWrites). A path the command only reads or mentions (`cat db/x.sql`, `grep -n x db/`, `git diff -- db/`)
+ * neither hints nor records. A written path is resolved against every directory the shell could be in; when the cwd is
+ * uncertain this leans to hinting (once per entry per session):
  * - only a plain chain `cd X && …` is a certain move (the set of cwds is replaced);
  * - a `cd` followed by `||`, `&`, `|`, `;` or a newline, or after any such operator, may or may not have moved this
  *   shell: the moved directories are ADDED to the set;
  * - `( … )` subshells are walked: inside, cds apply as above; after the `)`, the set from before the `(` is back;
  * - a `cd` that can't be resolved without guessing (`cd -`, `~`, `$VAR`, bare `cd`) leaves the set as it is;
- * - the set is bounded (MAX_CWDS): past it, matching degrades to glob tails (tailMatch) for the rest, so
- *   the hint never costs more than one pass over the words — a long chain of uncertain cds can't blow it up.
+ * - the set is bounded (MAX_CWDS): past it, matching degrades to glob tails (tailMatch) for the rest.
  */
 function matchBash(entries: TrapEntry[], root: string, cwd0: string, command: string): Hit[] {
   const parsed = parseCommand(command)
   const out = new Map<TrapEntry, string>()
-  /** Entries some segment's command prefix matched (the hint may name a path word found earlier). */
-  const aimed = new Set<TrapEntry>()
   let cwds: Set<string> | null = new Set<string>([cwd0]) // null = degraded: cwd no longer tracked
   let isCertain = true
   const stack: Array<{ cwds: Set<string> | null; isCertain: boolean }> = []
@@ -114,18 +107,13 @@ function matchBash(entries: TrapEntry[], root: string, cwd0: string, command: st
       if (seg.op && seg.op !== '&&') isCertain = false
       continue
     }
+    const writes = segmentWrites(seg.tokens)
     for (const entry of entries) {
-      const prefix = entry.commands.find((p) => startsWithTokens(seg.tokens, p))
-      if (prefix !== undefined) {
-        aimed.add(entry)
-        if (!out.has(entry)) out.set(entry, prefix.trim().split(/\s+/).join(' '))
-        continue
-      }
       if (out.has(entry)) continue
+      const prefix = entry.commands.find((p) => startsWithTokens(seg.tokens, p))
+      if (prefix !== undefined) { out.set(entry, prefix.trim().split(/\s+/).join(' ')); continue }
       if (!entry.paths.length) continue
-      search: for (const tok of seg.tokens) {
-        const word = redirectTarget(tok)
-        if (!word || !looksLikePath(word)) continue
+      search: for (const { path: word } of writes) {
         if (word.startsWith('/')) {
           const rel = relToRoot(root, word)
           if (rel !== null && rel !== '' && matchAny(entry.paths, rel) !== null) { out.set(entry, rel); break search }
@@ -153,7 +141,7 @@ function matchBash(entries: TrapEntry[], root: string, cwd0: string, command: st
     }
     if (seg.op && seg.op !== '&&') isCertain = false
   }
-  return [...out].map(([entry, via]) => ({ entry, via, isAimed: aimed.has(entry) }))
+  return [...out].map(([entry, via]) => ({ entry, via, isAimed: true }))
 }
 
 const clip = (s: string): string => (s.length > MAX_LINE ? `${s.slice(0, MAX_LINE)}…` : s)

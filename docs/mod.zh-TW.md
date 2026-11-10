@@ -99,7 +99,7 @@ mod 要同時滿足以下條件才會載入:
 | `stateInject` | 開 | session 開始時,把 `.flightwake/STATE.md`(每個 session 只取一次的快照)放進 system prompt,並註明這是上次收尾時的狀態,仍應檢查 git。STATE 還是未填的範本時,改放一行「請先跑冷啟動」。超過 6000 字元時,不是截掉前 N 個字,而是注入 frontmatter、「進行中」與「下一步入口」兩段以及檔案路徑,並提示你壓實 STATE。它不取代 `fw-coldstart`(落後檢查與讀最新 record 仍是 skill 的工作)。 |
 | `band` | 開 | 提示列上方的一行:health 顏色、STATE 落後量(與 Stop hook 檢查同一個算法;bot 的 commit 不計)、context 用量、token 與費用(見 `spend`),以及建議的下一個指令。沒有生效中的底部儀表(`statusline.mjs` 不是狀態列)時,band 一律顯示,Claude Code 有回報 context 百分比就一律帶上;它不再等到 60%,一切正常時也不消失,而是頂替儀表。顏色門檻不變(≥60% 黃、≥80% 紅),context 到 80% 時照樣跳一次 toast。STATE 還是未填的範本時,health 顯示為 `?`,並提示「STATE 尚未初始化——先跑 /fw-coldstart」。若 flightwake 的底部儀表(`statusline.mjs`)就是生效中的狀態列,band 會隱藏儀表已經顯示的欄位並保持安靜,只剩 80% 的 toast。 |
 | `recorder` | 開 | session 飛行日誌:改了哪些檔案、commit,以及認得出的測試指令與結果。`/fw-log` 會把它印出來,供 `fw-record` 當作 `tests:` 證據與變更清單;經由 shell 指令改動的檔案會另列一段(推斷而來,可能不完整),時間以本地時間加 UTC 偏移顯示、後面接 UTC。它從不寫 record。 |
-| `tripwire` | 開 | 當 agent 編輯的檔案或執行的指令,符合某則啟用中的 TRAPS 條目的選填欄位 `paths` / `commands` 時,會把該條目的重點與信心程度給 agent 看,每個 session 一次——是在工具跑完*之後*,所以保護的是下一次嘗試,不是這一次。從不阻擋。`probable` / `suspected` 的條目會標成線索,不是結論。 |
+| `tripwire` | 開 | 當 agent 編輯或寫入的檔案(含經由 shell 寫入)或執行的指令,符合某則啟用中的 TRAPS 條目的選填欄位 `paths` / `commands` 時,會把該條目的重點與信心程度給 agent 看,每個 session 一次——是在工具跑完*之後*,所以保護的是下一次嘗試,不是這一次。從不阻擋。`probable` / `suspected` 的條目會標成線索,不是結論。 |
 | `roleGuard` | 關 | 針對這個資料夾 Claude 座位上的角色,角色內文(ROLES.md)裡的 `deny-write: [globs]` 行會變成對主 session 的 `Edit` / `Write` / `NotebookEdit` 寫入這些路徑的攔截,訊息會說明是哪個角色、哪條規則、改怎麼做。只有使用者本人能用 `/fw-role-release`(在輸入框打)為本 session 放行;放行期間狀態列持續顯示。細節見 [roles.zh-TW.md](roles.zh-TW.md) 的「選配:Claude Code mod 的角色守門」。 |
 | `spend` | 開 | 本 session 用了多少 token、換算成 API 牌價是多少錢。金額是 Claude Code 自己的帳(與 `/cost` 相同,按 API 牌價計;訂閱用戶不會另外被收這筆);token 從 `~/.claude/projects/` 下的 session transcript 加總,每次 API 回應只算一次(子 agent 有自己的 transcript,不計在內)。顯示在 band 最後一欄(`1.2M tok · ≈$4.99`)——底部儀表是生效中的狀態列時,儀表會顯示同一欄、band 保持安靜——以及 `/fw-mod` 的一行;`/fw-cost` 印出明細(未快取輸入/寫入快取/讀取快取/輸出)。每回合結束後更新。 |
 | `fleet` | 開 | 把本 session 的狀態——工作中、等你回覆、閒置或已結束——回報到 repo 外的 `<base>/sessions/<id>.json`,供 `/fw-fleet`、`npx flightwake fleet`、底部儀表的 `⛔` 欄位使用,並在某個 session 意外中斷後提示一次 `claude --resume`。只限互動 session;絕不寫 prompt 或指令內容。見下方「session 狀態回報」。 |
@@ -120,8 +120,8 @@ commands: ["npm run migrate", "psql"]  # 指令前綴,逐個 token 比對
 #### 踩坑紀錄
 
 `trips` 開著時,一則條目**每個 session、每個 repo 最多記一次**:「這個 session 踩到了這則條目」,附第一次命中的時間,寫在 repo 外的
-`<base>/trips/<session id>.json`。只有呼叫本身瞄準的目標才算:`Edit` / `Write` / `NotebookEdit` 的檔案符合 `paths`,或 Bash 指令的前綴符合
-`commands`。Bash 指令裡看起來像路徑的字(`cat db/x.sql`、`grep … db/`、`git diff -- db/`)照樣會帶出提示,與以前一模一樣,但不記——那種比對本來就是刻意寬鬆的猜測。
+`<base>/trips/<session id>.json`。只有呼叫本身瞄準的目標才算,提示也用同一條規則:`Edit` / `Write` / `NotebookEdit` 的檔案符合 `paths`、Bash 指令的前綴符合
+`commands`,或 Bash 指令寫入的路徑(輸出重導、`cp`/`mv`/`tee`/`rm`、`sed -i`)符合 `paths`。指令只是讀或提到的路徑(`cat db/x.sql`、`grep … db/`、`git diff -- db/`)既不提示也不記(2026-11-10 起;之前會提示)。
 同一個 session 裡子 agent 的呼叫也算。沒有真的執行的呼叫不記:被外掛擋下的,或被權限提示、拒絕規則、auto 模式分類器、設定裡的 `PreToolUse` hook 拒絕的
 (依 Claude Code 拒絕時的固定措辭辨認,hook 與分類器的拒絕則依呼叫的 id)。命中記在它發生時的 repo 根目錄下,所以 `/cd` 或切換 worktree 之後,下一次命中會記在新的根目錄下。
 

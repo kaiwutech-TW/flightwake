@@ -326,21 +326,21 @@ describe('tripwire: trip file', () => {
     expect(k.w.writes).toEqual([])
   })
 
-  test('Bash: path-like words hint as before but record nothing; only a command prefix records', ONLY_F4, async ($, on) => {
+  test('Bash: a path it only reads or mentions neither hints nor records; a path it writes, or a command prefix, does both (DECISIONS 2026-11-10)', ONLY_F4, async ($, on) => {
     const k = await tripWorld($, on, traps(entry('sql', { paths: '["db/**"]' }), entry('both', { paths: '["web/**"]', commands: '["npm publish"]' })))
-    expect(await hit($, k, bash('cat db/x.sql'))).toContain('flightwake TRAPS: `sql` [confirmed] matches db/x.sql')
-    expect(await hit($, k, bash('grep -n x db/y.sql web/z.ts'))).toContain('flightwake TRAPS: `both` [confirmed] matches web/z.ts')
+    expect(await hit($, k, bash('cat db/x.sql'))).toBe('')
+    expect(await hit($, k, bash('grep -n x db/y.sql web/z.ts'))).toBe('')
     expect(await hit($, k, bash('git diff -- db/'))).toBe('')
+    expect(await hit($, k, bash('cp db/x.sql /tmp/x.sql'))).toBe('') // a cp source is read, not written
     expect(k.w.tripWriteAttempts).toEqual([])
     expect(tripFile(k.w)).toBeNull()
-    // a path word first and the entry's command later in the same call: the hint still names the path word (as
-    // before), and the command records it
+    // written through the shell: redirect, sed -i, cp destination — hinted and recorded like an Edit
+    expect(await hit($, k, bash('echo x > db/x.sql'))).toContain('flightwake TRAPS: `sql` [confirmed] matches db/x.sql')
+    expect(tripFile(k.w)?.trips).toEqual({ '/repo': { sql: iso(NOW) } })
     await k.clock.advance(1000)
-    expect(await hit($, k, bash('cat web/a.ts; npm publish'))).toBe('') // `both` was hinted above
-    expect(tripFile(k.w)?.trips).toEqual({ '/repo': { both: iso(NOW + 1000) } })
-    // the file tools record by their own target
-    await hit($, k, edit('/repo/db/x.sql'))
-    expect(tripFile(k.w)?.trips).toEqual({ '/repo': { both: iso(NOW + 1000), sql: iso(NOW + 1000) } })
+    // a read path first and the entry's command later in the same call: the command is what matches
+    expect(await hit($, k, bash('cat web/a.ts; npm publish'))).toContain('flightwake TRAPS: `both` [confirmed] matches npm publish')
+    expect(tripFile(k.w)?.trips).toEqual({ '/repo': { sql: iso(NOW), both: iso(NOW + 1000) } })
   })
 
   test('a subagent call in the same session records too (once-per-session makes it harmless)', ONLY_F4, async ($, on) => {

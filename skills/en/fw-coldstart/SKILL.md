@@ -47,7 +47,7 @@ Purpose: before touching any file, recover to a "safe takeover" state with the m
 - TRAPS has >20 active entries, or this cold start measurably took >5 minutes → propose compaction to the user
   (merge duplicates, mark no-longer-true entries superseded — compaction means changing status and consolidating, never deleting lines)
   **Start the proposal from data**: run `npx flightwake traps stats` (read-only) first — its count is sessions that tripped the entry
-  (once per session), and only Edit/Write paths and Bash command prefixes count; a read-only shell mention of a path does not.
+  (once per session), and only Edit/Write paths, Bash command prefixes and paths a Bash command writes count; a path a command only reads or mentions does not.
   Unanchored entries → candidates for adding `paths`/`commands` anchors; anchored but no session tripped it in a long time →
   candidates to re-verify or supersede; tripped by many sessions → keep. stats only covers Claude Code sessions with the mod
   (Codex/Gemini never record trips); when it says there is no trip data, don't read "never tripped" as "unused"
