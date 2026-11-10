@@ -1,0 +1,69 @@
+# 示範影片腳本(B2)
+
+- 狀態:旁白稿完成,等 Kai 錄音;畫面由實作者之後抓(下方「畫面清單」)。
+- 長度目標:約 65 秒。前 10 秒只講痛點和一句解法,之後才一個一個講功能。
+- 每一句宣稱都對得上 0.18.0 已發佈的行為。不能說「改之前先提醒」:絆線的提示是**工具跑完之後**才出現(DECISIONS 2026-11-10)。
+- 旁白念英文版。中文欄只是對照,方便你知道每句在講什麼;中文場合可以改念「中文版旁白」。
+
+## 錄音提示
+
+- 一句一個檔(`01.wav`、`02.wav`…),句子之間留 1 秒空白,剪接時好對畫面。
+- 語速放慢沒關係,畫面會配合你的長度;唸錯就整句重唸。
+- 粗體字是重音。
+
+## 英文旁白
+
+| # | 時間 | 英文旁白(照念) | 中文對照 | 畫面 |
+|---|---|---|---|---|
+| 01 | 0:00–0:03 | Your AI agent **forgets** everything between sessions. | 你的 AI agent 每個新 session 都忘光。 | H1 |
+| 02 | 0:03–0:06 | It hits the **same trap** twice. | 同一個坑踩兩次。 | H2 |
+| 03 | 0:06–0:08 | Switch to Codex, and you **start over**. | 換成 Codex,又要從頭講。 | H3 |
+| 04 | 0:08–0:11 | flightwake keeps the **story** in your repo. | flightwake 把來龍去脈留在 repo 裡。 | H4 |
+| 05 | 0:11–0:18 | One command: npx flightwake setup. It asks a few questions, and shows **every file** it will write. | 一行指令。問你幾個問題,先列出它會寫的每一個檔。 | S1 |
+| 06 | 0:18–0:28 | Next day, a fresh session runs **coldstart**. In about **twenty-five seconds**, it knows where you left off, what is not verified yet, and what comes next. | 隔天開新 session 跑 coldstart,大約 25 秒就知道上次做到哪、哪些還沒驗證、下一步是什麼。 | S2 |
+| 07 | 0:28–0:35 | When you make a call that rules out other options, it is **one line** in DECISIONS, with the reason. | 做了排除其他選項的決定,就在 DECISIONS 寫一行,附上理由。 | S3 |
+| 08 | 0:35–0:45 | When something **surprising** bites you, the agent writes it down: the cause, and the way around it. The next time an agent edits that file, the warning shows up **right after** the edit. | 踩到意想不到的坑,agent 會記下原因和繞法。下次有 agent 改到那個檔,改完馬上看到提醒。 | S4 |
+| 09 | 0:45–0:52 | At the end, it writes a flight record with the **test results**. Forget to do it, and a hook **reminds** the agent. | 收尾時寫一份飛行紀錄,附上測試結果。忘了寫,hook 會提醒 agent。 | S5 |
+| 10 | 0:52–0:59 | Claude Code, Codex and Antigravity read the **same files**. Plain Markdown in git. No server, no account. | Claude Code、Codex、Antigravity 讀同一份檔。git 裡的純 Markdown,不用伺服器、不用帳號。 | S6 |
+| 11 | 0:59–1:05 | flightwake. Hand off the repo, **not the guesswork**. | flightwake:交接 repo,不必從頭講一遍。 | E1 |
+
+念法提示:`npx` 念 "N-P-X";`coldstart` 念 "cold start";`DECISIONS` 照英文念。
+
+## 中文版旁白(中文場合用,約 60 秒)
+
+| # | 旁白 | 畫面 |
+|---|---|---|
+| 01 | 你的 AI agent,每開一個新 session 就忘光。 | H1 |
+| 02 | 同一個坑,踩了兩次。 | H2 |
+| 03 | 換成 Codex,又要從頭講一遍。 | H3 |
+| 04 | flightwake 把來龍去脈留在 repo 裡。 | H4 |
+| 05 | 一行指令裝好。它會問幾個問題,先列出要寫的每一個檔。 | S1 |
+| 06 | 隔天開新的 session,跑 coldstart,大約二十五秒,就知道上次做到哪、哪些還沒驗證、下一步做什麼。 | S2 |
+| 07 | 做了排除其他選項的決定,在 DECISIONS 寫一行,附上理由。 | S3 |
+| 08 | 踩到意想不到的坑,agent 會記下原因和繞法。下次有人改到那個檔,改完馬上看到提醒。 | S4 |
+| 09 | 收尾時寫一份飛行紀錄,附上測試結果;忘了寫,hook 會提醒。 | S5 |
+| 10 | Claude Code、Codex、Antigravity 讀的是同一份檔案。git 裡的 Markdown,不用伺服器,不用帳號。 | S6 |
+| 11 | flightwake:交接 repo,不必從頭講一遍。 | E1 |
+
+## 畫面清單(實作者之後抓)
+
+前 10 秒(H1–H4)節奏要快,每個畫面 2–3 秒,畫面上疊一行大字。
+
+| 代號 | 內容 | 怎麼抓 | 疊字 |
+|---|---|---|---|
+| H1 | 新的 Claude Code session,使用者問「我們昨天做到哪?」,agent 回「我沒有之前的紀錄」 | 沒裝 flightwake 的暫存 repo,真的問一次 | Forgets everything |
+| H2 | 同一個錯誤訊息出現第二次 | 用 TRAPS 裡真實的一條重現,例如 `smoke-needs-python-311`(系統 python3 跑 smoke 的錯誤) | Same trap, twice |
+| H3 | 從 Claude Code 分頁切到 Codex 分頁,Codex 問「這個專案是做什麼的?」 | Orca 兩個分頁 | Start over |
+| H4 | `.flightwake/` 的四個檔案亮起來:STATE、records、DECISIONS、TRAPS | 編輯器檔案樹 | The story stays in the repo |
+| S1 | `npx flightwake setup --lang=en` 在乾淨的暫存 repo,走到「確認前列出寫入路徑」那一步 | 暫存 repo 實錄(取代現在的繁中 `docs/demo.gif`) | `npx flightwake setup` |
+| S2 | 本 repo 的乾淨 clone 跑 `/fw-coldstart`,回報出現 | 照 `README.md` 量測條件(約 25 秒,可快轉並標 2×) | ~25 s, measured |
+| S3 | `DECISIONS.md` 一行(例:2026-11-10 A5 不承諾執行前提示) | 編輯器捲動到該行 | One line, with the why |
+| S4 | 裝了 mod 的 Claude Code 改 `hooks/state-check.mjs`,工具結果下方出現 `hook-stdin-tty-block` 的提示 | 本 repo 實錄;提示文字要清楚可讀 | Hint right after the edit |
+| S5 | STATE 落後 3 個 commit 時,Stop hook 提醒收尾,agent 接著跑 `/fw-record` | 本 repo 或暫存 repo | Reminded to wrap up |
+| S6 | Orca 三個分頁(Claude Code、Codex、agy)各自跑 coldstart,讀到同一份 STATE | Orca 實錄 | Same files, every agent |
+| E1 | 網站首屏或黑底大字 + `npx flightwake setup` + 網址 | 靜態畫面 | flightwake.kaiwu.com.tw |
+
+## 錄好之後
+
+- 英文版做成 README 第一屏的示範(取代 `docs/demo.gif` 的繁中安裝畫面),另存一份有聲 MP4 給網站和社群用。
+- 畫面裡不能出現私人資訊(帳號、email、家目錄路徑、客戶 repo 名稱、費用);錄完逐格檢查一次。

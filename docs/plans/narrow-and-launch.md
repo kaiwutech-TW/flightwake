@@ -184,6 +184,7 @@ A 的第一批發版之後做。B 裡的每一句對外宣稱都要對得上當�
 - `docs/demo.gif` 是繁中安裝畫面,英文 README 在用。先查原檔是怎麼錄的(repo 裡找錄製腳本或 record),用同一個方法以 `--lang=en` 重錄。
 - 加第二段:新 session 在有紀錄的 repo 接手,接著改到有坑的檔案時出現提示。用 flightwake 自己的 repo 錄。
 - **[Kai]** 需要真實終端機畫面的部分由 Kai 錄,實作者準備腳本與逐步清單。
+- **2026-11-11**:Kai 改成「Kai 錄旁白、實作者抓畫面」;約 65 秒、前 10 秒講痛點。旁白稿與畫面清單在 `demo-video.md`。
 
 #### B3. 把手上的證據變成英文讀得到的頁面
 
@@ -198,9 +199,11 @@ A 的第一批發版之後做。B 裡的每一句對外宣稱都要對得上當�
 - `llms.txt` 同步。
 - 流量統計:目前完全沒有。網站在 Cloudflare Pages,**[Kai]** 決定是否啟用 Cloudflare Web Analytics(不用 cookie),需要 Kai 在後台開啟並提供 token。
 - 部署照 `website/README.md` 的 Direct Upload。**[Kai]** 部署前確認;部署後把四語路由的 HTTP 狀態寫進 record。
+- **2026-11-11 已部署**(Kai 確認):0.18.0、首屏交接句與安裝指令、平台加 agy、`/` 改英文(DECISIONS 同日)、`llms.txt`;流量統計未開(要 Kai 在 Cloudflare 後台決定)。
 
 #### B5. GitHub 與 npm 頁面
 
+- **2026-11-11 已改**(Kai 確認):描述換成交接句,topics 加上下列五個。
 - GitHub topics 現在是 `ai-agent`、`claude-code`、`developer-tools`、`flight-recorder`、`workflow`。加 `codex`、`antigravity`、`agents-md`、`agent-skills`、`ai-memory`。描述改成 B1 的那一句。**[Kai]** `gh repo edit` 是對外動作,先確認。
 - npm 頁面跟著 A12 或下一次發版更新。README 改完要再發一版 npm 才看得到。
 
