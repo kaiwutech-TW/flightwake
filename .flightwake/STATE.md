@@ -1,6 +1,6 @@
 ---
-updated: 2026-10-26
-updated_by: Claude Code (Opus 5.5)
+updated: 2026-11-10
+updated_by: Claude Code (Fable 5.2)
 latest_record: records/261026-review-fixes.md
 health: yellow  # max review 15 項已修、smoke 全綠;仍黃:mod 測試套件在 Claude Code 2.1.310 有 25 個 fleet 失敗(clean HEAD 同一組,測試環境改變)所以不算綠、v2 觸發紀錄與面板修正未真機驗、未發版、TRAPS active 超過 20
 ---
@@ -38,10 +38,11 @@ flightwake **v0.17.0 已發佈(2026-10-11,npm latest,provenance;release run 3813
 
 # 下一步入口
 
-0. **Kai 決定**:①TRAPS active 31 條超過 20:現在可先跑 `traps stats` 看錨點分布(13 條沒錨點)再決定壓實或調門檻;②上面兩處小 bug 修不修、何時發版;③舊待決:roles 座位設計對只有 AGENTS.md 的 repo 的影響、`~/.claude/projects` 下的 scratch session 資料夾是否刪除。
+00. **接下來照 `docs/plans/narrow-and-launch.md` 做**(2026-11-10 規劃,未開工):先程式端(A1 替 25 個失敗測試定案 → A2 支援 agy → A3 TRAPS 壓實 → 發 0.18.0),再線上資訊(README 第一屏、英文示範、網站),推廣由 Kai 最後做。開工前先問完該檔的 D1–D5。依據是 `reports/` 下兩份研究報告(未進版控)。
+0. **Kai 決定**:①TRAPS active 32 條超過 20:現在可先跑 `traps stats` 看錨點分布(13 條沒錨點)再決定壓實或調門檻;②上面兩處小 bug 修不修、何時發版;③舊待決:roles 座位設計對只有 AGENTS.md 的 repo 的影響、`~/.claude/projects` 下的 scratch session 資料夾是否刪除。
 0a. 網站維護:未來改版依 `website/README.md` 執行 Direct Upload。
 1. 常用 repo `npx flightwake update`(npm latest 0.17.0;有 AGENTS.md 的 16 個機隊 repo 會長出 `.agents/skills` 與 `.codex/hooks.json`,每個 repo 首次開 Codex 會被問一次信任 hook);觀察下游 `/clear` 後角色派工。
 2. Orca 側:讀 `<base>/sessions/*.json`(契約見 `docs/mod.md`「Fleet file contract」)做 blocked 通知與 `--until blocked` 等待——herdr 分析的最後一塊。
 3. 未驗證平台:Windows(含 Intl 語系)、Linux Intl、Gemini CLI hook 真機(AfterAgent 是否觸發,見 [[260902-codex-gemini-native]])、真正的 resume/compact 體驗。
-4. 宣傳:三稿最終版在使用者桌面 `~/Desktop/flightwake-launch-copy.md`,截圖三張在使用者手上;HN 作者留言仍 auto-flag 待 hn@ 回覆;之後盯 issues(含徵求日文/簡中母語校對)。
+4. 宣傳:順序與素材見 `docs/plans/narrow-and-launch.md` 的 C 段;原本放在桌面的三稿已不存在(Kai 2026-11-10 確認),文案要重寫且對外文字由 Kai 本人寫;HN 作者留言仍 auto-flag 待 hn@ 回覆;之後盯 issues(含徵求日文/簡中母語校對)。
 5. 低優先:SCOPE+ 格式向使用者確認(機隊零筆)、向使用者要「最近重複踩到的 trap」驗證 confidence 三型、GSD 側對照實測(benchmarks 公平性)、範例 repo。
