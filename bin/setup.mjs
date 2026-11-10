@@ -441,16 +441,16 @@ export async function runSetup({ io, flags = {}, ctx }) {
         ja: 'Claude Code mod — Claude Code の中で:入力欄の上に状態を 1 行、セッション開始時に STATE を読み込み、このセッションの変更とテスト実行の記録(/fw-log)、既知の落とし穴に触れたときのヒント、任意のロールガード。',
       }),
       roles: M({
-        en: 'Team roles (installs only the fw-roles skill; your agent recommends roles later, nothing applied yet)',
-        'zh-TW': '團隊角色(只安裝 fw-roles skill;之後由 agent 推薦角色,現在不套用任何東西)',
-        'zh-CN': '团队角色(只安装 fw-roles skill;之后由 agent 推荐角色,现在不套用任何东西)',
-        ja: 'チームロール(fw-roles skill のみ。ロールは後で agent が提案、今は何も適用しない)',
+        en: 'Team roles (installs only the fw-roles skill; your agent recommends roles later, nothing applied yet) — maintenance mode: fixes only',
+        'zh-TW': '團隊角色(只安裝 fw-roles skill;之後由 agent 推薦角色,現在不套用任何東西)— 維護模式:只修問題',
+        'zh-CN': '团队角色(只安装 fw-roles skill;之后由 agent 推荐角色,现在不套用任何东西)— 维护模式:只修问题',
+        ja: 'チームロール(fw-roles skill のみ。ロールは後で agent が提案、今は何も適用しない)— メンテナンスモード:修正のみ',
       }),
       orca: M({
-        en: 'Orca collaboration (agents ask each other in your visible Orca tabs instead of hidden background runs)',
-        'zh-TW': 'Orca 協作(agent 互相討論或審查時走你看得到的 Orca 分頁,而不是看不見的背景程序)',
-        'zh-CN': 'Orca 协作(agent 互相讨论或审查时走你看得到的 Orca 分页,而不是看不见的后台进程)',
-        ja: 'Orca 連携(agent 同士の相談やレビューを、見えない背景実行ではなく見える Orca タブで行う)',
+        en: 'Orca collaboration (agents ask each other in your visible Orca tabs instead of hidden background runs) — maintenance mode: fixes only',
+        'zh-TW': 'Orca 協作(agent 互相討論或審查時走你看得到的 Orca 分頁,而不是看不見的背景程序)— 維護模式:只修問題',
+        'zh-CN': 'Orca 协作(agent 互相讨论或审查时走你看得到的 Orca 分页,而不是看不见的后台进程)— 维护模式:只修问题',
+        ja: 'Orca 連携(agent 同士の相談やレビューを、見えない背景実行ではなく見える Orca タブで行う)— メンテナンスモード:修正のみ',
       }),
     };
     const suffix = (r) => {
