@@ -3,13 +3,13 @@ interface Props { lang: 'zh-TW' | 'zh-CN' | 'en' | 'ja'; title: string; descript
 const { lang, title, description, path, faqs = [] } = Astro.props;
 const site = import.meta.env.SITE || 'https://flightwake.kaiwu.com.tw';
 const absolute = new URL(path, site).toString();
-const zh = new URL('/', site).toString();
-const en = new URL('/en/', site).toString();
+const zh = new URL('/zh-TW/', site).toString();
+const en = new URL('/', site).toString();
 const cn = new URL('/zh-CN/', site).toString();
 const ja = new URL('/ja/', site).toString();
 const isNotFound = path === '/404';
 const graph = [
-  { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'flightwake', applicationCategory: 'DeveloperApplication', operatingSystem: 'Cross-platform', description, url: zh, codeRepository: 'https://github.com/kaiwutech-TW/flightwake', downloadUrl: 'https://www.npmjs.com/package/flightwake', softwareVersion: '0.17.0', license: 'https://opensource.org/licenses/MIT', inLanguage: ['en', 'zh-TW', 'zh-CN', 'ja'] },
+  { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'flightwake', applicationCategory: 'DeveloperApplication', operatingSystem: 'Cross-platform', description, url: en, codeRepository: 'https://github.com/kaiwutech-TW/flightwake', downloadUrl: 'https://www.npmjs.com/package/flightwake', softwareVersion: '0.18.0', license: 'https://opensource.org/licenses/MIT', inLanguage: ['en', 'zh-TW', 'zh-CN', 'ja'] },
   ...(faqs.length ? [{ '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faqs.map(({ q, a }) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })) }] : []),
 ];
 ---
@@ -70,7 +70,7 @@ const graph = [
           }
           try { localStorage.setItem(key, choice); } catch { /* Browsing still works without storage. */ }
         }
-        if (choice === 'zh-TW') return;
+        if (choice === 'en') return;
         const alternate = document.querySelector(`link[rel="alternate"][hreflang="${choice}"]`);
         if (alternate) location.replace(new URL(alternate.href).pathname + location.search + location.hash);
       })();
