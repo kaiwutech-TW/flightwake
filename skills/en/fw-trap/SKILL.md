@@ -14,6 +14,13 @@ Purpose: any given trap gets stepped in exactly once per project (including futu
 - Environment-difference traps (passes locally, explodes in prod)
 - **Doesn't qualify**: ordinary bugs, anything obvious from reading the error message
 
+Two questions before writing (a registry that only grows collects entries nobody needs):
+
+1. **If this entry did not exist, would the next agent or person still be likely to step in it?** No (the fix is in
+   place and nothing leads back to it, or the error message now says it all) → don't record it.
+2. **Can it be a test, a lint rule, a check in a script or a line in the code's own error message instead?** Yes →
+   do that; a test costs no context and can't go stale unnoticed. Record a trap only for what can't be enforced.
+
 ## How sure is the root cause (confidence)
 
 The registry's most expensive failure isn't a missing entry — it's **a misdiagnosis written as settled fact**.
@@ -62,6 +69,8 @@ EOF
    show the entry the moment someone touches them: `paths: ["src/db/**", "*.sql"]` (repo-relative globs; a pattern without `/` matches that
    file name at any depth), `commands: ["npm run migrate", "psql"]` (command prefixes, word by word). No regex. Not sure, or the trap is
    about an idea rather than a place? Leave them empty — the entry works the same without them
+   Optional: `retire_when` — one line saying when the entry can be marked superseded (e.g. `retire_when: "Codex hooks load under codex exec"`,
+   `retire_when: "a smoke check enforces it"`). Compaction reads it first.
 3. All four fields: symptom (paste the original error message), root cause in one sentence, fix/workaround, evidence link (commit/record)
 4. Link related traps with `[[name]]`
 5. **Write the symptom on the spot** — details fade within half a day. **Leave the root cause unsettled until it's nailed**:

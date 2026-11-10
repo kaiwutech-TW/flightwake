@@ -2758,5 +2758,32 @@ node -e "const j=require('./.agents/hooks.json'); if(j['flightwake-state-check']
 cd "$TMP"
 pass "48 Antigravity(agy):AGENTS.md 共用(裸名 / Codex 方言)、.agents/hooks.json 合併與冪等、update 不誤認 Codex、doctor、Stop 回 continue 且每對話每 HEAD 一次、uninstall 只拿自己的"
 
+# 49. TRAPS 選填欄位 retire_when(/fw-trap 2026-11-10):讀取端容忍,stats 與 similar 照常讀到該條
+newrepo "$TMP/retire1" >/dev/null && git commit -q --allow-empty -m init && node "$CLI" init --agents=claude >/dev/null
+cat >> .flightwake/TRAPS.md <<'EOF'
+
+---
+name: retire-field-demo
+type: gotcha
+status: active
+tags: [demo, hooks]
+discovered: 2026-11-10
+confidence: confirmed
+paths: ["hooks/*.mjs"]
+retire_when: "a smoke check enforces it"
+---
+
+**症狀**:demo symptom about hook stdin
+**根因**:demo
+**解法/繞法**:demo
+**佐證**:smoke 49
+EOF
+node "$CLI" traps stats --json | node -e "const j=JSON.parse(require('fs').readFileSync(0,'utf8')); const r=(j.entries||j.rows||j).find?.((x)=>x.name==='retire-field-demo'); if(!r) process.exit(1)" || fail "49 traps stats 應讀到含 retire_when 的條目"
+node "$CLI" traps similar --name='retire-field-demo-2' --tags='demo,hooks' --paths='hooks/*.mjs' <<'EOF' | grep -q 'retire-field-demo' || fail "49 traps similar 應把含 retire_when 的條目列為候選"
+demo symptom about hook stdin
+EOF
+cd "$TMP"
+pass "49 TRAPS 的 retire_when 欄位不影響 stats / similar"
+
 echo ""
 echo "✅ smoke 全過"

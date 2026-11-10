@@ -35,6 +35,9 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   is installed. New switch `trips`; when unset it follows `fleet`. Hints are unchanged.
 
 ### Changed
+- **`/fw-trap` asks two questions before writing**: would the next person still step in this if the entry did not
+  exist, and could it be a test, lint rule or script check instead? Only what cannot be enforced becomes a trap. New
+  optional field `retire_when` says when an entry can be superseded; compaction reads it first.
 - **Mod tripwire: a Bash command hints only for what it aims at.** A command prefix matching `commands`, or a path the
   command writes (output redirection, `cp`/`mv`/`tee`/`rm`, `sed -i`) matching `paths`. A path it only reads or
   mentions (`cat db/x.sql`, `grep … db/`, `git diff -- db/`) no longer brings a hint, so reading code stops costing
