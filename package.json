@@ -1,7 +1,7 @@
 {
   "name": "flightwake",
   "version": "0.18.0",
-  "description": "Flight-recorder style work framework for strong AI coding agents — records follow work, they don't lead it. ✈️",
+  "description": "Hand this repo to another person or another agent, and they can see how it was built: what was done, why each choice was made, and which traps were found.",
   "bin": {
     "flightwake": "bin/cli.mjs"
   },

@@ -40,7 +40,7 @@
 
 - 冷啟動是整個框架唯一的品質指標:新 session 到「安全接手」超過 5 分鐘,代表你的記錄在劣化,該壓實了。處方也是一句話的事:「這次冷啟動花了 X 分鐘,診斷慢在哪並壓實」——模型會帶著診斷和逐條清單(哪條標 superseded、哪些合併)回來,你一個字放行。給事實、不給情緒:「超過 5 分鐘下個 session 會接錯手」比「這很嚴重」有用。
 - STATE 落後幾個 commit 可以量:`git rev-list --count "$(git log -1 --format=%H -- .flightwake/STATE.md)"..HEAD`,≥1 表示上個 session 沒收尾。
-- 裝了 [status line](../README.md#status-line-optional) 的話,落後與 context 用量會直接顯示在儀表上,含下一步指令提示。
+- 裝了 [status line](install.zh-TW.md#底部儀表選配) 的話,落後與 context 用量會直接顯示在儀表上,含下一步指令提示。
 </details>
 
 ## 2. 決定做什麼:說 what,不說 how
@@ -98,7 +98,7 @@
 
 - 動到 prod 的變更,驗證證據必須留在飛行紀錄裡(指令輸出、對帳數字),這是硬防護,不是禮貌。
 - 測試綠不等於功能對:「/verify——實際跑起來操作一遍受影響的流程」比測試更接近真相。
-- 想要更嚴的把關:「/code-review」讓另一組眼睛看 diff。CI 端可以加 [state-check](../README.md#ci-side-wrap-up-check-optional),把「收尾了沒」變成機器擋的門。
+- 想要更嚴的把關:「/code-review」讓另一組眼睛看 diff。CI 端可以加 [state-check](install.zh-TW.md#ci-端收尾檢查選配),把「收尾了沒」變成機器擋的門。
 </details>
 
 ## 5. 收尾或停手:兩個出口,別走錯

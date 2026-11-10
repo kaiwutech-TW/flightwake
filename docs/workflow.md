@@ -41,7 +41,7 @@ Your only job at this stage: check the health color in the report. Green — wav
 
 - Cold start is the framework's single quality metric: if a fresh session needs more than 5 minutes to take over safely, your records are degrading and it's time to compact. The prescription is one sentence: "this cold start took X minutes — diagnose what's slow and compact." The model returns with a diagnosis and an item-by-item plan (which entries to mark superseded, which to merge); you approve with one word. Facts over pressure: "over 5 minutes means the next session fumbles the takeover" works; "this is serious!" doesn't.
 - The lag is measurable: `git rev-list --count "$(git log -1 --format=%H -- .flightwake/STATE.md)"..HEAD` — ≥1 means the last session never wrapped up.
-- With the [status line](../README.md#status-line-optional) installed, lag and context usage sit at the bottom of the screen, with the next command suggested.
+- With the [status line](install.md#status-line-optional) installed, lag and context usage sit at the bottom of the screen, with the next command suggested.
 </details>
 
 ## 2. Deciding what to build: say what, not how
@@ -101,7 +101,7 @@ There is no shortcut around looking at the diff. You don't have to read every li
 
 - Changes that touch prod must leave verification evidence in the flight record (command output, reconciliation numbers). That's a hard guard, not a courtesy.
 - Green tests don't mean the feature works: "/verify — actually drive the affected flow" gets closer to the truth than the suite does.
-- Want harder gates? "/code-review" puts a second pair of eyes on the diff. On the CI side, [state-check](../README.md#ci-side-wrap-up-check-optional) turns "did you wrap up?" into a machine-enforced door.
+- Want harder gates? "/code-review" puts a second pair of eyes on the diff. On the CI side, [state-check](install.md#ci-side-wrap-up-check-optional) turns "did you wrap up?" into a machine-enforced door.
 </details>
 
 ## 5. Wrap up or stop: two exits, don't take the wrong one
