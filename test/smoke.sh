@@ -2874,5 +2874,60 @@ node -e 'const x = require("./.codex/hooks.json").hooks.PreToolUse; if (x.length
 cd "$TMP"
 pass "50 坑提示 trap-check:成對安裝、兩家各一條 PreToolUse(Codex 附加在最後、update 不改)、只對瞄準的目標提示、每 session 一次、開關、uninstall 只拿自己的"
 
+
+# 51. Antigravity 坑規則(A6):agy 啟用時 init/update 由 TRAPS 產生 .agents/rules/flightwake-trap-*.md(model_decision),
+#     冪等;使用者自己的規則(含沒有產生標記、名字撞到的)不動;條目改 superseded 後檔案被清掉;doctor 抓過期;uninstall 只拿有標記的
+newrepo "$TMP/agyrules1" >/dev/null && git commit -q --allow-empty -m init
+mkdir -p .agents/rules && printf '%s\n' '---' 'trigger: always_on' '---' 'my own rule' > .agents/rules/mine.md
+printf '%s\n' '---' 'trigger: always_on' '---' 'hand-written, same prefix' > .agents/rules/flightwake-trap-handmade.md
+node "$CLI" init --lang=en --agents=agy >/dev/null || fail "51 init 應成功"
+cat >> .flightwake/TRAPS.md <<'TRAPEOF'
+
+---
+name: db-order
+type: gotcha
+status: active
+confidence: probable
+paths: ["db/**", "*.sql"]
+commands: ["npm run migrate"]
+---
+
+**Symptom**: migrations ran out of order
+**Root cause**: two scripts share one counter
+**Workaround**: run them one at a time
+
+---
+name: only-commands
+type: gotcha
+status: active
+confidence: confirmed
+commands: ["npm publish"]
+---
+
+**Symptom**: x
+**Root cause**: y
+**Fix**: z
+TRAPEOF
+node "$CLI" doctor 2>&1 | grep -q 'Antigravity: 1 trap rule file(s) out of date' || fail "51 TRAPS 新增有 paths 的條目後,doctor 應說規則檔過期"
+node "$CLI" traps rules --dry-run | grep -q 'would write 1' || fail "51 --dry-run 應只報告"
+[ ! -e .agents/rules/flightwake-trap-db-order.md ] || fail "51 --dry-run 不得寫檔"
+node "$CLI" update >/dev/null || fail "51 update 應成功"
+F=.agents/rules/flightwake-trap-db-order.md
+[ -f "$F" ] || fail "51 update 應產生 $F"
+head -4 "$F" | grep -q '^trigger: model_decision$' && grep -q '^description: "flightwake TRAPS: a known trap for db/\*\*, \*.sql\. Read this rule before editing those files\."$' "$F" || fail "51 規則檔應是 model_decision,描述列出錨點路徑"
+grep -q 'flightwake:generated' "$F" && grep -q '\*\*Root cause\*\*: two scripts share one counter' "$F" && grep -q 'leads, not settled facts' "$F" || fail "51 規則檔應有產生標記、根因與 probable 的線索說明"
+[ ! -e .agents/rules/flightwake-trap-only-commands.md ] || fail "51 只有 commands 的條目不產生規則檔"
+grep -q 'my own rule' .agents/rules/mine.md && grep -q 'hand-written' .agents/rules/flightwake-trap-handmade.md || fail "51 使用者自己的規則不得被改"
+node "$CLI" traps rules | grep -q 'wrote 0, removed 0, 1 already up to date' || fail "51 traps rules 應冪等"
+node "$CLI" doctor 2>&1 | grep -q 'ok  Antigravity: 1 trap rule(s)' || fail "51 同步後 doctor 應 ok"
+perl -0pi -e 's/name: db-order\ntype: gotcha\nstatus: active/name: db-order\ntype: gotcha\nstatus: superseded/' .flightwake/TRAPS.md
+node "$CLI" traps rules | grep -q 'removed 1' || fail "51 條目 superseded 後應移除其規則檔"
+[ ! -e "$F" ] && [ -e .agents/rules/flightwake-trap-handmade.md ] || fail "51 只移除有產生標記的檔"
+perl -0pi -e 's/status: superseded/status: active/' .flightwake/TRAPS.md && node "$CLI" traps rules >/dev/null
+node "$CLI" uninstall >/dev/null || fail "51 uninstall 應成功"
+[ ! -e "$F" ] && [ -e .agents/rules/mine.md ] && [ -e .agents/rules/flightwake-trap-handmade.md ] || fail "51 uninstall 只拿有產生標記的規則檔"
+cd "$TMP"
+pass "51 Antigravity 坑規則:由 TRAPS 產生 model_decision 規則、冪等、只動有標記的檔、doctor 抓過期、superseded 清檔、uninstall 只拿自己的"
+
 echo ""
 echo "✅ smoke 全過"

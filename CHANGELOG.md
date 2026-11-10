@@ -19,6 +19,13 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   Each entry is shown once per session per repo, through a best-effort record in `<base>/hints` (0700 folder that
   `init` / `update` create, 0600 files, keys only); `fleet --prune` removes old records. `FLIGHTWAKE_TRIPWIRE=off`
   silences it, and in Claude Code so does the mod's `"tripwire": false`. Measured at about 80 ms per matching call.
+- **Antigravity gets the traps too, before the edit.** Its hooks cannot add context, so the entries with `paths` become
+  `.agents/rules/flightwake-trap-<name>.md` with `trigger: model_decision`: only a one-line description naming the paths
+  stays in context, and agy reads the rule when it is about to touch those files. In our probe (agy CLI 1.5.3 / 1.5.5) agy
+  read the rule before an unprompted edit of a matching file and skipped it for an unrelated one; a `glob` rule never
+  loaded. New `npx flightwake traps rules [--dry-run]`; `init` / `update` regenerate the files when agy is set up,
+  `/fw-trap` runs it after writing an entry, `doctor` flags stale files, `uninstall` removes them. Only files carrying
+  the generated marker are written or removed. (`docs/plans/agy-rules.md`)
 - **One TRAPS core.** The parser, globs, shell reader and matchers now live in
   `mods/flightwake/hooks/lib/traps-core.mjs`, used by the mod, the CLI and the trap check (copied next to it). The two
   mirrored parsers are gone.

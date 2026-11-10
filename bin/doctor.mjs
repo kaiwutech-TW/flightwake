@@ -14,6 +14,7 @@ import {
   LANGS, GROUPS, TABLE_GROUP, AGY_HOOKS_REL, AGY_HOOK_NAME, INSTRUCTION_CANDIDATES, HOOK_CMD, HOOK_CMD_GIT, TRAP_CMD, TRAP_CMD_GIT, SL_CMD, MOD_REL, MOD_MIN_CLAUDE, makeM, gitIn, gitAvailable,
   repoState, readMarkers, detectInstall, modShipList, modSrc, atLeast, claudeVersion,
 } from './install.mjs';
+import { parseTraps, planAgyRules } from './traps.mjs';
 
 /** Placeholder lines of the shipped STATE templates (every language). Only these count as "unfilled" — user
  *  content may legitimately contain {{…}} examples. Matched as whole trimmed lines. */
@@ -215,6 +216,14 @@ export function runDoctor({ target, fwSrc, version, lang, log, claudeVersion: re
     }));
   }
   if (platforms.has('gemini')) checkHook('Gemini CLI', ['.gemini/settings.json'], 'AfterAgent', HOOK_CMD_GIT, { optionalIfTracked: true });
+  // ── Antigravity trap rules (A6): generated from TRAPS.md; stale when TRAPS changed since the last `traps rules` / update
+  if (platforms.has('agy') && existsSync(at('.flightwake/TRAPS.md'))) {
+    try {
+      const plan = planAgyRules(target, parseTraps(readFileSync(at('.flightwake/TRAPS.md'), 'utf8')), M);
+      if (plan.write.length || plan.remove.length) warn(M({ en: `Antigravity: ${plan.write.length + plan.remove.length} trap rule file(s) out of date with TRAPS.md — npx flightwake traps rules`, 'zh-TW': `Antigravity:${plan.write.length + plan.remove.length} 個坑規則檔與 TRAPS.md 不同步 — npx flightwake traps rules`, 'zh-CN': `Antigravity:${plan.write.length + plan.remove.length} 个坑规则文件与 TRAPS.md 不同步 — npx flightwake traps rules`, ja: `Antigravity:${plan.write.length + plan.remove.length} 件の落とし穴ルールが TRAPS.md と不一致 — npx flightwake traps rules` }));
+      else ok(M({ en: `Antigravity: ${plan.total} trap rule(s) in .agents/rules (model_decision)`, 'zh-TW': `Antigravity:.agents/rules 有 ${plan.total} 條坑規則(model_decision)`, 'zh-CN': `Antigravity:.agents/rules 有 ${plan.total} 条坑规则(model_decision)`, ja: `Antigravity:.agents/rules に落とし穴ルール ${plan.total} 件(model_decision)` }));
+    } catch {}
+  }
   // ── the trap check (A5): two scripts as a pair, one PreToolUse entry per host. Installs before it existed only get a
   //    warning — update adds it. Never a failure: the core (STATE, records, the Stop hook) works without it.
   {

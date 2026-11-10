@@ -143,6 +143,7 @@
 - **只做 agy**:Claude Code 與 Codex 有 A5 的 hook,再產生 `.claude/rules/` 會同一條提示兩次。
 - **設計關要回答的問題**:Antigravity 規則檔的 frontmatter 格式(先讀文件並做探針);這違反「同一事實只寫一處」到什麼程度、如何保證 TRAPS.md 是唯一正本(寫進 DECISIONS);`--private` 安裝時這些檔進不進 git。
 - **驗收**:真機上 agy 改到有錨點的檔時讀得到對應的坑。
+- **2026-11-11 已實作(未發版)**:探針顯示 agy CLI 的 `glob` 規則讀檔、改檔都不載入,改用 `model_decision`;agy 在沒有提示的改檔前就先讀了規則(`agy-rules.md`)。`npx flightwake traps rules`,init/update 重產,smoke 第 51 節。
 
 #### A9. 包裝成 Claude Code plugin,從自架市集安裝
 

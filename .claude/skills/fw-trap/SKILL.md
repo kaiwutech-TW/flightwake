@@ -79,3 +79,6 @@ EOF
    TRAPS 照登(repo 登記簿必須自足:接手者與其他 agent 看不到你的個人記憶),
    **另存一份到你的使用者層記憶**(如 Claude 記憶),防其他 repo 重犯。
    跨範疇各存是分工不是重複:通用坑只記在單一 repo,換個 repo 就會再咬一次
+8. **這個 repo 有 Antigravity**(`.agents/hooks.json` 裡有 `flightwake-state-check`)**且條目有 `paths`**:寫完後跑
+   `npx flightwake traps rules`。它會從 TRAPS.md 重新產生 `.agents/rules/flightwake-trap-*.md`,Antigravity 靠這些檔在改那些檔案之前
+   看到這條坑。產生出來的檔不要手改。

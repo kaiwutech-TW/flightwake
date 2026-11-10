@@ -10,7 +10,7 @@
  *   --prune` deletes old trip files through pruneTrips. Both refuse a trip folder inside a repo and never follow links.
  * Zero dependencies: Node built-ins only. similar / stats never write.
  */
-import { readdirSync, lstatSync, readFileSync, existsSync, writeFileSync, chmodSync, renameSync, rmSync } from 'node:fs';
+import { readdirSync, lstatSync, readFileSync, existsSync, writeFileSync, chmodSync, renameSync, rmSync, mkdirSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { fleetBase, fleetDirInRepo, realish, isAbs, FILE_RE } from './fleet.mjs';
 import { parseFlatYaml, parseInlineList, parseTraps, isActive, hasMatchers, normGlob, globRegExp } from '../mods/flightwake/hooks/lib/traps-core.mjs';
@@ -378,14 +378,140 @@ export function pruneHints({ base, now = Date.now(), days, dry = false, log, M }
   return 0;
 }
 
+// ── Antigravity rules (A6, docs/plans/agy-rules.md) ─────────────────────────────────────────────────────────────────
+// Antigravity's PreToolUse cannot add context, so the trap check hook cannot reach it. Its workspace rules can: each
+// active entry with `paths` becomes `.agents/rules/flightwake-trap-<name>.md` with `trigger: model_decision` — only the
+// description (naming the anchored paths) sits in context; agy reads the rule itself when it is about to touch those
+// files. Probed on agy CLI 1.5.3 / 1.5.5: a `glob` rule never loaded on read or edit, a model_decision rule was read
+// before the edit, unprompted, and not for an unrelated file. TRAPS.md stays the only source: these files are
+// regenerated whole, carry a "do not edit" marker, and only files with that marker are ever replaced or removed.
+export const AGY_RULES_REL = '.agents/rules';
+export const AGY_RULE_PREFIX = 'flightwake-trap-';
+export const AGY_RULE_MARK = '<!-- flightwake:generated from .flightwake/TRAPS.md';
+const RULE_LINE_MAX = 300;
+const ruleSlug = (name) => String(name).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+const ruleClip = (s) => (s.length > RULE_LINE_MAX ? `${s.slice(0, RULE_LINE_MAX)}…` : s);
+const RULE_T = {
+  description: (paths) => ({
+    en: `flightwake TRAPS: a known trap for ${paths}. Read this rule before editing those files.`,
+    'zh-TW': `flightwake TRAPS:${paths} 有已知的坑。改這些檔之前先讀這條規則。`,
+    'zh-CN': `flightwake TRAPS:${paths} 有已知的坑。改这些文件之前先读这条规则。`,
+    ja: `flightwake TRAPS:${paths} には既知の落とし穴がある。これらのファイルを編集する前にこのルールを読むこと。`,
+  }),
+  head: (name, conf, paths) => ({
+    en: `flightwake TRAPS: \`${name}\` [${conf}] — anchored to ${paths}`,
+    'zh-TW': `flightwake TRAPS:\`${name}\` [${conf}] — 錨點 ${paths}`,
+    'zh-CN': `flightwake TRAPS:\`${name}\` [${conf}] — 锚点 ${paths}`,
+    ja: `flightwake TRAPS: \`${name}\` [${conf}] — アンカー ${paths}`,
+  }),
+  lead: {
+    en: 'Note: probable/suspected/unknown entries are leads, not settled facts. Verify before relying on them, and never use one to argue that something is safe.',
+    'zh-TW': '注意:probable/suspected/unknown 的條目是線索,不是定論。採信前先驗證,也不可拿它來論證某件事是安全的。',
+    'zh-CN': '注意:probable/suspected/unknown 的条目是线索,不是定论。采信前先验证,也不可拿它来论证某件事是安全的。',
+    ja: '注意: probable/suspected/unknown のエントリは手がかりであり確定事項ではありません。依拠する前に検証し、安全性の根拠には使わないでください。',
+  },
+  full: { en: 'Full entry: .flightwake/TRAPS.md', 'zh-TW': '完整條目:.flightwake/TRAPS.md', 'zh-CN': '完整条目:.flightwake/TRAPS.md', ja: '全文: .flightwake/TRAPS.md' },
+};
+
+/** The text of one generated rule file. */
+export function agyRuleText(entry, M) {
+  const paths = entry.paths.join(', ');
+  const detail = [entry.labelled[1], entry.labelled[2]].filter(Boolean).map(ruleClip);
+  const lines = [
+    '---',
+    'trigger: model_decision',
+    `description: ${JSON.stringify(M(RULE_T.description(paths)))}`,
+    '---',
+    `${AGY_RULE_MARK} — do not edit here; edit TRAPS.md, then run: npx flightwake traps rules -->`,
+    '',
+    M(RULE_T.head(entry.name, entry.confidence, paths)),
+    ...(detail.length ? detail : entry.body ? [ruleClip(entry.body.replace(/\s+/g, ' '))] : []),
+    ...(entry.confidence !== 'confirmed' ? [M(RULE_T.lead)] : []),
+    M(RULE_T.full),
+    '',
+  ];
+  return lines.join('\n');
+}
+
+/**
+ * What `traps rules` would change under `root`: files to write (new or different) and generated files to remove (ours,
+ * no longer matching an active anchored entry). Files without the marker are never listed, so a person's own rule —
+ * even one named flightwake-trap-* — is left alone. `unchanged` counts the files already up to date.
+ */
+export function planAgyRules(root, entries, M) {
+  const want = new Map();
+  for (const e of entries) {
+    if (!isActive(e) || !e.paths.length) continue;
+    const slug = ruleSlug(e.name);
+    if (!slug || want.has(`${AGY_RULE_PREFIX}${slug}.md`)) continue;
+    want.set(`${AGY_RULE_PREFIX}${slug}.md`, agyRuleText(e, M));
+  }
+  const dir = join(root, ...AGY_RULES_REL.split('/'));
+  const existing = new Map();
+  try {
+    const st = lstatSync(dir);
+    if (st.isDirectory() && !st.isSymbolicLink()) {
+      for (const f of readdirSync(dir)) {
+        if (!f.startsWith(AGY_RULE_PREFIX) || !f.endsWith('.md')) continue;
+        const p = join(dir, f);
+        try { const fst = lstatSync(p); if (fst.isFile() && !fst.isSymbolicLink()) existing.set(f, readFileSync(p, 'utf8')); } catch {}
+      }
+    }
+  } catch {}
+  const write = [];
+  const remove = [];
+  let unchanged = 0;
+  for (const [f, text] of want) {
+    const cur = existing.get(f);
+    if (cur === text) { unchanged++; continue; }
+    if (cur !== undefined && !cur.includes(AGY_RULE_MARK)) continue; // a file of the person's own under our name: kept
+    write.push({ rel: `${AGY_RULES_REL}/${f}`, text });
+  }
+  for (const [f, cur] of existing) if (!want.has(f) && cur.includes(AGY_RULE_MARK)) remove.push(`${AGY_RULES_REL}/${f}`);
+  return { write, remove, unchanged, total: want.size };
+}
+
+function rulesCmd({ o, entries, M, log, cwd }) {
+  const plan = planAgyRules(cwd, entries, M);
+  const dir = join(cwd, ...AGY_RULES_REL.split('/'));
+  try { if (lstatSync(dir).isSymbolicLink()) { log(M(T.rulesLink(AGY_RULES_REL))); return 1; } } catch {}
+  for (const w of plan.write) {
+    if (o.dry) { log(M(T.rulesWould('write', w.rel))); continue; }
+    try {
+      mkdirSync(dir, { recursive: true });
+      const p = join(cwd, ...w.rel.split('/'));
+      try { if (lstatSync(p).isSymbolicLink()) continue; } catch {}
+      writeFileSync(p, w.text);
+      log(`  write ${w.rel}`);
+    } catch { log(M(T.rulesFailed(w.rel))); }
+  }
+  for (const rel of plan.remove) {
+    if (o.dry) { log(M(T.rulesWould('remove', rel))); continue; }
+    try { rmSync(join(cwd, ...rel.split('/'))); log(`  rm    ${rel}`); } catch { log(M(T.rulesFailed(rel))); }
+  }
+  log(M(T.rulesDone(plan.total, plan.write.length, plan.remove.length, plan.unchanged, o.dry)));
+  return 0;
+}
+
 // ── strings ──
 const T = {
   usage: {
-    en: "usage: npx flightwake traps similar --name='<slug>' [--tags='a,b'] [--paths='g1,g2'] [--commands='git push,npm publish'] [--json] <<'EOF'\n         <symptom + root cause>\n       EOF\n       (the text comes from stdin when --text= is not given; single quotes / a quoted heredoc keep the shell from running backticks and $(…) in it)\n       npx flightwake traps stats [--json] [--days=N]\n       npx flightwake traps forget [--dry-run]   remove this repo's entries from <base>/trips (other repos' entries kept)\n  Run at the repo root; similar / stats read .flightwake/TRAPS.md and write nothing.",
-    'zh-TW': "用法:npx flightwake traps similar --name='<slug>' [--tags='a,b'] [--paths='g1,g2'] [--commands='git push,npm publish'] [--json] <<'EOF'\n        <症狀 + 根因>\n      EOF\n      (沒給 --text= 時從 stdin 讀內文;單引號 / 加引號的 heredoc 讓 shell 不會執行內文裡的反引號與 $(…))\n      npx flightwake traps stats [--json] [--days=N]\n      npx flightwake traps forget [--dry-run]   從 <base>/trips 移除本 repo 的紀錄(其他 repo 的不動)\n  在 repo 根目錄執行;similar / stats 讀 .flightwake/TRAPS.md,什麼都不寫。",
+    en: "usage: npx flightwake traps similar --name='<slug>' [--tags='a,b'] [--paths='g1,g2'] [--commands='git push,npm publish'] [--json] <<'EOF'\n         <symptom + root cause>\n       EOF\n       (the text comes from stdin when --text= is not given; single quotes / a quoted heredoc keep the shell from running backticks and $(…) in it)\n       npx flightwake traps stats [--json] [--days=N]\n       npx flightwake traps forget [--dry-run]   remove this repo's entries from <base>/trips (other repos' entries kept)\n       npx flightwake traps rules [--dry-run]    write .agents/rules/flightwake-trap-*.md for Antigravity from the entries with paths\n  Run at the repo root; similar / stats read .flightwake/TRAPS.md and write nothing.",
+    'zh-TW': "用法:npx flightwake traps similar --name='<slug>' [--tags='a,b'] [--paths='g1,g2'] [--commands='git push,npm publish'] [--json] <<'EOF'\n        <症狀 + 根因>\n      EOF\n      (沒給 --text= 時從 stdin 讀內文;單引號 / 加引號的 heredoc 讓 shell 不會執行內文裡的反引號與 $(…))\n      npx flightwake traps stats [--json] [--days=N]\n      npx flightwake traps forget [--dry-run]   從 <base>/trips 移除本 repo 的紀錄(其他 repo 的不動)\n      npx flightwake traps rules [--dry-run]    由有 paths 的條目產生 Antigravity 的 .agents/rules/flightwake-trap-*.md\n  在 repo 根目錄執行;similar / stats 讀 .flightwake/TRAPS.md,什麼都不寫。",
     'zh-CN': "用法:npx flightwake traps similar --name='<slug>' [--tags='a,b'] [--paths='g1,g2'] [--commands='git push,npm publish'] [--json] <<'EOF'\n        <症状 + 根因>\n      EOF\n      (没给 --text= 时从 stdin 读正文;单引号 / 加引号的 heredoc 让 shell 不会执行正文里的反引号与 $(…))\n      npx flightwake traps stats [--json] [--days=N]\n      npx flightwake traps forget [--dry-run]   从 <base>/trips 移除本 repo 的记录(其他 repo 的不动)\n  在 repo 根目录执行;similar / stats 读 .flightwake/TRAPS.md,什么都不写。",
     ja: "使い方:npx flightwake traps similar --name='<slug>' [--tags='a,b'] [--paths='g1,g2'] [--commands='git push,npm publish'] [--json] <<'EOF'\n          <症状 + 根本原因>\n        EOF\n        (--text= がなければ本文は stdin から読む。シングルクォートと引用符付き heredoc なら、本文中のバッククォートや $(…) をシェルが実行しない)\n        npx flightwake traps stats [--json] [--days=N]\n        npx flightwake traps forget [--dry-run]   <base>/trips からこの repo の記録を削除(他の repo の記録はそのまま)\n  repo のルートで実行。similar / stats は .flightwake/TRAPS.md を読むだけで何も書かない。",
   },
+  rulesDone: (total, w, r, same, dry) => ({
+    en: `traps rules: ${total} anchored entr${total === 1 ? 'y' : 'ies'} → ${AGY_RULES_REL}/${AGY_RULE_PREFIX}*.md; ${dry ? 'would write' : 'wrote'} ${w}, ${dry ? 'would remove' : 'removed'} ${r}, ${same} already up to date (Antigravity reads them as model_decision rules)`,
+    'zh-TW': `traps rules:${total} 條有路徑錨點的條目 → ${AGY_RULES_REL}/${AGY_RULE_PREFIX}*.md;${dry ? '將寫' : '寫入'} ${w}、${dry ? '將刪' : '刪除'} ${r}、${same} 個已是最新(Antigravity 以 model_decision 規則讀取)`,
+    'zh-CN': `traps rules:${total} 条有路径锚点的条目 → ${AGY_RULES_REL}/${AGY_RULE_PREFIX}*.md;${dry ? '将写' : '写入'} ${w}、${dry ? '将删' : '删除'} ${r}、${same} 个已是最新(Antigravity 以 model_decision 规则读取)`,
+    ja: `traps rules:パスのアンカーがある項目 ${total} 件 → ${AGY_RULES_REL}/${AGY_RULE_PREFIX}*.md。${dry ? '書き込み予定' : '書き込み'} ${w}、${dry ? '削除予定' : '削除'} ${r}、最新 ${same}(Antigravity は model_decision ルールとして読む)`,
+  }),
+  rulesWould: (what, rel) => ({
+    en: `  would ${what} ${rel}`, 'zh-TW': `  將${what === 'write' ? '寫入' : '刪除'} ${rel}`, 'zh-CN': `  将${what === 'write' ? '写入' : '删除'} ${rel}`, ja: `  ${what === 'write' ? '書き込み予定' : '削除予定'} ${rel}`,
+  }),
+  rulesFailed: (rel) => ({ en: `  ⚠️  could not write or remove ${rel} — skipped`, 'zh-TW': `  ⚠️  ${rel} 寫不進去或刪不掉 — 略過`, 'zh-CN': `  ⚠️  ${rel} 写不进去或删不掉 — 略过`, ja: `  ⚠️  ${rel} を書き込み/削除できない — スキップ` }),
+  rulesLink: (rel) => ({ en: `⚠️  traps rules: ${rel} is a symbolic link — never followed; nothing written`, 'zh-TW': `⚠️  traps rules:${rel} 是符號連結——不跟隨,什麼都不寫`, 'zh-CN': `⚠️  traps rules:${rel} 是符号链接——不跟随,什么都不写`, ja: `⚠️  traps rules:${rel} はシンボリックリンク——辿らず、何も書かない` }),
   badFlag: (f, sub) => ({
     en: `⚠️  traps ${sub}: flag not recognized: ${f}`,
     'zh-TW': `⚠️  traps ${sub}:不認得的旗標 ${f}`,
@@ -591,6 +717,7 @@ const FLAGS = {
   similar: ['--json', '--lang=', '--name=', '--tags=', '--paths=', '--commands=', '--text='],
   stats: ['--json', '--lang=', '--days='],
   forget: ['--lang=', '--dry-run'],
+  rules: ['--lang=', '--dry-run'],
 };
 
 /**
@@ -675,6 +802,7 @@ export async function runTraps({ args = [], lang = 'en', cwd = process.cwd(), en
   }
   const entries = parseTraps(text);
   if (o.sub === 'stats') return stats({ o, entries, M, log, cwd, env, now });
+  if (o.sub === 'rules') return rulesCmd({ o, entries, M, log, cwd });
   if (o.text === null) {
     const got = await readStdinText({ stdin });
     if (got === null && stdin && !stdin.isTTY) process.stderr.write(`${M(T.stdinWait)}\n`);

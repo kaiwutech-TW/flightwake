@@ -82,3 +82,6 @@ EOF
    still register it in TRAPS (the repo's registry must be self-contained: the next person or agent can't see your personal memory),
    **and save a copy to your user-level memory** (e.g. Claude memory) so your other repos don't re-trip it.
    One copy per scope is division of labor, not duplication: a generic trap recorded in only one repo bites again in the next repo
+8. **Antigravity in this repo** (`.agents/hooks.json` has `flightwake-state-check`) **and the entry has `paths`**: run
+   `npx flightwake traps rules` after writing. It regenerates `.agents/rules/flightwake-trap-*.md` from TRAPS.md, which is how
+   Antigravity sees the trap before it edits those files. Never edit those generated files by hand.

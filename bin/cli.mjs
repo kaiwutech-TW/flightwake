@@ -22,7 +22,7 @@ import { execFileSync } from 'node:child_process';
 import { runRoles, removeRoleArtifacts } from './roles.mjs';
 import { removeShippedTree } from './remove.mjs';
 import { runFleet, fleetBase, isWithin, realish } from './fleet.mjs';
-import { runTraps, tripFilesFor, tripsDir, forgetTrips } from './traps.mjs';
+import { runTraps, tripFilesFor, tripsDir, forgetTrips, AGY_RULES_REL, AGY_RULE_PREFIX, AGY_RULE_MARK } from './traps.mjs';
 import {
   LANGS, PROFILES, GROUPS, PLATFORMS, AGY_HOOKS_REL, AGY_HOOK_NAME, isAgentName, INSTRUCTION_CANDIDATES, ORCA_BLOCK_RE, MOD_REL, modShips, modSrc, noJunk, makeM, gitAvailable, repoState, excludePath,
   addPrivateExcludes, gitMissingMessage, monorepoMessage, notRepoMessage, detectInstall, resolveOptions, install,
@@ -57,7 +57,7 @@ if (!COMMANDS.includes(cmd) || args.includes('--help') || args.includes('-h')) {
   npx flightwake init [flags]      non-interactive install (a bare \`npx flightwake\` does the same; never asks anything)
   npx flightwake update | doctor | uninstall [--purge] | roles [install|apply [--dry-run]|card <id>|assign <repo>:<vendor> <id> [--add] [--dry-run]|remove]
   npx flightwake fleet [--json] [--all] [--root=<path>] [--prune [--days=N] [--dry-run]]   (runs anywhere; needs no repo)
-  npx flightwake traps similar --name='<slug>' [--tags='…'] [--paths='…'] [--commands='…'] [--json] <<'EOF' … EOF | traps stats [--json] [--days=N] | traps forget [--dry-run]
+  npx flightwake traps similar --name='<slug>' [--tags='…'] [--paths='…'] [--commands='…'] [--json] <<'EOF' … EOF | traps stats [--json] [--days=N] | traps forget [--dry-run] | traps rules [--dry-run]
   Run at the target repo root.
   setup       interactive (needs a terminal): the language question starts on your terminal locale (LC_ALL / LC_MESSAGES / LANG);
               add-ons are one list with the recommended ones marked * (Enter keeps them, numbers pick exactly those, 0 = none);
@@ -83,7 +83,8 @@ if (!COMMANDS.includes(cmd) || args.includes('--help') || args.includes('-h')) {
   traps       similar scores existing .flightwake/TRAPS.md entries against one you are about to add (run by /fw-trap before writing;
               pick update in place / supersede / record new; the text comes from stdin — pass it with a quoted heredoc, never "…");
               stats shows how many sessions tripped each active entry (Claude Code sessions with the mod only), anchored vs unanchored,
-              for compaction proposals; both read only. forget [--dry-run] removes this repo's entries from <base>/trips (other repos' kept)`);
+              for compaction proposals; both read only. forget [--dry-run] removes this repo's entries from <base>/trips (other repos' kept);
+              rules [--dry-run] writes .agents/rules/flightwake-trap-*.md (Antigravity model_decision rules) from the entries with paths`);
   process.exit([...COMMANDS, 'help'].includes(cmd) ? 0 : 1);
 }
 
@@ -312,6 +313,17 @@ if (cmd === 'uninstall') {
       }
     } catch {}
     // 5. Remove now-empty directories
+    // Antigravity trap rules (A6): only the files carrying the generated marker; a person's own rules stay
+    try {
+      const rdir = join(TARGET, ...AGY_RULES_REL.split('/'));
+      if (existsSync(rdir) && !lstatSync(rdir).isSymbolicLink()) {
+        for (const f of readdirSync(rdir)) {
+          if (!f.startsWith(AGY_RULE_PREFIX) || !f.endsWith('.md')) continue;
+          try { if (readFileSync(join(rdir, f), 'utf8').includes(AGY_RULE_MARK)) rm(`${AGY_RULES_REL}/${f}`); } catch {}
+        }
+      }
+    } catch {}
+    rmdirQuiet(AGY_RULES_REL);
     for (const rel of ['.claude/skills', '.claude', '.agents/skills', '.agents', '.codex', '.gemini']) rmdirQuiet(rel);
     // 6. User data only on --purge. The session fleet folder and the trip folder (both shared by every repo) are never
     //    part of it, even when they lie in here (a repo installed at $HOME, or FLIGHTWAKE_HOME=<this repo>/.flightwake):

@@ -11,6 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { refreshRolesSkill } from './roles.mjs';
 import { fleetBase, fleetDirInRepo } from './fleet.mjs';
+import { parseTraps, planAgyRules, AGY_RULES_REL, AGY_RULE_PREFIX } from './traps.mjs';
 
 export const LANGS = ['en', 'zh-TW', 'zh-CN', 'ja'];
 export const PROFILES = ['code', 'notes'];
@@ -934,6 +935,24 @@ export function install(o) {
       }
       privateExcludes?.push(rel);
     }
+  }
+
+  // 4d. Antigravity cannot take the trap check's PreToolUse context, so it gets the TRAPS entries with `paths` as
+  //     model_decision rules instead (A6, docs/plans/agy-rules.md): .agents/rules/flightwake-trap-*.md, regenerated whole
+  //     from TRAPS.md on every init/update. Only files carrying the generated marker are replaced or removed (a person's
+  //     own rules are never touched); --private keeps them out of git through the exclude block.
+  if (ACTIVE.has('agy')) {
+    let trapsText = null;
+    try { trapsText = readFileSync(join(TARGET, '.flightwake', 'TRAPS.md'), 'utf8'); } catch {}
+    if (trapsText !== null) {
+      const plan = planAgyRules(TARGET, parseTraps(trapsText), M);
+      for (const w of plan.write) {
+        W.mkdir(join(TARGET, ...AGY_RULES_REL.split('/')));
+        if (W.write(join(TARGET, ...w.rel.split('/')), w.text)) log(`  write ${w.rel}`);
+      }
+      for (const r of plan.remove) if (W.rm(join(TARGET, ...r.split('/')))) log(`  rm   ${r}`);
+    }
+    privateExcludes?.push(`${AGY_RULES_REL}/${AGY_RULE_PREFIX}*.md`);
   }
 
   // 5. Trigger-obligation snippet → each active platform's instruction file, in that platform's dialect:
