@@ -15,8 +15,9 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   `flightwake-state-check` Stop hook in `.agents/hooks.json`, merged with your own hooks and removed alone on
   `uninstall`. The check script answers Antigravity's Stop with `decision: "continue"`, finds the repo from
   `workspacePaths`, and reminds at most once per conversation per HEAD commit (Antigravity passes no loop guard).
-  `update` keeps an agy-only repo agy-only; `doctor` checks the hook. Skills were tried in agy; the Stop hook follows
-  the documented format and is not yet verified on a real machine (`docs/plans/agy.probe.md`).
+  `update` keeps an agy-only repo agy-only; `doctor` checks the hook. Verified in agy CLI 1.5.3: the hook loads after
+  the folder-trust prompt, reminds once and the agent keeps working, and agy runs all four skills unprompted where the
+  obligation table says to (`docs/plans/agy.probe.md`).
 - **`npx flightwake traps similar`** checks a new TRAPS entry against the existing ones before it is written (name,
   tags, paths, commands and the symptom text, read from stdin so a pasted symptom is never run by the shell; local and
   deterministic, threshold 0.40). `/fw-trap` now runs it first and asks for a choice when it finds candidates: update

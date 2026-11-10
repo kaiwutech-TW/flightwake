@@ -30,8 +30,8 @@ flightwake 的記憶是 **repo 裡的檔案**,不是服務、也不是任何一�
 | skill | `.claude/skills/fw-*` | `.agents/skills/fw-*` | `.agents/skills/fw-*`(同一個目錄) | `.agents/skills/fw-*`(同一個目錄) |
 | 怎麼叫 skill | `/fw-coldstart` | `$fw-coldstart` | 用名字,例如「跑 fw-coldstart」 | 說「跑 fw-coldstart skill」(靠名字/描述啟用) |
 | 收尾 hook | `.claude/settings.json` 的 `Stop` | `.codex/hooks.json` 的 `Stop` | `.agents/hooks.json` 的 `flightwake-state-check` → `Stop` | `.gemini/settings.json` 的 `AfterAgent` |
-| 平台一次性提示 | 載入 repo hook 時確認 | 要你**信任**這個 repo hook 一次(hook 改了會再問) | 文件未記載 | — |
-| 真機驗證 | 有 | 有 | skill 有;Stop hook **尚未**([探針](plans/agy.probe.md)) | 沒有——而且 Google 已於 2026-06-18 對個人方案停止 Gemini CLI,只剩企業授權與 API key 用戶 |
+| 平台一次性提示 | 載入 repo hook 時確認 | 要你**信任**這個 repo hook 一次(hook 改了會再問) | 第一次開時問一次是否信任這個資料夾,沒有針對 hook 的提示 | — |
+| 真機驗證 | 有 | 有 | 有——agy CLI 1.5.3,2026-11-10([探針](plans/agy.probe.md)) | 沒有——而且 Google 已於 2026-06-18 對個人方案停止 Gemini CLI,只剩企業授權與 API key 用戶 |
 
 Antigravity 沒有自己的指令檔,它讀 `AGENTS.md`。同時裝了 Codex 時,共用的區塊用 Codex 的 `$fw-…` 寫法,並各附一行說明;
 只裝 Antigravity 時用裸名。它的 Stop hook 回 `decision: "continue"`;Antigravity 不提供迴圈防護,所以每個對話在同一個

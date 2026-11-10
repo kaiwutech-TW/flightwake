@@ -232,12 +232,6 @@ export function runDoctor({ target, fwSrc, version, lang, log, claudeVersion: re
         (tracked ? warn : fail)(M({ en: `Antigravity: Stop hook not registered in ${AGY_HOOKS_REL} — npx flightwake update --agents=…,agy`, 'zh-TW': `Antigravity:${AGY_HOOKS_REL} 沒有 Stop hook — npx flightwake update --agents=…,agy`, 'zh-CN': `Antigravity:${AGY_HOOKS_REL} 没有 Stop hook — npx flightwake update --agents=…,agy`, ja: `Antigravity:${AGY_HOOKS_REL} に Stop hook がない — npx flightwake update --agents=…,agy` }));
       }
     }
-    info(M({
-      en: 'Antigravity: the Stop hook follows its documented format but has not been verified in agy on a real machine — trigger it once to confirm (docs/plans/agy.probe.md)',
-      'zh-TW': 'Antigravity:Stop hook 依官方文件格式安裝,但尚未在 agy 真機驗證 — 請實際觸發一次確認(docs/plans/agy.probe.md)',
-      'zh-CN': 'Antigravity:Stop hook 依官方文件格式安装,但尚未在 agy 真机验证 — 请实际触发一次确认(docs/plans/agy.probe.md)',
-      ja: 'Antigravity:Stop hook は公式ドキュメントの形式で入れたが、agy の実機では未検証 — 一度発火させて確認を(docs/plans/agy.probe.md)',
-    }));
   }
 
   // ── --private: the paths that must be ignored come from what is installed, not from what is left in the exclude

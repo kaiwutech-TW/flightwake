@@ -36,7 +36,8 @@ if (!CI && !process.stdin.isTTY) {
 if (input.stop_hook_active) process.exit(0); // already inside a hook-triggered continuation — avoid loops
 // Antigravity (agy) Stop: camelCase stdin keyed by conversationId, no hook_event_name, no stop_hook_active, and the
 // command's cwd is not documented (antigravity.google/docs/hooks, read 2026-11-10) — so the workspace comes from
-// workspacePaths and the loop guard is ours (agyOnce).
+// workspacePaths and the loop guard is ours (agyOnce). Observed in agy CLI 1.5.3 (2026-11-10, docs/plans/agy.probe.md):
+// cwd is the folder holding hooks.json (`<repo>/.agents`), not the repo root — never resolve paths against cwd here.
 const AGY = typeof input.conversationId === 'string' && !input.hook_event_name;
 // Same script, four hosts: Claude Code (Stop) and Codex (Stop) honor `decision: "block"`; Gemini CLI's AfterAgent
 // spells it `decision: "deny"`; Antigravity's Stop `decision: "continue"` (its `reason` becomes a system message).

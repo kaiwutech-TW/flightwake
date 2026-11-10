@@ -32,8 +32,8 @@ detects, so you set it up once and then simply switch tools.
 | Skills | `.claude/skills/fw-*` | `.agents/skills/fw-*` | `.agents/skills/fw-*` (same directory) | `.agents/skills/fw-*` (same directory) |
 | How you invoke a skill | `/fw-coldstart` | `$fw-coldstart` | by name, e.g. "run fw-coldstart" | say "run the fw-coldstart skill" (activates by name/description) |
 | Wrap-up hook | `Stop` in `.claude/settings.json` | `Stop` in `.codex/hooks.json` | `flightwake-state-check` → `Stop` in `.agents/hooks.json` | `AfterAgent` in `.gemini/settings.json` |
-| One-time platform prompt | confirms loading the repo hook | asks you to **trust** the repo hook once (re-asks if it changes) | not documented | — |
-| Verified on a real machine | yes | yes | skills yes; the Stop hook **not yet** ([probe](plans/agy.probe.md)) | no — and Google stopped Gemini CLI for individual plans on 2026-06-18; it remains for enterprise / API-key users |
+| One-time platform prompt | confirms loading the repo hook | asks you to **trust** the repo hook once (re-asks if it changes) | asks once whether you trust the folder; nothing hook-specific | — |
+| Verified on a real machine | yes | yes | yes — agy CLI 1.5.3, 2026-11-10 ([probe](plans/agy.probe.md)) | no — and Google stopped Gemini CLI for individual plans on 2026-06-18; it remains for enterprise / API-key users |
 
 Antigravity has no instruction file of its own: it reads `AGENTS.md`. With Codex set up too, the shared block uses
 Codex's `$fw-…` form and carries a line for each tool; with Antigravity alone it uses plain skill names. Its Stop hook
