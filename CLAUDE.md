@@ -1,4 +1,4 @@
-<!-- flightwake:begin v0.17.0 lang=zh-TW -->
+<!-- flightwake:begin v0.18.0 lang=zh-TW -->
 ## flightwake 工作紀律
 
 本 repo 使用 flightwake(行車記錄器式工作框架):**記錄追隨工作,不引導工作**。
@@ -18,7 +18,7 @@
 去重原則:同一事實只寫一處(git 能查的不重抄;record/STATE/DECISIONS 各司其職,其他處用連結或 hash 指過去)——寫兩處必有一處過時。
 <!-- flightwake:end -->
 
-<!-- flightwake-orca:begin v0.17.0 lang=zh-TW -->
+<!-- flightwake-orca:begin v0.18.0 lang=zh-TW -->
 ## Orca 協作(flightwake 附加元件)
 
 在 Orca 裡工作、要找另一個 agent 討論或審查時:

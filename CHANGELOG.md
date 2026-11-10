@@ -8,6 +8,8 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-11-10
+
 ### Added
 - **Antigravity (`agy`) is a supported platform** (`--agents=…,agy`; listed before Gemini CLI in `setup`). It reads
   `AGENTS.md`, so it shares the Codex obligation table (Codex's `$fw-…` form when Codex is set up too, plain skill
@@ -457,7 +459,8 @@ First public release. ✈️
 
 Initial npm publish; superseded within the day by 0.7.2.
 
-[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/kaiwutech-TW/flightwake/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.18.0
 [0.17.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.17.0
 [0.16.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.16.0
 [0.15.0]: https://github.com/kaiwutech-TW/flightwake/releases/tag/v0.15.0
