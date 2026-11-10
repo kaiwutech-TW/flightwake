@@ -112,6 +112,8 @@
 
 #### A12. 發 0.18.0
 
+- **2026-11-10 已發**:v0.18.0(mod 0.4.0),證據見 record `261110-release-018`。
+
 - CHANGELOG 把 `[Unreleased]` 分出 `[0.18.0]`;mod 版號從 0.3.0 往上推(`mods/flightwake/.claude-plugin/plugin.json`)。
 - 內容:10-19 的兩個修正、10-26 的 traps 功能與 review 修正、A1、A2、A7、A8、A10。
 - **[Kai]** 發版是對外動作,先確認。發完把 release run 與 provenance 的證據寫進 record。
@@ -122,6 +124,7 @@
 #### A5. 絆線改成一般 hook,執行前提示,Codex 也能用
 
 - **為什麼**:現在的絆線只在 Claude Code 加 mod 生效,而且是工具跑完才提示。B1 想主打「換一個 agent 改到同一個檔之前會先看到」,目前做不到。
+- **2026-11-10 審查結果**:「執行前」在 Claude Code 上依官方文件不成立,A5 的範圍與承諾見 `tripwire-hook.md` 的「審查後的修訂」;做不做、做多少待 Kai 決定。
 - **方向**:新增一支獨立的 `hooks/trap-check.mjs`,掛在 Claude Code 與 Codex 的 `PreToolUse`,比對 TRAPS 的 `paths` / `commands`,用 hook 的附加 context 欄位在執行前提示。永不擋。
 - **設計關要回答的問題**
   1. Codex 的 `PreToolUse` 能不能注入 context、matcher 只比對工具名時怎麼拿到路徑與指令、專案 hook 的信任流程(TRAPS `codex-exec-project-hooks-not-loaded`、`codex-project-trust-exact-path`)。先做探針。
@@ -164,7 +167,8 @@ A 的第一批發版之後做。B 裡的每一句對外宣稱都要對得上當�
 - **兩個主打,依證據強度排**
   1. 把專案交給別人或另一個 session 時,對方從 repo 就看得懂怎麼做出來的、解過什麼問題、做過哪些決定。這是 Kai 的親身使用經驗,現在就成立。
   2. 踩過的坑記在 repo 裡,所有 agent 都讀得到。「改到之前先提醒」等 A5、A6 完成才能加上。
-- **[Kai]** 那一句痛點由 Kai 定稿。實作者給三個候選,不要自己選。
+     - 2026-11-10 更正:Claude Code 的 PreToolUse 提示隨工具結果送達,一般 hook 也做不到「改到之前」(DECISIONS 同日、`tripwire-hook.md` 審查後的修訂)。這一句只能寫成「改到有坑的檔時,下一步就會看到」,Codex 待探針。
+- **[Kai]** 那一句痛點由 Kai 定稿。實作者給三個候選,不要自己選。**2026-11-10 Kai 選第 1 句(交接)**,README 雙語與 package.json description 已改(f455208);GitHub 描述在 B5。
   - 候選(2026-11-10,實作者擬):
     1. "Hand this repo to another person or another agent, and they can see how it was built: what was done, why each choice was made, and which traps were found."(主打交接,現在就成立)
     2. "Your agents forget between sessions. flightwake writes down what happened, what was decided and what bit you, in the repo, where Claude Code, Codex and Antigravity all read it."(主打跨 agent;Antigravity 要等 agy 探針)

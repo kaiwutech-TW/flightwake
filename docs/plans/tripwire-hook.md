@@ -1,7 +1,45 @@
 # 設計:絆線改成一般 hook,在工具執行前提示(A5)
 
-- 狀態:**設計稿,待審**(2026-11-10,Opus 5.5)。審查回覆存成 `docs/plans/tripwire-hook.review-<審查者>.md`。
-- 計畫來源:`docs/plans/narrow-and-launch.md` A5。決定:DECISIONS 2026-11-10(絆線只對瞄準的目標提示)。
+- 狀態:**審查完,需修訂後再實作**(2026-11-10)。審查:Codex(GPT-6.1-Sol),原文 [`tripwire-hook.review-codex.md`](tripwire-hook.review-codex.md)。
+  下面「審查後的修訂」一節優先於本稿其他段落;兩者衝突時以那一節為準。
+- 計畫來源:`docs/plans/narrow-and-launch.md` A5。決定:DECISIONS 2026-11-10(絆線只對瞄準的目標提示;A5 不承諾執行前提示)。
+
+## 審查後的修訂(2026-11-10,主線採納)
+
+**核心承諾改了。** Claude Code 官方 hooks 文件(code.claude.com/docs/en/hooks,2026-11-10 主線另行讀過原文):
+PreToolUse 的 `additionalContext` 是「String added to Claude's context alongside the tool result」,「Add context for Claude」一節列
+「PreToolUse, PostToolUse, …: next to the tool result」,並說 Claude 在下一次模型請求才讀到。也就是說,**在 Claude Code 上,一般 hook
+的提示時機和現在的 mod 一樣,都在工具跑完之後**,本稿「為什麼」第 2 點要消除的限制並不會消除。Codex 是否不同,文件沒寫,要用
+探針驗(見下)。所以 A5 的價值只剩兩項:讓**沒裝 mod 的 Claude Code 與 Codex** 也拿到按目標篩選的提示,以及把解析器收成一份。
+對外不寫「改到之前先提醒」(DECISIONS 2026-11-10)。
+
+採納的修訂(依據見審查原文各節):
+
+1. **探針 Q1 改成能分辨時序的版本**(審查 §1)。在暫存環境讓模型寫檔 A;hook 只回一段帶隨機 nonce 的指示,要它改寫 B。記錄 hook 回傳、
+   工具實際寫入、下一次模型請求的順序。只有工具執行前就改成 B 才算「執行前可見」;事後改成 B 或複述 nonce 都不算。Claude Code 端
+   依文件預期不成立,Codex 端必測。
+2. **mod 與一般 hook 並存不看 settings 登記**(審查 §2)。mod 照舊記 trips;只有在 hints 紀錄裡讀到「一般 hook 已為同一個 `tool_use_id`、
+   同一條目版本產生提示」時才省略自己的提示,讀不到就照樣提示(寧可重複,不可漏)。這是盡力去重,不保證送達。
+3. **hints 的儲存協定要寫清楚**(審查 §3):鍵含 schema 版本、host、session、repo、`name@version`;只把真正輸出的條目標成已提示
+   (沿用 mod 一次最多五條的規則);不存指令、patch 或提示內文;任何失敗(沒有 session id、權限、壞 JSON、鎖逾時)都照樣提示;
+   寫成「盡力去重」而不是「保證一次」;寫檔用 0600、比照 `features/fleet.ts` 的拒寫規則在 Node 端重做;要有自己的開關與清理入口
+   (`fleet --prune` 或 TTL),不借 `trips` 的開關。
+4. **共用核心的範圍從依賴圖畫**(審查 §4):除了 TRAPS 解析、glob、shell 分段,還要帶走 `tripwire.ts` 的 `matchFile` / `matchBash`
+   (含 cwd 追蹤)與 `core.ts` 的 `relToRoot`;CLI 端 entry 的 `tags` / `discovered` 要保留;F3 recorder 與 F4 的 cwd 策略不能混成一種;
+   `.mjs` 要有 JSDoc 或 `.d.mts` 型別。加少量差異測試:同一份 TRAPS fixture、指令、cwd 在 mod、CLI、複製出去的 hook 得到同樣結果。
+   Q5 除了 `validate --strict`,還要 `claude plugin test` 與執行期 import 都過。
+5. **Codex 側補邊界**(審查 §5):matcher 寫 `^(Bash|apply_patch)$`;輸出只回 `hookSpecificOutput: { hookEventName: "PreToolUse",
+   additionalContext }`,不加 `permissionDecision`;patch 只解析 `*** Add/Update/Delete File:` 與 `*** Move to:` 標頭;用 shell 呼叫
+   apply_patch 是已知缺口;hook 的 cwd 是 session 的 cwd,不是 repo 根目錄;子代理沿用父 session 的 `session_id`,所以去重不能證明
+   每個 agent 都看過;信任分兩層(project 與個別 hook),Q3 分別測改 hooks.json、改腳本、改 traps-core 會不會要重新信任。
+6. **安裝與更新**(審查 §6):尊重既有的 `tripwire: false`(關掉的人 update 後不能又開始收到提示);兩支 `.mjs` 成對更新,寫不進去時
+   不登記 hook;以 event、handler、指令精確認自己那一條;`--private` 照 Stop hook 的規則,含「Codex 設定已受追蹤就跳過」;
+   延遲量多次的中位數與較慢分位,並設短的 fail-open timeout。
+
+不採用的做法照審查 §4 原文(第三份解析器、hook 執行時 npx、daemon、寫進 trips、deny 一次後重試、session 開始注入全部條目)。
+
+**待 Kai 決定**:在「Claude Code 沒有時序優勢」的前提下,A5 還要不要做、做多少。選項:(a) 照修訂後的範圍做,主要給 Codex 與沒裝 mod
+的 Claude Code;(b) 先只做共用核心(減少兩份解析器),一般 hook 等 Codex 的 nonce 探針結果再決定;(c) 擱置 A5,先做 A6(agy 規則檔)。
 
 ## 為什麼
 

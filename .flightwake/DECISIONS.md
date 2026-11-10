@@ -6,6 +6,7 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
+| 2026-11-10 | **A5 不承諾「執行前提示」,對外不寫「改到之前先提醒」**:A5 的價值改為「沒裝 mod 的 Claude Code 與 Codex 也拿到按目標篩選的提示」加上解析器收成一份;mod 與一般 hook 並存時不看 settings 登記,改以 hints 紀錄對同一個 `tool_use_id` 盡力去重(採納 Codex 審查,`docs/plans/tripwire-hook.review-codex.md`) | Claude Code 官方 hooks 文件明訂 PreToolUse 的 `additionalContext` 「alongside the tool result」、下一次模型請求才讀到(主線 2026-11-10 讀原文),時機和 mod 的事後提示相同;Codex 文件沒寫時機。settings 有登記不代表那一次 hook 真的跑出提示 | Codex 的 nonce 探針顯示工具執行前模型就改了決定;或 Claude Code 改變 PreToolUse context 的送達時機 |
 | 2026-11-10 | **setup 照舊列出四個附加元件,不改流程與預勾;roles 與 Orca 協作在清單上標「維護模式」**(Orca 協作因此也進維護模式,補足 D1 沒點名的這一項) | 改動最小;mod 照舊可預勾,因為它的絆線與 STATE 注入仍在開發。Kai 2026-11-10 選定(A10) | 新使用者回報 setup 問題太多 |
 | 2026-11-10 | **收窄範圍:fleet、側邊面板、spend、role-guard 與 CLI `roles` / `fleet` 進維護模式**——不加新功能,只修相容性;力氣移回 Markdown 核心與 TRAPS(計畫 `docs/plans/narrow-and-launch.md`) | 研究(`reports/` 兩份,未進版控)估這塊約佔 41% 程式碼、記憶約 13%;綁在 15 天發 8 版的 Claude Code 外掛 API 上,25 個測試失敗都在這裡;原廠已有 Agent View / Agent Teams;沒有使用證據。套用 2026-09-28 凍結 tower 的同一標準。Kai 2026-11-10 選定 | 使用紀錄顯示 fleet 或面板每天在用,或出現外部使用者要求 |
 | 2026-11-10 | **Antigravity(`agy`)成為第三家預設平台,Gemini CLI 保留但降級**:`--agents=gemini` 照舊可用,文件標明只適用企業授權或付費 API key、hook 未經真機驗證;已安裝 gemini 的 repo 跑 `update` 不自動改成 agy | Google 已於 2026-06-18 對個人版停止 Gemini CLI;Kai 實測 agy 讀得到 `.agents/skills/fw-*` 並能跑 `fw-coldstart`。直接移除 gemini 會讓既有安裝升級出錯。Kai 2026-11-10 選定 | agy 探針顯示讀不到 `AGENTS.md` 或 skill;或 Gemini CLI 回到個人版 |
