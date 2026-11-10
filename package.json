@@ -24,7 +24,14 @@
     "ai-agent",
     "workflow",
     "flight-recorder",
-    "gsd"
+    "gsd",
+    "codex",
+    "antigravity",
+    "agents-md",
+    "agent-skills",
+    "ai-memory",
+    "handoff",
+    "pitfalls"
   ],
   "repository": {
     "type": "git",
