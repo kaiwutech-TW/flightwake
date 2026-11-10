@@ -154,6 +154,7 @@
   2. skill 依賴 `.flightwake/` 範本。plugin 安裝後第一次使用時由誰建立它:讓 `fw-coldstart` 在找不到 `.flightwake/` 時引導跑 `npx flightwake init`,或 plugin 自帶範本。
   3. plugin 的 skill 只能一種語言,先出 en。
   4. 同一個 repo 同時有 npx 安裝與 plugin 安裝時,skill 與 hook 會不會重複。`doctor` 要能看出來。
+- **2026-11-11 設計稿與探針**:`plugin-marketplace.md`;會多一條安裝管道,待 Kai 決定。
 - **不在這一批**:把陷阱登記拆成可單獨安裝的 skill 上 skills.sh。第二份報告建議等第一輪推廣後看反應再決定。
 
 ---
