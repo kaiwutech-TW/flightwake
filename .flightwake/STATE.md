@@ -1,7 +1,7 @@
 ---
 updated: 2026-11-11
 updated_by: Claude Code (Opus 5.5)
-latest_record: records/261111-a9-plugin.md
+latest_record: records/261111-demo-video.md
 health: yellow  # 關卡全綠(smoke 含 50–52 節、doctor 0/0、plugin validate、Codex 與 plugin 真機都驗過),但 A5/A6/A9 未發版;TRAPS active 21 條超過 20
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
@@ -30,7 +30,7 @@ npm latest 是 **v0.18.0**(2026-11-10,mod 0.4.0;發佈證據見 [[261110-release
 # 下一步入口
 
 1. **[Kai] TRAPS 壓實放行**:active 21 條 > 20;提案是把 `codex-hook-entry-change-silently-untrusted` 併進 `codex-project-trust`(都是 Codex 的信任機制)。
-2. **B2 示範影片**:Kai 錄中英文旁白中;畫面照 `docs/plans/demo-video.md`,hook 段可用 Google Flow 出圖(專案網址 Kai 提供過,流程參考 Eian 的分鏡→首尾幀→審核→生成→ffmpeg 後製)。
+2. **B2 示範影片**([[261111-demo-video]]):旁白已剪、粗剪 v0 完成;hook 四格 16:9 首尾幀畫好,等 Kai 確認畫風與報價(約 120 點,上限 200)再生成;之後畫 9:16 直式、實錄 S1–S6。檔案在 Kai 桌面 `~/Desktop/計畫案/`。
 3. **發 0.19.0**(Kai:建議全做完再發):版號 `package.json` 與 `.claude-plugin/plugin.json` 一起改、CHANGELOG 分版、網站部署、發版後刷新 dogfood。
 4. **[Kai]** 網站流量統計要不要開;舊待決:roles 座位設計對只有 AGENTS.md 的 repo 的影響、`~/.claude/projects` 下的 scratch session 資料夾是否刪除。
 5. 未驗證平台:Windows(含 Intl 語系)、Linux Intl、Gemini CLI hook 真機。
