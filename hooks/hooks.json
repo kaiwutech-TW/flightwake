@@ -1,0 +1,20 @@
+{
+  "description": "flightwake core, as a Claude Code plugin: the wrap-up reminder (Stop) and the trap check (PreToolUse). Each stays quiet in a repo that registers its own copy through npx flightwake init.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/state-check.mjs\" --plugin" }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Bash",
+        "hooks": [
+          { "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/trap-check.mjs\" claude --plugin" }
+        ]
+      }
+    ]
+  }
+}

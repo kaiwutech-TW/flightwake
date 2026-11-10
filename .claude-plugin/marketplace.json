@@ -1,0 +1,12 @@
+{
+  "name": "flightwake",
+  "owner": { "name": "kaiwutech-TW" },
+  "description": "flightwake for Claude Code: STATE, decisions, traps and flight records kept in the repo.",
+  "plugins": [
+    {
+      "name": "flightwake",
+      "description": "The four flightwake skills (en), the wrap-up reminder and the trap check. Run npx flightwake init --plugin once per repo to create .flightwake/.",
+      "source": { "source": "npm", "package": "flightwake" }
+    }
+  ]
+}

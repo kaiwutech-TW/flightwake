@@ -1,0 +1,11 @@
+{
+  "name": "flightwake",
+  "version": "0.18.0",
+  "description": "Hand this repo to another person or another agent, and they can see how it was built: what was done, why each choice was made, and which traps were found. The four flightwake skills, the wrap-up reminder and the trap check (English).",
+  "author": { "name": "kaiwutech-TW" },
+  "homepage": "https://flightwake.kaiwu.com.tw/",
+  "repository": "https://github.com/kaiwutech-TW/flightwake",
+  "license": "MIT",
+  "keywords": ["handoff", "memory", "traps", "decisions", "codex", "agents-md"],
+  "skills": ["./skills/en/"]
+}

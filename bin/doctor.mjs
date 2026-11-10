@@ -142,7 +142,15 @@ export function runDoctor({ target, fwSrc, version, lang, log, claudeVersion: re
 
   // ── skills: .claude/skills is installed unconditionally; .agents/skills when Codex/Gemini carries a marker ──
   const skillNames = readdirSync(join(fwSrc, 'skills', 'en')).filter((s) => statSync(join(fwSrc, 'skills', 'en', s)).isDirectory());
-  const bases = ['.claude/skills', ...(platforms.has('codex') || platforms.has('agy') || platforms.has('gemini') ? ['.agents/skills'] : [])];
+  // --plugin installs: the Claude Code plugin carries the skills and both Claude Code hooks (checked below, not here)
+  const pluginEnabled = (() => {
+    const files = [at('.claude/settings.json'), at('.claude/settings.local.json'), ...(process.env.HOME ? [join(process.env.HOME, '.claude', 'settings.json')] : [])];
+    return files.some((f) => { try { const e = JSON.parse(readFileSync(f, 'utf8'))?.enabledPlugins; return !!e && Object.entries(e).some(([k, v]) => k.startsWith('flightwake@') && v === true); } catch { return false; } });
+  })();
+  if (det.plugin) info(M({ en: 'installed with --plugin: the skills and the Claude Code hooks come from the flightwake plugin — doctor reads only whether it is enabled in settings; /plugin shows it', 'zh-TW': '以 --plugin 安裝:skill 與 Claude Code 的 hook 來自 flightwake plugin——doctor 只看得到設定裡有沒有啟用;/plugin 可查看', 'zh-CN': '以 --plugin 安装:skill 与 Claude Code 的 hook 来自 flightwake plugin——doctor 只看得到设置里有没有启用;/plugin 可查看', ja: '--plugin でインストール:skill と Claude Code の hook は flightwake plugin が提供——doctor は設定で有効かどうかだけ読める。/plugin で確認' }));
+  if (det.plugin && !pluginEnabled) warn(M({ en: 'the flightwake plugin is not enabled in any settings file — /plugin install flightwake --marketplace kaiwutech-TW/flightwake', 'zh-TW': '沒有任何設定檔啟用 flightwake plugin — /plugin install flightwake --marketplace kaiwutech-TW/flightwake', 'zh-CN': '没有任何设置文件启用 flightwake plugin — /plugin install flightwake --marketplace kaiwutech-TW/flightwake', ja: 'どの設定ファイルでも flightwake plugin が有効になっていない — /plugin install flightwake --marketplace kaiwutech-TW/flightwake' }));
+  if (!det.plugin && pluginEnabled && existsSync(at('.claude/skills/fw-coldstart'))) warn(M({ en: 'the flightwake plugin is enabled AND this repo has its own skills and hooks: the skill list shows both copies (the repo copy answers /fw-…). Keep one: npx flightwake update --plugin, or disable the plugin for this repo', 'zh-TW': 'flightwake plugin 已啟用,這個 repo 也有自己的 skill 與 hook:skill 清單會出現兩份(/fw-… 叫到 repo 那份)。留一份就好:npx flightwake update --plugin,或在這個 repo 停用 plugin', 'zh-CN': 'flightwake plugin 已启用,这个 repo 也有自己的 skill 与 hook:skill 清单会出现两份(/fw-… 叫到 repo 那份)。留一份就好:npx flightwake update --plugin,或在这个 repo 停用 plugin', ja: 'flightwake plugin が有効で、この repo にも独自の skill と hook がある:skill 一覧に 2 つずつ出る(/fw-… は repo 側が応答)。どちらか一方に:npx flightwake update --plugin、またはこの repo で plugin を無効に' }));
+  const bases = [...(det.plugin ? [] : ['.claude/skills']), ...(platforms.has('codex') || platforms.has('agy') || platforms.has('gemini') ? ['.agents/skills'] : [])];
   for (const base of bases) {
     const missing = skillNames.filter((s) => !existsSync(at(`${base}/${s}/SKILL.md`)));
     if (missing.length) fail(M({ en: `${base}: missing ${missing.join(', ')} — npx flightwake update`, 'zh-TW': `${base}:缺 ${missing.join(', ')} — npx flightwake update`, 'zh-CN': `${base}:缺 ${missing.join(', ')} — npx flightwake update`, ja: `${base}:${missing.join(', ')} がない — npx flightwake update` }));
@@ -205,7 +213,7 @@ export function runDoctor({ target, fwSrc, version, lang, log, claudeVersion: re
         : M({ en: `${label}: ${wantEvent} hook not registered — npx flightwake update`, 'zh-TW': `${label}:${wantEvent} hook 未登記 — npx flightwake update`, 'zh-CN': `${label}:${wantEvent} hook 未登记 — npx flightwake update`, ja: `${label}:${wantEvent} hook が未登録 — npx flightwake update` }));
     }
   };
-  checkHook('Claude Code', ['.claude/settings.json', '.claude/settings.local.json'], 'Stop', HOOK_CMD);
+  if (!det.plugin) checkHook('Claude Code', ['.claude/settings.json', '.claude/settings.local.json'], 'Stop', HOOK_CMD);
   if (platforms.has('codex')) {
     checkHook('Codex', ['.codex/hooks.json'], 'Stop', HOOK_CMD_GIT, { optionalIfTracked: true });
     info(M({
@@ -242,7 +250,7 @@ export function runDoctor({ target, fwSrc, version, lang, log, claudeVersion: re
         const pre = j.ok ? j.value?.hooks?.PreToolUse : null;
         return Array.isArray(pre) && pre.some((e) => Array.isArray(e?.hooks) && e.hooks.some((h) => h?.type === 'command' && h?.command === cmd));
       });
-      const hosts = [['Claude Code', ['.claude/settings.json', '.claude/settings.local.json'], TRAP_CMD]];
+      const hosts = det.plugin ? [] : [['Claude Code', ['.claude/settings.json', '.claude/settings.local.json'], TRAP_CMD]];
       if (platforms.has('codex')) hosts.push(['Codex', ['.codex/hooks.json'], TRAP_CMD_GIT]);
       for (const [label, files, cmd] of hosts) {
         if (registered(files, cmd)) ok(`${label}: PreToolUse trap check`);

@@ -31,6 +31,9 @@ npx flightwake init --lang=zh-TW --agents=claude,codex,agy   # 不問問題的�
 npx flightwake update                              # 就地升級既有安裝
 ```
 
+只用 Claude Code 的話也可以裝成 plugin(skill 是英文):`/plugin install flightwake --marketplace kaiwutech-TW/flightwake`,每個 repo
+再跑一次 `npx flightwake init --plugin`(或讓 `/fw-coldstart` 問你)——見 [docs/install.zh-TW.md](docs/install.zh-TW.md#claude-code-plugin)。
+
 零執行期依賴(安裝器與 hook 需要 Node ≥18)。已在 Claude Code、Codex、Antigravity 真機驗證;Gemini CLI 保留給企業授權與
 API key 用戶。語言、附加元件(Claude Code mod、底部儀表、團隊角色、Orca 協作)、`--private`、`doctor`、`uninstall`、
 從 GSD 遷移與 CI 檢查:**[docs/install.zh-TW.md](docs/install.zh-TW.md)**。

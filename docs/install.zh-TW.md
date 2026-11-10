@@ -67,6 +67,20 @@ init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claud
 
 **monorepo 政策:單 repo 一份,裝在 git root。** 工作是 session 形狀的——一個 session 常橫跨多個 package,記錄跟著 session 走;拆到子目錄各裝會把同一段工作切碎成多份 record,也讓「該讀哪份 STATE」變成新的冷啟動歧義。子目錄執行 init 會擋下並指路 root。submodule 有自己的 `.git`,視為獨立 repo 各裝各的。多團隊高流量 monorepo 若覺得 CI 落後檢查誤報,先調 `--threshold`。
 
+## Claude Code plugin
+
+只用 Claude Code 的話,flightwake 也能從自己的市集裝成 plugin(市集在本 repo;plugin 本身就是發佈到 npm 的套件):
+
+```
+/plugin install flightwake --marketplace kaiwutech-TW/flightwake
+```
+
+plugin 帶有四個英文 skill、收尾提醒(Stop)與坑提示(PreToolUse)。它不會建 `.flightwake/` 或義務表:每個 repo 跑一次
+`npx flightwake init --plugin`(資料夾不存在時 `/fw-coldstart` 會問你)。`--plugin` 寫 `.flightwake/` 和義務表,但跳過
+`.claude/skills/` 與 Claude Code 的 hook,標記會記住,`update` 沿用;有選 Codex、Antigravity 的照常安裝。同一個 repo 若也有
+npx 裝的 skill,skill 清單會出現兩份(`/fw-…` 叫到 repo 那份);plugin 的 hook 在這種 repo 會安靜,不會提醒兩次,`doctor` 會指出重複。
+plugin 沒有其他語言、沒有 mod 和附加元件——要這些請用 `npx flightwake setup`。
+
 ## 從 GSD 遷移
 
 先把手上的 milestone 收完,然後:

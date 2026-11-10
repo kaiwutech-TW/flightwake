@@ -71,6 +71,23 @@ init creates `.flightwake/` (templates + Stop hook), copies 4 skills into `.clau
 
 **Monorepo policy: one install per repo, at the git root.** Work is session-shaped — a session routinely spans multiple packages, and records follow the session; per-subdirectory installs would shred one stretch of work into fragmented records and turn "which STATE do I read?" into a new cold-start ambiguity. Running init in a subdirectory stops and points you to the root. Submodules have their own `.git` and count as independent repos. If a high-traffic multi-team monorepo sees false positives from the CI staleness check, tune `--threshold` first.
 
+## Claude Code plugin
+
+For Claude Code alone, flightwake also comes as a plugin from its own marketplace (this repository; the plugin itself is the
+published npm package):
+
+```
+/plugin install flightwake --marketplace kaiwutech-TW/flightwake
+```
+
+The plugin carries the four skills in English, the wrap-up reminder (Stop) and the trap check (PreToolUse). It does not
+create `.flightwake/` or the obligation table: run `npx flightwake init --plugin` once in each repo (`/fw-coldstart` offers
+to when the folder is missing). `--plugin` writes `.flightwake/` and the table but skips `.claude/skills/` and the Claude
+Code hooks, and the marker remembers it for `update`; Codex and Antigravity, if selected, are installed as usual. A repo
+that also has the npx skills shows both copies in the skill list (the repo's copy answers `/fw-…`); the plugin's hooks stay
+quiet there, so nothing is reminded twice, and `doctor` names the duplicate. The plugin has no other languages, no mod
+and no add-ons — use `npx flightwake setup` for those.
+
 ## Migrating from GSD
 
 Wrap up your current milestone first, then:

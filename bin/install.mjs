@@ -243,6 +243,8 @@ export function detectInstall(target) {
     // Profile lives in the marker; a --private install can end up with no marker at all (every instruction
     // file tracked → skipped), so the exclude block's header carries it too
     profile: marker ? marker.profile : (exclude?.profile ?? 'code'),
+    // --plugin: the skills and Claude Code hooks come from the Claude Code plugin; the marker remembers it for update
+    plugin: marker?.attrs?.plugin === '1',
     // Language the same way: the marker's, else the exclude header's (a markerless private install), else the language
     // stamped into state-check.mjs (a markerless private install whose header predates lang=); null = unknown
     lang: marker?.lang ?? exclude?.lang ?? (marker || exclude ? stampedLang(target) : null) ?? null,
@@ -396,6 +398,7 @@ export function resolveOptions({ update, flags, det }) {
     profile: flags.profile ?? det.profile ?? 'code',
     orca: !!flags.orca,
     mod: !!flags.mod,
+    plugin: !!flags.plugin || (update && !!det.plugin),
   };
 }
 
@@ -747,7 +750,9 @@ export function install(o) {
     // roles add-on installed earlier: keep it inside the exclude block on every private rerun
     if (existsSync(join(TARGET, ...baseRel.split('/'), 'fw-roles'))) privateExcludes?.push(`${baseRel}/fw-roles/`);
   };
-  installSkills('.claude/skills');
+  // --plugin: Claude Code gets the skills from the flightwake plugin (namespaced copies would sit beside project ones)
+  if (o.plugin) log(`  skip .claude/skills${M({ en: ' (--plugin: the Claude Code plugin provides the skills)', 'zh-TW': '(--plugin:skill 由 Claude Code plugin 提供)', 'zh-CN': '(--plugin:skill 由 Claude Code plugin 提供)', ja: '(--plugin:skill は Claude Code plugin が提供)' })}`);
+  else installSkills('.claude/skills');
   if (AGENTS_SKILLS) installSkills('.agents/skills');
   // roles add-on: refreshed on update only where the user already installed it (opt-in, never added here)
   if (IS_UPDATE) refreshRolesSkill({ target: TARGET, fwSrc: FW_SRC, lang: LANG, log, W });
@@ -771,7 +776,9 @@ export function install(o) {
     if (parseOk) {
       settings.hooks ??= {};
       settings.hooks.Stop ??= [];
-      if (inOther) {
+      if (o.plugin) {
+        log(`  skip ${settingsRel} Stop / PreToolUse${M({ en: ' (--plugin: the Claude Code plugin provides both hooks)', 'zh-TW': '(--plugin:兩個 hook 由 Claude Code plugin 提供)', 'zh-CN': '(--plugin:两个 hook 由 Claude Code plugin 提供)', ja: '(--plugin:両方の hook は Claude Code plugin が提供)' })}`);
+      } else if (inOther) {
         log(`  skip Stop hook${M({
           en: ` (already set in ${otherRel} — the other mode's install still applies)`,
           'zh-TW': `(${otherRel} 已設定 — 另一模式的安裝仍生效)`,
@@ -791,7 +798,7 @@ export function install(o) {
         })}`);
       }
       // The trap check (A5): one PreToolUse entry, appended after any others and never rewritten; same other-mode rule
-      if (trapReady()) {
+      if (trapReady() && !o.plugin) {
         const trapInOther = (() => { try { return existsSync(otherPath) && readFileSync(otherPath, 'utf8').includes('trap-check.mjs'); } catch { return false; } })();
         const pre = Array.isArray(settings.hooks.PreToolUse) ? settings.hooks.PreToolUse : null;
         if (trapInOther) {
@@ -990,7 +997,7 @@ export function install(o) {
     const blockFor = (readers) => {
       const dialect = body.replace(/`\/(fw-[a-z]+)`/g, (_, s) => INVOKE[readers[0]](s)).trimEnd();
       const notes = readers.map((r) => NOTE[r]).filter(Boolean).map((n) => `\n${n}`).join('');
-      return `${BEGIN} v${VERSION} lang=${LANG}${NOTES ? ' profile=notes' : ''} -->\n${dialect}${notes}\n${END}\n`;
+      return `${BEGIN} v${VERSION} lang=${LANG}${NOTES ? ' profile=notes' : ''}${o.plugin ? ' plugin=1' : ''} -->\n${dialect}${notes}\n${END}\n`;
     };
     for (const [name, rels] of Object.entries(GROUPS)) {
       const readers = readersOf(name);

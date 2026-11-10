@@ -9,6 +9,9 @@ Purpose: before touching any file, recover to a "safe takeover" state with the m
 
 ## Steps
 
+0. **No `.flightwake/` folder at all?** flightwake is not set up in this repo yet. Say so and ask the user before writing anything;
+   with their yes, run `npx flightwake init --plugin` when this repo has no `.claude/skills/fw-coldstart/` (the skills came from
+   the Claude Code plugin, which also brings the hooks), otherwise `npx flightwake init`. Then continue with step 1.
 1. Read `.flightwake/STATE.md` (where we are, in progress, next entry points, standing facts)
    **Not initialized yet?** If STATE still carries the shipped template's own placeholders — the frontmatter
    `updated: {{DATE}}`, `updated_by: {{SESSION_OR_PERSON}}`, `latest_record: records/{{YYMMDD}}-{{slug}}.md`, or body lines

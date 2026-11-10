@@ -9,6 +9,9 @@ description: flightwake 冷啟動 — 接手一個 repo 前先恢復狀態。Use
 
 ## 步驟
 
+0. **連 `.flightwake/` 資料夾都沒有?** 這個 repo 還沒裝 flightwake。先告訴使用者、問過再寫任何東西;同意後,repo 裡沒有
+   `.claude/skills/fw-coldstart/` 就跑 `npx flightwake init --plugin`(skill 來自 Claude Code plugin,hook 也由它提供),否則跑
+   `npx flightwake init`。之後接第 1 步。
 1. 讀 `.flightwake/STATE.md`(現在在哪、進行中、下一步入口、常備事實)
    **還沒初始化?** STATE 若仍留有範本自帶的佔位符——frontmatter 的 `updated: {{DATE}}`、`updated_by: {{SESSION_OR_PERSON}}`、
    `latest_record: records/{{YYMMDD}}-{{slug}}.md`,或內文中與範本逐字相同的 `{{…}}` 行——代表 STATE 從未初始化。先補完未填的欄位:

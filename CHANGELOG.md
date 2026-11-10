@@ -26,6 +26,12 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   loaded. New `npx flightwake traps rules [--dry-run]`; `init` / `update` regenerate the files when agy is set up,
   `/fw-trap` runs it after writing an entry, `doctor` flags stale files, `uninstall` removes them. Only files carrying
   the generated marker are written or removed. (`docs/plans/agy-rules.md`)
+- **Claude Code plugin from flightwake's own marketplace**: `/plugin install flightwake --marketplace kaiwutech-TW/flightwake`.
+  The repository root is the plugin (`.claude-plugin/plugin.json` points the skills at `skills/en/`; `hooks/hooks.json` adds the
+  Stop reminder and the trap check), and the marketplace entry installs the published npm package, so the plugin is always
+  a released version. New `init --plugin` writes `.flightwake/` and the obligation table without `.claude/skills/` or the
+  Claude Code hooks; the marker remembers it. In a repo that also has the npx install, the plugin's hooks stay quiet and
+  `doctor` names the duplicate. `/fw-coldstart` offers to set flightwake up when `.flightwake/` is missing. English only.
 - **One TRAPS core.** The parser, globs, shell reader and matchers now live in
   `mods/flightwake/hooks/lib/traps-core.mjs`, used by the mod, the CLI and the trap check (copied next to it). The two
   mirrored parsers are gone.

@@ -2929,5 +2929,64 @@ node "$CLI" uninstall >/dev/null || fail "51 uninstall 應成功"
 cd "$TMP"
 pass "51 Antigravity 坑規則:由 TRAPS 產生 model_decision 規則、冪等、只動有標記的檔、doctor 抓過期、superseded 清檔、uninstall 只拿自己的"
 
+
+# 52. Claude Code plugin(A9):repo 根目錄就是 plugin(skills 指到 skills/en/、hooks/hooks.json)、市集指向 npm 套件、版號與套件同步;
+#     init --plugin 不裝專案 skill 與 Claude Code hook、標記記住;兩支 hook 的 --plugin 模式在 repo 有自己那份時安靜;doctor 抓重複安裝
+node -e '
+  const fs = require("fs"); const src = process.argv[1];
+  const pkg = JSON.parse(fs.readFileSync(src + "/package.json", "utf8"));
+  const pl = JSON.parse(fs.readFileSync(src + "/.claude-plugin/plugin.json", "utf8"));
+  const mk = JSON.parse(fs.readFileSync(src + "/.claude-plugin/marketplace.json", "utf8"));
+  const hk = JSON.parse(fs.readFileSync(src + "/hooks/hooks.json", "utf8")).hooks;
+  const bad = [];
+  if (pl.name !== "flightwake" || pl.version !== pkg.version) bad.push("plugin.json name/version " + pl.version + " vs package " + pkg.version);
+  if (JSON.stringify(pl.skills) !== "[\"./skills/en/\"]") bad.push("skills path");
+  for (const s of ["fw-coldstart", "fw-record", "fw-trap", "fw-handoff"]) if (!fs.existsSync(src + "/skills/en/" + s + "/SKILL.md")) bad.push("skill " + s);
+  const p = mk.plugins?.[0];
+  if (mk.name !== "flightwake" || !mk.owner?.name || p?.name !== "flightwake" || p?.source?.source !== "npm" || p?.source?.package !== pkg.name) bad.push("marketplace");
+  if (!pkg.files.includes(".claude-plugin/")) bad.push("package files lack .claude-plugin/");
+  const cmds = JSON.stringify(hk);
+  if (!cmds.includes("${CLAUDE_PLUGIN_ROOT}/hooks/state-check.mjs\\\" --plugin") || !cmds.includes("${CLAUDE_PLUGIN_ROOT}/hooks/trap-check.mjs\\\" claude --plugin")) bad.push("hooks.json commands");
+  if (hk.PreToolUse?.[0]?.matcher !== "Edit|Write|NotebookEdit|Bash") bad.push("PreToolUse matcher");
+  if (bad.length) { console.log(bad.join("\n")); process.exit(1); }' "$SRC" || fail "52 plugin manifest / 市集 / hooks.json / 版號"
+newrepo "$TMP/plug1" >/dev/null && git commit -q --allow-empty -m init
+PH="$TMP/plug-home"; mkdir -p "$PH/hints" && chmod 700 "$PH/hints"
+FLIGHTWAKE_HOME="$PH" node "$CLI" init --plugin --lang=en --agents=claude >/dev/null || fail "52 init --plugin 應成功"
+[ ! -e .claude/skills/fw-coldstart ] || fail "52 --plugin 不裝 .claude/skills"
+! grep -qs 'state-check.mjs\|trap-check.mjs' .claude/settings.json .claude/settings.local.json || fail "52 --plugin 不在 Claude Code 設定登記 hook"
+grep -q 'flightwake:begin v[0-9.]* lang=en plugin=1 -->' CLAUDE.md || fail "52 標記應記住 plugin=1"
+FLIGHTWAKE_HOME="$PH" node "$CLI" update >/dev/null && grep -q 'plugin=1' CLAUDE.md && [ ! -e .claude/skills/fw-coldstart ] || fail "52 update 應沿用 --plugin"
+FLIGHTWAKE_HOME="$PH" HOME="$PH" node "$CLI" doctor 2>&1 | grep -q '0 failed' || fail "52 --plugin 安裝的 doctor 不應有失敗"
+cat >> .flightwake/TRAPS.md <<'TRAPEOF'
+
+---
+name: db-order
+type: gotcha
+status: active
+confidence: confirmed
+paths: ["db/**"]
+---
+
+**Symptom**: x
+**Root cause**: two scripts share one counter
+**Fix**: run them one at a time
+TRAPEOF
+P1=$(pwd -P); mkdir -p db/deep
+pc() { printf '{"session_id":"%s","cwd":"%s","tool_name":"Write","tool_input":{"file_path":"%s/db/1.sql"}}' "$1" "$2" "$P1" | env FLIGHTWAKE_HOME="$PH" ${3:+CLAUDE_PROJECT_DIR="$3"} node "$SRC/hooks/trap-check.mjs" claude --plugin; }
+pc ps1 "$P1/db/deep" "$P1" | grep -q 'db-order' || fail "52 plugin 的 trap-check 以 CLAUDE_PROJECT_DIR 找到 repo 並提示"
+pc ps2 "$P1/db/deep" "" | grep -q 'db-order' || fail "52 沒有 CLAUDE_PROJECT_DIR 時從 cwd 往上找到 .flightwake"
+newrepo "$TMP/plug2" >/dev/null && git commit -q --allow-empty -m init && FLIGHTWAKE_HOME="$PH" node "$CLI" init --lang=en --agents=claude >/dev/null
+P2=$(pwd -P); cat "$P1/.flightwake/TRAPS.md" > .flightwake/TRAPS.md
+[ -z "$(printf '{"session_id":"ps3","cwd":"%s","tool_name":"Write","tool_input":{"file_path":"%s/db/1.sql"}}' "$P2" "$P2" | FLIGHTWAKE_HOME="$PH" CLAUDE_PROJECT_DIR="$P2" node "$SRC/hooks/trap-check.mjs" claude --plugin)" ] || fail "52 repo 有自己登記的 trap-check 時,plugin 的那份要安靜"
+git add -A && git commit -qm base -q && for i in 1 2 3; do git commit -q --allow-empty -m "c$i"; done
+[ -z "$(printf '{}' | node "$SRC/hooks/state-check.mjs" --plugin)" ] || fail "52 repo 有自己登記的 Stop hook 時,plugin 的 state-check 要安靜"
+printf '{}' | node "$SRC/hooks/state-check.mjs" | grep -q '"decision":"block"' || fail "52 對照:repo 自己那份應提醒"
+cd "$P1" && git add -A && git commit -qm base -q && for i in 1 2 3; do git commit -q --allow-empty -m "c$i"; done
+printf '{}' | node "$SRC/hooks/state-check.mjs" --plugin | grep -q '"decision":"block"' || fail "52 --plugin 安裝的 repo,plugin 的 state-check 應提醒收尾"
+mkdir -p "$PH/.claude" && printf '%s' '{"enabledPlugins":{"flightwake@flightwake":true}}' > "$PH/.claude/settings.json"
+cd "$P2" && HOME="$PH" FLIGHTWAKE_HOME="$PH" node "$CLI" doctor 2>&1 | grep -q 'the flightwake plugin is enabled AND this repo has its own skills' || fail "52 plugin 已啟用又有 repo 自己的 skill 時,doctor 應警告重複"
+cd "$TMP"
+pass "52 Claude Code plugin:manifest 與市集、版號同步、init --plugin、兩支 hook 的 plugin 模式(repo 有自己那份就安靜)、doctor 抓重複"
+
 echo ""
 echo "✅ smoke 全過"

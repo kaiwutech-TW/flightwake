@@ -1,6 +1,6 @@
 # 設計:包成 Claude Code plugin,從自架市集安裝(A9)
 
-- 狀態:**設計稿,待 Kai 看過再實作**(2026-11-11)。計畫來源:`docs/plans/narrow-and-launch.md` A9。
+- 狀態:**已實作,未發版**(2026-11-11,Kai:「做」)。和下面「建議做法」不同處:第 2 點探針成立(根目錄就是 plugin,`skills` 指到 `./skills/en/`);第 3 點改成 `fw-coldstart` 引導跑 `npx flightwake init --plugin`(不由 skill 自己複製範本);第 4 點另外讓 plugin 的兩支 hook 在 repo 有自己那份時安靜;第 6 點的義務表由 `init --plugin` 寫。市集來源是 npm 套件。計畫來源:`docs/plans/narrow-and-launch.md` A9。
 - 為什麼:現在只能 `npx flightwake setup`。Claude Code 使用者習慣 `/plugin install`;自架市集不需要審核。
 
 ## 官方文件(code.claude.com/docs/en/plugins、plugin-marketplaces、plugins-reference,2026-11-11 讀)

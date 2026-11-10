@@ -13,6 +13,7 @@
     "addons/",
     "snippets/",
     "mods/",
+    ".claude-plugin/",
     "README.md",
     "LICENSE"
   ],

@@ -70,6 +70,7 @@ if (!COMMANDS.includes(cmd) || args.includes('--help') || args.includes('-h')) {
               reads AGENTS.md; gemini = Gemini CLI, now for enterprise / API-key users);
               --profile=code|notes picks the obligation table (notes drops the tests/typecheck and schema/prod duties; default code);
               --orca adds the Orca collaboration block (opt-in add-on); --git-init creates the git repo first when there is none;
+              --plugin: flightwake came as the Claude Code plugin — skip .claude/skills and the Claude Code hooks (the plugin has them);
               --mod installs the Claude Code mod into .claude/skills/flightwake-mod (opt-in; needs Claude Code 2.1.287+; skipped without claude)
   update      re-install with the options detected from the existing install (lang / statusline / private / profile) — the in-place upgrade; never asks.
               Installed add-ons are refreshed; --statusline / --mod / --orca add that add-on, --lang=… / --profile=… switch it
@@ -126,6 +127,7 @@ const flags = {
   statusline: args.includes('--statusline'),
   orca: args.includes('--orca'),
   mod: args.includes('--mod'),
+  plugin: args.includes('--plugin'),
   gitInit: args.includes('--git-init'),
   lang: langArg,
   profile: profileArg,

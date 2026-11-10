@@ -33,6 +33,9 @@ npx flightwake init --agents=claude,codex,agy      # the same without questions 
 npx flightwake update                              # upgrade an existing install in place
 ```
 
+Claude Code only, as a plugin (English skills): `/plugin install flightwake --marketplace kaiwutech-TW/flightwake`, then
+`npx flightwake init --plugin` once per repo (or let `/fw-coldstart` offer it) — see [docs/install.md](docs/install.md#claude-code-plugin).
+
 Zero runtime dependencies (Node ≥18 for the installer and the hooks). Verified on Claude Code, Codex and Antigravity;
 Gemini CLI is kept for enterprise and API-key users. Languages, add-ons (the Claude Code mod, the status line, team
 roles, Orca collaboration), `--private`, `doctor`, `uninstall`, migrating from GSD and a CI check:

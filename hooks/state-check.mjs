@@ -9,6 +9,8 @@
  *   `--threshold=N` tunes the staleness threshold (default 3)
  * Any error (not a git repo, git missing from PATH, …) passes silently in both modes —
  * this is a discipline reminder, not a security gate; under-reporting beats false blocking.
+ * `--plugin`: run from the Claude Code plugin (hooks/hooks.json). It stays quiet when the repo registers its own copy in
+ *   .claude/settings(.local).json, so a repo with both installs is reminded once.
  * LANG is stamped by the installer (`npx flightwake init --lang=…`).
  */
 import { execFileSync } from 'node:child_process';
@@ -23,6 +25,7 @@ const M = (m) => m[LANG] ?? m.en;
 
 const argv = process.argv.slice(2);
 const CI = argv.includes('--ci');
+const PLUGIN = argv.includes('--plugin');
 const t = Number(argv.find((a) => a.startsWith('--threshold='))?.slice('--threshold='.length));
 const THRESHOLD = Number.isFinite(t) && t > 0 ? t : 3; // invalid values fall back to the default — never silently become "never fires"
 const STATE = '.flightwake/STATE.md';
@@ -75,6 +78,7 @@ try {
   }
   process.chdir(git('rev-parse', '--show-toplevel'));
   if (!existsSync(STATE)) process.exit(0);
+  if (PLUGIN && ['.claude/settings.json', '.claude/settings.local.json'].some((f) => { try { return readFileSync(f, 'utf8').includes('.flightwake/hooks/state-check.mjs'); } catch { return false; } })) process.exit(0);
 
   // Check 2 — evidence: health=green is a claim; the latest record's `tests:` line is its evidence.
   // Runs even when STATE is uncommitted (right after a wrap-up is exactly when the gap appears).

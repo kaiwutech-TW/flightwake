@@ -19,6 +19,9 @@
  * the folder must already exist and be private (init/update create it 0700), files are 0600, nothing but keys is stored
  * (no command, patch or hint text), and every failure — no session id, a folder inside a repo, a link, a file that is
  * not ours, bad JSON — still prints the hint. Two calls at once may both hint. FLIGHTWAKE_HINTS=off writes no record.
+ * `--plugin` (the Claude Code plugin, hooks/hooks.json): the repo is the session's project (CLAUDE_PROJECT_DIR, else the
+ * cwd, walked up to the folder holding .flightwake/STATE.md), and the hook stays quiet when that repo registers its own
+ * trap-check.mjs in .claude/settings(.local).json — a repo with both installs is hinted once.
  * Off switches: FLIGHTWAKE_TRIPWIRE=off; in Claude Code also the mod's own `"tripwire": false` (user settings).
  * LANG is stamped by the installer (`npx flightwake init --lang=…`).
  */
@@ -30,6 +33,7 @@ const LANG = 'zh-TW';
 const M = (m) => m[LANG] ?? m.en;
 
 const HOST = process.argv[2] === 'codex' ? 'codex' : 'claude';
+const PLUGIN = process.argv.includes('--plugin');
 const MAX_ENTRIES = 5;
 const MAX_LINE = 300;
 const TRAPS_REL = '.flightwake/TRAPS.md';
@@ -175,7 +179,21 @@ async function main() {
   if (!isFileTool && !isPatch && !isShell) return;
 
   const here = dirname(fileURLToPath(import.meta.url));
-  const root = real(dirname(dirname(here))); // <repo>/.flightwake/hooks → <repo>
+  let root = real(dirname(dirname(here))); // <repo>/.flightwake/hooks → <repo>
+  if (PLUGIN) {
+    const start = [env.CLAUDE_PROJECT_DIR, input.cwd].find((p) => typeof p === 'string' && isAbs(p));
+    if (!start) return;
+    root = '';
+    for (let d = real(start); ; d = dirname(d)) {
+      if (existsSync(join(d, '.flightwake', 'STATE.md'))) { root = d; break; }
+      if (dirname(d) === d) break;
+    }
+    if (!root) return;
+    const registered = ['.claude/settings.json', '.claude/settings.local.json'].some((f) => {
+      try { return readFileSync(join(root, f), 'utf8').includes('.flightwake/hooks/trap-check.mjs'); } catch { return false; }
+    });
+    if (registered) return; // the repo's own copy answers this call
+  }
   if (!existsSync(join(root, '.flightwake', 'STATE.md'))) return;
   let text;
   try { text = readFileSync(join(root, TRAPS_REL), 'utf8'); } catch { return; }
