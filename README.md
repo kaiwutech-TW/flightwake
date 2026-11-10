@@ -18,8 +18,10 @@ cd your-repo && npx flightwake setup
 flightwake keeps four plain Markdown files in your repo's `.flightwake/`: a short STATE (where things are, what's next), a
 decision log (one line per choice, with the why), a list of known traps (each with how sure its root cause is), and a
 flight record per stretch of work. The agent writes them as it works; Claude Code, Codex and Antigravity read them at
-the start of every session. When an agent in Claude Code or Codex edits a file or runs a command that a known trap is
-anchored to, the trap shows up right after that call (a PreToolUse hook; it never blocks). Everything is in git, so it travels with the repo. **See what four months of it look like
+the start of every session. A known trap follows the files it is anchored to: when an agent in Claude Code or Codex edits
+one of them or runs an anchored command, the trap shows up right after that call (a hook; it never blocks), and
+Antigravity gets it as a rule it read *before* editing such a file in our tests. Everything is in git, so it travels with
+the repo. **See what four months of it look like
 in this repo: [docs/evidence.md](docs/evidence.md).**
 
 [Illustrated website](https://flightwake.kaiwu.com.tw/en/) · [Website source](website/)

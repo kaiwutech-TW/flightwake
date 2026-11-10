@@ -17,7 +17,9 @@ cd your-repo && npx flightwake setup
 
 flightwake 在 repo 的 `.flightwake/` 裡放四種純 Markdown 檔:一份簡短的 STATE(現在在哪、下一步)、一份決策日誌
 (每個選擇一行,附原因)、一份已知的坑(每條標明根因有多確定),以及每段工作一份飛行紀錄。agent 邊做邊寫;
-Claude Code、Codex、Antigravity 每個 session 開始時都會讀。全部在 git 裡,跟著 repo 走。
+Claude Code、Codex、Antigravity 每個 session 開始時都會讀。坑會跟著它錨定的檔案走:Claude Code 或 Codex 的 agent
+改到這些檔、或執行錨定的指令,那條坑會在這次呼叫之後馬上出現(hook,從不擋);Antigravity 則是收到一條規則,在我們的
+實測裡它在改這類檔案**之前**就先讀了。全部在 git 裡,跟著 repo 走。
 **看這個 repo 自己用了四個月的樣子:[docs/evidence.zh-TW.md](docs/evidence.zh-TW.md)。**
 
 [圖解展示網站](https://flightwake.kaiwu.com.tw/) · [網站原始碼](website/)
