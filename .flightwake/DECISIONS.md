@@ -6,6 +6,7 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
+| 2026-11-11 | **A5 照審查後的修訂範圍做**(`docs/plans/tripwire-hook.md` 選項 a):一份共用的 TRAPS 核心、一般 hook `trap-check.mjs` 給 Claude Code 與 Codex、hints 紀錄去重;順序是先探針(Q5 mod 能否 import `.mjs`、Codex 的 Q2–Q4 與 nonce 時序)再寫程式,探針否定哪一段就砍哪一段 | Kai 2026-11-11「根據順序繼續改 A5 往下做」;不擱置(c)是因為 A6、A9 都要共用核心,只做核心(b)會讓 Codex 繼續沒有提示 | Codex 的 PreToolUse 不能注入 context:一般 hook 只留沒裝 mod 的 Claude Code,Codex 改走 A6 式規則檔 |
 | 2026-11-11 | **網站根路徑 `/` 改成英文,繁中搬到 `/zh-TW/`**;舊的 `/en/` 以 `_redirects` 301 到 `/`;JS 依瀏覽器語言轉址照舊(偏好中文的人仍自動到 `/zh-TW/`) | 計畫 B4:英文應該是預設,`x-default` 早已指英文,但不跑 JS 的爬蟲在 `/` 讀到的是繁中;Kai 2026-11-11 確認 B4 改版與部署 | 繁中流量遠大於英文且搜尋排名因搬家明顯下滑 |
 | 2026-11-10 | **A5 不承諾「執行前提示」,對外不寫「改到之前先提醒」**:A5 的價值改為「沒裝 mod 的 Claude Code 與 Codex 也拿到按目標篩選的提示」加上解析器收成一份;mod 與一般 hook 並存時不看 settings 登記,改以 hints 紀錄對同一個 `tool_use_id` 盡力去重(採納 Codex 審查,`docs/plans/tripwire-hook.review-codex.md`) | Claude Code 官方 hooks 文件明訂 PreToolUse 的 `additionalContext` 「alongside the tool result」、下一次模型請求才讀到(主線 2026-11-10 讀原文),時機和 mod 的事後提示相同;Codex 文件沒寫時機。settings 有登記不代表那一次 hook 真的跑出提示 | Codex 的 nonce 探針顯示工具執行前模型就改了決定;或 Claude Code 改變 PreToolUse context 的送達時機 |
 | 2026-11-10 | **setup 照舊列出四個附加元件,不改流程與預勾;roles 與 Orca 協作在清單上標「維護模式」**(Orca 協作因此也進維護模式,補足 D1 沒點名的這一項) | 改動最小;mod 照舊可預勾,因為它的絆線與 STATE 注入仍在開發。Kai 2026-11-10 選定(A10) | 新使用者回報 setup 問題太多 |

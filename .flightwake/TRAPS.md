@@ -5,6 +5,22 @@
 # 坑 Registry
 
 ---
+name: codex-hook-entry-change-silently-untrusted
+type: gotcha
+status: active
+tags: [codex, hooks, trust, install]
+discovered: 2026-11-11
+confidence: probable
+paths: ["bin/install.mjs", ".codex/hooks.json"]
+retire_when: "Codex 在 hook 條目改變後會於啟動時主動要求重新信任"
+---
+
+**症狀**:改了 `.codex/hooks.json` 裡某個 hook 條目(例如加 `"timeout": 5`)後重開 Codex:啟動時沒有任何提示,那個 hook 就不再執行;只有 `/hooks` 顯示「1 hook needs review before it can run」(PreToolUse:Installed 3 · Active 2 · Review 1)。只改 hook 腳本檔的內容則照常執行,不必重新信任。
+**根因**:Codex 0.167.0 把信任存在 `~/.codex/config.toml` 的 `[hooks.state."<repo>/.codex/hooks.json:<事件>:<群組序號>:<hook 序號>"] trusted_hash`;條目內容變了雜湊就對不上,序號變了鍵就對不上,兩者都讓那一條變回未信任。腳本檔不在雜湊裡。
+**繞法**:安裝器對 `.codex/hooks.json` 只在該事件的**最後**附加自己那一組,不重排、不改既有條目;自己那一條的指令字串固定,`update` 只換腳本內容。對使用者:hook 突然沒作用時,先在 Codex 開 `/hooks` 看有沒有 needs review。
+**佐證**:`docs/plans/tripwire-hook.probe.md` Q3(同一 session 對照:只改腳本 → 兩個 hook 都跑;改 h1 條目 → 只有 h2 跑,`/hooks` 顯示 Review 1)。只做了一次對照,沒重複;新加的 hook 在第一次開啟時有提示,所以「默默」只發生在改動之後。
+
+---
 name: mod-loader-static-rules
 type: gotcha
 status: active
