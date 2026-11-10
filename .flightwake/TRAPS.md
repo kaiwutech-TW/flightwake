@@ -5,6 +5,191 @@
 # 坑 Registry
 
 ---
+name: mod-loader-static-rules
+type: gotcha
+status: active
+tags: [mods, claude-code, plugin-loader, state, plugin, hooks]
+discovered: 2026-10-05
+confidence: confirmed
+paths: ["mods/flightwake/hooks/**", "mods/**"]
+---
+
+**摘要**:mod 的模組被載入器靜態拒絕:`$.state` 的參照必須是字面值,`$` 不能傳進 import 來的函式。2026-11-10 壓實由 [[mod-state-refs-must-be-literal]]、[[mod-dollar-cannot-cross-import]] 合併,原文照錄如下;各段的把握度以本條為準(取最低的那條)。
+
+**來源 [[mod-state-refs-must-be-literal]]**(confirmed,2026-10-05)
+**症狀**:`claude plugin validate` 失敗、整個外掛不載入(所有 plugin test 跟著失敗):`$.state.get takes a reference whose plugin and key are string literals ({ plugin: "p", key: "k" }, written there or in a const of this file; only id may be computed)`。觸發的寫法是共用 helper `get(key)` 再組 `{ plugin, key }`。
+**根因**:載入器靜態檢查每個 `$.state` 參照,plugin 與 key 必須是本檔裡的字面值(直接寫在呼叫處或本檔的 const),以便對照 `types/index.d.ts` 的契約;用變數組 key 一律拒絕。與 [[mod-dollar-cannot-cross-import]] 同屬載入器的靜態規則。
+**解法/繞法**:每個 key 宣告一個 `const X_REF = { plugin: 'flightwake-mod', key: '…' } as const`,呼叫處直接用。
+**佐證**:validate 錯誤訊息原文(Claude Code 2.1.289);改成字面 const 後 validate 通過、289 測試全過(commit c4d4f42 前後)
+
+**來源 [[mod-dollar-cannot-cross-import]]**(confirmed,2026-10-05)
+**症狀**:`claude plugin validate` / `claude plugin test` 拒載模組:`$ is passed to "fwContext", imported from "../lib/core": $ is followed only into a function declared in this same file, never across an import`;變體二:`"on" is passed to something other than a function named at the top of this file or imported from one of the module's own files`(把 `on` 放進表格再迴圈呼叫);變體三:`on("session.start") is registered twice without a matcher`(兩個功能模組各自 `on('session.start', hook)`——每個功能單獨測都過,合併後整個外掛不載入)。
+**根因**:Claude Code 2.1.289 的載入器靜態追蹤 `$` 與 `on`:`$` 只能在同檔宣告的函式間傳遞且一律寫成 `$.noun.event(...)`;`on` 只能直接傳給頂層具名或 import 的函式;同一外掛對同一事件**最多一個無 matcher 的註冊**(有 matcher 的不限,連重複的 matcher 也可以)。違反者整個 hooks 模組不載入(不是只跳過那個 hook)。
+**解法/繞法**:共用模組只放純函式;需要世界存取時,在功能檔內寫 `function ioOf($)` 回傳閉包物件(`{ read: (p) => $.fs.read(p), … }`)再傳給 import 的函式——閉包跨 import 可通過(validate 會顯示 `$.fs.read (via ioOf)`)。`register` 對每個功能逐行呼叫,不用表格迴圈。多個模組要掛同一事件時一律帶 matcher;要「全部都接」就寫空 matcher `on('session.start', {}, hook)`——實測 validate 通過、執行期每次都觸發。
+**佐證**:本分支 scratchpad 探針(同一模組改兩種寫法,validate 一拒一過,plugin test 一敗一過;重複註冊另以 5 種組合探針:無 matcher×2 拒、其餘皆過,空 matcher 兩個 hook 執行期都觸發);DECISIONS 2026-10-05 首條
+
+
+---
+name: mod-test-kit-limits
+type: gotcha
+status: active
+tags: [claude-code, mods, testing, fleet, permission, mod, tests]
+discovered: 2026-10-11
+confidence: confirmed
+paths: ["mods/flightwake/tests/fleet.test.ts", "mods/flightwake/tests/world.ts", "mods/flightwake/tests/**"]
+commands: ["claude plugin test"]
+---
+
+**摘要**:mod 測試 kit(`claude-code/testing`)和真引擎不同的地方:前置權限閘門、外掛查詢沒有 tool_use_id、沒有 `$.ui.close` 與 `$.state` 寫入。2026-11-10 壓實由 [[plugin-test-kit-denies-unanswered-permission-request]]、[[plugin-tool-check-cannot-carry-tool-use-id-in-tests]]、[[mod-test-kit-no-ui-close-no-state-noun]] 合併,原文照錄如下;各段的把握度以本條為準(取最低的那條)。
+
+**來源 [[plugin-test-kit-denies-unanswered-permission-request]]**(confirmed,2026-10-26)
+**症狀**:`claude plugin test mods/flightwake` 在 Claude Code 2.1.310(子代理回報 2.1.309 相同)出現 25 個 fleet 測試失敗(13 permission、6 question/plan、4 parallel/ESC/寫入量/順序、1 reload、1 privacy),clean HEAD(`git archive HEAD`)同一組 25 個;2026-10-19 在 2.1.303 是 501/501。典型斷言:預期 `state: "blocked", why: "permission-dialog"`,實得 `state: "working", why: "unblocked:tool-done"`。
+**根因**(2026-11-10 由 2.1.321 型別確認,取代 10-26 的推測):測試 kit 的 `$.tool.call` 會**在呼叫開始前**自己跑一次掛上的 `tool.check`,「as for a background subagent」——`ask` 交給測試的 `classic.PermissionRequest` 回答,沒人答就是 deny(`claude-code.d.ts` 的 `EngineToolCall` 文件:「a test's `classic.PermissionRequest` answers an ask; no test plays a person's yes」;另一處:「Where nobody can be asked it is a deny」;`reference.md` 同義)。fleet 測試的 `on('tool.check')` 對**每一個** check 都答 `ask`,所以 kit 的前置閘門就把呼叫拒掉,底層 `tool.call` 根本沒跑到(`k.held` 空 → `k.held.splice(i, 1)[0].release` TypeError)。這是測試環境的改變;互動 session 的引擎行為沒有因此被證明改變,F7 的 blocked 仍需真機驗。和 [[permission-request-has-no-tool-use-id]]、[[plugin-tool-check-cannot-carry-tool-use-id-in-tests]] 不同:那兩條是引擎輸入欄位。
+**解法/繞法**:測試的 `tool.check` hook 對 kit 的前置閘門答 `allow`,只有底層 `tool.call` 自己 raise 的那個 check(測試扮演的權限對話框)才給 `k.verdict`;用內容鍵(工具、id、input 的 JSON)辨認,因為 hook 拿到的是複本,物件同一性比不到(`mods/flightwake/tests/fleet.test.ts` 的 `raising` 與 `checkKey`)。2.1.321 下 546/546。以後測試 kit 再變,先 grep 當版 `claude-code.d.ts` 的 `EngineToolCall` 與 `reference.md` 的測試段落,不要先寫探針。
+**佐證**:2026-10-26 探針(toast 顯示 `PROBE check {decision:ask}` → `Permission to use Bash has been denied`);2026-11-10 2.1.321 修正前 521/25(同一組)、只分開閘門 529/17(物件同一性失敗)、改內容鍵 546/0。record [[261026-traps-similar-and-trips]]
+
+**來源 [[plugin-tool-check-cannot-carry-tool-use-id-in-tests]]**(confirmed,2026-10-11)
+**症狀**:測試想模擬「引擎把 call 交給模式的決策者」(`tool.check` 帶 `tool_use_id`),從外掛自己的 `$.tool.check` 查詢發出去的永遠沒有 id,K1 不記、R1 永遠配不到,看起來像配對邏輯壞了。另:測試的 `on` 同一事件只能註冊一次(第二次整個 hooks module 不載入:`on("clock.after") registered twice`),所以不能在 `mock.clock` 之外再掛一個 `clock.after`。
+**根因**:只有引擎(也就是測試的 `$`)raise 的 `tool.check` 會帶 id;外掛的 `$.tool.check` 是查詢,沒有 call 可對。測試 kit 每個事件只收一個測試 hook。
+**解法/繞法**:在最底層的測試 `tool.call` hook 裡,用測試自己的 `$`(closure 抓住的引擎 `$`)raise `$.tool.check({ tool, input, tool_use_id })` 與 `$.classic.PermissionRequest(...)`;要改寫 mock 的行為(例如拒絕 after(0))就把包過的 `on` 傳給 `mock.clock`,在它註冊時包住 handler。
+**佐證**:fleet.test.ts 檔頭註解與 `boot()`(`onClock` 包裝、`isAfter0Refused`)
+
+**來源 [[mod-test-kit-no-ui-close-no-state-noun]]**(confirmed,2026-10-11)
+**症狀**:mod 測試裡寫 `$.ui.close({ id, origin: { kind: 'person' } })` 或 `$.state.set(...)`,得到 `$.ui.close is not a function` / `undefined is not an object (evaluating '$.state.set')`。
+**根因**:`claude plugin test` 給測試的 `$` 只有 kit 自己的 `ui` 名詞(mount / render / press / input / select),沒有 close;也沒有 `state` 名詞(Claude Code 2.1.296)。因此「使用者手動關 pane」(`ui.close` origin person)無法從測試觸發。
+**解法/繞法**:要預放某個 `$.state` 值,就在測試裡自己掛 `on('state.get')` / `on('state.set')` 以 Map 回答(band.test.ts、panel.test.ts 的作法),session.start 之後再寫 Map。person 關閉的行為只能真機驗。
+**佐證**:[[261011-mod-side-panel]]
+
+
+---
+name: fleet-permission-event-quirks
+type: gotcha
+status: active
+tags: [mods, claude-code, permission, fleet, hooks, ui-render, state, clock]
+discovered: 2026-10-11
+confidence: confirmed
+paths: ["mods/flightwake/hooks/features/fleet.ts", "mods/flightwake/tests/fleet.test.ts"]
+---
+
+**摘要**:F7 判斷 blocked 時碰到的引擎行為:PermissionRequest 沒有 tool_use_id、render hook 裡不能寫 `$.state`。2026-11-10 壓實由 [[permission-request-has-no-tool-use-id]]、[[render-hook-state-set-refused-and-after-may-drop]] 合併,原文照錄如下;各段的把握度以本條為準(取最低的那條)。
+
+**來源 [[permission-request-has-no-tool-use-id]]**(confirmed,2026-10-11)
+**症狀**:F7 要知道「哪個 tool call 的權限對話框開著」,但 `classic.PermissionRequest` 的 `e` 沒有 `tool_use_id`,無法直接對到 `tool.call` 的那一筆;用工具名稱亂配會把別的 call 的對話框清掉(R2 PermissionDenied 用工具名稱 fallback 時,auto-mode classifier 拒絕的另一個 Bash 就清掉了開著的 Bash 對話框)。
+**根因**:引擎型別 `PermissionRequestHookInput = BaseHookInput & { tool_name; tool_input; permission_suggestions?; mcp_server? }`(claude-code.d.ts 2.1.289 第 7175 行),沒有 id;`PermissionDeniedHookInput` 反而必有 `tool_use_id`(第 7151 行)。另外 AskUserQuestion / ExitPlanMode 也走權限路徑(check 為 `ask`、會觸發 PermissionRequest),同一個 call 會先有 question/plan 證據、再來一個 permission。
+**解法/繞法**:`tool.check` 結果為 `ask` 時記下 `tool_use_id → tool`,PermissionRequest 再按工具名配「最舊、未配對、仍在飛行中」的那筆;配到的 key 若已有 question/plan 證據就保留它(kind 與 since 不變——since 是讀者的去重鍵);沒有任何同名 call 在飛行中就不設 blocked(那個 call 已結束,沒人會清)。PermissionDenied 只清自己 `tool_use_id` 的證據,不按工具名。
+**佐證**:fleet.test.ts「AskUserQuestion through the permission dialog as well」「PermissionDenied for another call」「a PermissionRequest for no running call」;F7 複審 2026-10-11 R1/R2 各條
+
+**來源 [[render-hook-state-set-refused-and-after-may-drop]]**(confirmed,2026-10-11)
+**症狀**:在 `ui.render`(ToolProgress)hook 裡更新 `$.state` 會被拒;改用 `$.clock.after(0, …)` 延後後,若用旗標「已排一個 after(0)」去重,一旦那次 after 被拒,旗標永遠不復位,之後所有清除都被吞掉,紀錄卡在 blocked(心跳還一直把它寫成新鮮的)。
+**根因**:d.ts:`$.state.set` 「Refused while a `ui.render` hook draws」(第 3303 行);`$.clock.after`「`fn` runs when it resolves, and never when a hook refuses it」(第 3349 行附近),而且回傳的 Timer 不會告訴你被拒了。
+**解法/繞法**:render 裡只改模組記憶體,寫入延到 `after(0)`;去重旗標要能被任何一次重新推導(`apply`)清掉,`after` 丟例外時也清;寫檔前若 `state === 'blocked'` 卻沒有證據就先重新推導(blocked 與 null 永不同時寫出);call 結束時發現同樣情況也重新推導。
+**佐證**:fleet.test.ts「a ToolProgress clear whose after(0) is refused」兩則(測試用包住 mock.clock 的 on 來拒絕 after(0))
+
+
+---
+name: mod-not-loaded-restart-or-trust
+type: gotcha
+status: active
+tags: [mods, claude-code, plugin-loader, install, doctor, session, plugin, trust, headless]
+discovered: 2026-10-05
+confidence: confirmed
+paths: ["bin/install.mjs", "docs/mod*.md", "mods/flightwake/**"]
+commands: ["npx flightwake init --mod", "npx flightwake update", "npx flightwake setup"]
+---
+
+**摘要**:mod 裝好了卻沒載入:正在跑的 session 要重開,`.claude/skills/` 下的 mod 要先信任資料夾(`claude -p` 不載)。2026-11-10 壓實由 [[mod-installed-into-running-session-is-invisible-until-restart]]、[[project-skills-dir-mod-needs-trust]] 合併,原文照錄如下;各段的把握度以本條為準(取最低的那條)。
+
+**來源 [[mod-installed-into-running-session-is-invisible-until-restart]]**(confirmed,2026-10-09)
+**症狀**:在本 repo `update`/`init --mod` 裝好 `.claude/skills/flightwake-mod/` 後,`doctor` 回報 `ok flightwake-mod v0.1.0`、`Claude Code 2.1.294(mod 需要 2.1.287 以上)`、失敗 0,但正在用的 Claude Code session 裡什麼都沒變:沒有 `/fw-mod`、`/fw-log`,system prompt 沒有 STATE 快照,輸入框上方沒有 band——看起來像 mod 壞了。
+**根因**:hooks module 只在 Claude Code **程序啟動時**載入;`.claude/skills/` 不是熱監看的資料夾(只有 `~/.claude/dev-mods/<session>/` 與 `--plugin-dir` 會熱重載)。這次的 session 程序(pid 72962,`~/.claude/sessions/72962.json`)是 2026-10-04 以 2.1.289 啟動的,mod 2026-10-09 03:34 才裝進去;同一資料夾用新程序實跑(`claude -p --debug-file`,2.1.294)debug log 就有 `hooks module flightwake-mod@skills-dir loaded` 與 `plugin.register: flightwake-mod … admitted`。坐實:舊 session 無 `/fw-mod`、無快照段;2026-10-09 重開 session 後 `/fw-mod` 列出五項且 stateInject 回報「已在本 session 注入 STATE」——同一資料夾、同一安裝,只差程序重啟。
+**解法/繞法**:裝完 mod 要**重開 Claude Code session**(從 repo 根目錄、同一個已信任的資料夾),再跑 `/fw-mod` 確認。安裝器那一半已補(2026-10-11,安裝/升級流程修正這輪,b4db041):`printModNotes` 在 init / `update --mod` / setup 加裝 mod 時都印「已開著的 Claude Code 要結束、從 repo 根目錄重開」,setup 的 mod 列也寫明;`doctor` 那一半仍待補(它只說用 `/fw-mod` 確認有載入,沒提重開)。另注意:就算載入了,band 在 `statusline.mjs` 是生效中狀態列時刻意安靜,所以「看不到東西」不等於沒載入——`/fw-mod` 才是判準。
+**佐證**:`~/.claude/sessions/72962.json`(procStart Oct 4 16:22、version 2.1.289);`.claude/skills/flightwake-mod/hooks` mtime Oct 9 03:34;scratchpad `dbg.txt` 第 452、459 行(2026-10-09 headless 實跑);plugin-authoring skill 說明「hot reloading」只及於 dev-mods 與 `--plugin-dir`
+**補充(2026-10-11,2.1.296)**:反向情況不成立——**已載入的 mod 檔案被改動會在同一個 session 內重新載入**。證據:本 session 程序(pid 17296)是 2026-10-10 23:34 以 `claude --resume` 啟動,workflow agent 於 2026-10-11 14:59–15:02 用 `node bin/cli.mjs update` 覆寫 `.claude/skills/flightwake-mod/hooks/*`,F7 fleet 14:59:51 就開始寫 `~/.flightwake/sessions/<本 session id>.json`,使用者之後跑 `/fw-mod` 看到 v0.2.0 七個開關含 fleet 行,全程沒重開。副作用:module memory 歸零(`/fw-mod` 的 spend 列顯示「token 不明」)。所以「要重開」只確定適用於**新裝**的 mod 資料夾;升級既有 mod 後先用 `npx flightwake fleet` 或 `/fw-mod` 看是否已自動重載。使用者層記憶 `claude-code-plugins-load-at-process-start` 已同步。
+
+**來源 [[project-skills-dir-mod-needs-trust]]**(confirmed,2026-10-05)
+**症狀**:mod 放在暫存 repo 的 `.claude/skills/flightwake-mod/`,`claude -p` 跑起來完全沒載入(沒有系統提示區段、沒有 /fw-log,debug log 也沒提到它);同一資料夾以互動模式接受工作區信任後,立刻以 `flightwake-mod@skills-dir` 載入。
+**根因**:專案 skills 目錄的外掛只在資料夾**已受信任**時採用;`-p` 跳過信任對話框但不等於授予信任(與 Astra 審查的警告一致)。只觀察一組對照(同資料夾、信任前 -p 不載、信任後互動載入),2026-10-19 補上信任後 `-p` 的對照,見佐證。
+**解法/繞法**:驗收真機載入要用互動 session 並接受信任(或改 `--plugin-dir` 驗功能,但那驗不到 skills-dir 路徑);文件與安裝器要說明「首次需信任此資料夾」。
+**佐證**:records/261005-flightwake-mod.md「真機載入」(load-debug.log vs load-debug4.log);2026-10-19 複驗(Claude Code 2.1.303,同版 mod):未信任暫存 repo 的 `claude -p` debug log 完全沒有 flightwake-mod(4 個專案 skill 照常載入),已信任的本 repo `claude -p` 有 `hooks module flightwake-mod@skills-dir loaded` 與 `plugin.register … admitted`;`-p` 跑完也沒有替暫存資料夾寫入信任紀錄
+
+
+---
+name: codex-project-trust
+type: gotcha
+status: active
+tags: [codex, trust, subagents, config, orca, side-effect]
+discovered: 2026-09-28
+confidence: probable
+paths: ["bin/roles.mjs", "bin/install.mjs"]
+commands: ["orca orchestration worker-start"]
+---
+
+**摘要**:Codex 的專案信任清單:要精確路徑才算數,而 Orca 的 worker-start 會自己寫進去。2026-11-10 壓實由 [[codex-project-trust-exact-path]]、[[orca-worker-start-writes-codex-trust]] 合併,原文照錄如下;各段的把握度以本條為準(取最低的那條)。
+
+**來源 [[codex-project-trust-exact-path]]**(confirmed,2026-09-28)
+**症狀**:repo 有有效的 `.codex/agents/fw-x.toml`,Codex 的 spawn 工具卻沒有 `agent_type` 欄位,叫不出自訂角色;`~/` 明明已在 `~/.codex/config.toml` 設成 trusted。
+**根因**:專案層(`.codex/`)只在**該 git repo 的精確路徑**受信任時才載入;上層目錄受信任不涵蓋底下新建的 git repo(`codex app-server` 的 `config/read` 顯示 project layer disabledReason 要求精確路徑)。另外 `-c 'projects."/path".trust_level="trusted"'` 這種 dotted 寫法在 0.157.1 會把引號留進 key,等於沒設;單次 override 要用 inline table:`-c 'projects={"/path"={trust_level="trusted"}}'`。
+**解法/繞法**:確認實際工作的 repo(含 Orca worktree 路徑,例如 `workspaces/<repo>/<name>`)各自在信任清單裡;驗收看 agent_type 清單與一次真的 spawn,不是看 TOML 存在。
+**佐證**:docs/plans/roles-v2.codex-probe.md §1.1(A/B/C 對照,threads 01a0e3a0… / 01a0e3a1… / 01a0e3a2…)
+
+**來源 [[orca-worker-start-writes-codex-trust]]**(probable,2026-09-28)
+**症狀**:用 `orca orchestration worker-start --agent codex` 在一個未受信任的 repo 啟動 worker 後,`~/.codex/config.toml` 多了 `[projects."<repo>"] trust_level = "trusted"`。
+**根因**:推測是 Orca 的 worker 啟動流程自動確認信任(worker 本身回報沒改設定);未追原始碼。
+**解法/繞法**:在暫存/測試 repo 用 worker-start 後,檢查並移除多出的信任項;不要宣稱 worker-start 零設定寫入。也因此 Orca 管理過的 repo 通常已受信任,而沒跑過 worker 的 worktree 路徑可能沒有。
+**佐證**:docs/plans/roles-v2.codex-probe.md §4(Run run_2519f2f6a349,已比對 SHA-256 復原)
+
+
+---
+name: codex-exec-pitfalls
+type: gotcha
+status: active
+tags: [codex, hooks, testing, stdin, automation]
+discovered: 2026-09-02
+confidence: probable
+commands: ["codex exec"]
+---
+
+**摘要**:`codex exec` 的兩個坑:不載入專案 hook(不能拿來驗 hook)、沒接 stdin 會永久卡住。2026-11-10 壓實由 [[codex-exec-project-hooks-not-loaded]]、[[codex-exec-stdin-hang]] 合併,原文照錄如下;各段的把握度以本條為準(取最低的那條)。
+
+**來源 [[codex-exec-project-hooks-not-loaded]]**(probable,2026-09-27)
+**症狀**:在暫存 repo 放 `.codex/hooks.json`(SessionStart/Stop/UserPromptSubmit 探針 hook,寫檔留痕),用 `codex exec` 跑,探針檔始終沒有產生。加 `--dangerously-bypass-hook-trust`、`-c 'projects."<path>".trust_level="trusted"'`、放在已信任的 `~` 底下、補空的 `.codex/config.toml`,全都一樣。輸出裡的 `hook: SessionStart` 行是全域 `~/.codex/hooks.json`(Orca 的 hook)觸發的,不是專案 hook。
+**根因**:Codex 只執行有持久化 hook 信任的專案 hook。0.163 的 `codex exec --help` 對 `--dangerously-bypass-hook-trust` 的說明是「Run enabled hooks without requiring persisted hook trust」;新專案的 hook 沒有信任紀錄,所以不跑。但 0.157 時加這個旗標也沒跑,0.163 加旗標的情況未驗。真實 repo 的 Stop hook 是在 TUI 裡被信任過(`~/.codex/config.toml` 的 `[hooks.state]` 有 trusted_hash)才生效。
+**解法/繞法**:不要用 `codex exec` 驗證新的專案 hook,改在 TUI 開新對話、信任 hook 後再驗。需要「/clear 後仍在」的內容,優先寫進 `AGENTS.md`,它不需要信任就會載入。實測 Codex 0.157.0 只讀 AGENTS.md、不讀 CLAUDE.md,Claude Code 2.1.283 則相反。
+**佐證**:2026-09-27 roles 調研,Codex 0.157.0;同一個 hook 腳本在 Claude Code `claude -p` 下的 SessionStart 注入實測成功;2026-10-19 複驗(Codex 0.163.0):暫存 repo 放 SessionStart/UserPromptSubmit/Stop 探針,`codex exec` 跑完探針檔沒產生,畫面上的 hook 行全來自全域 `~/.codex/hooks.json`;`~/.codex/config.toml` 前後雜湊相同。加旗標的重跑被 Claude Code auto mode 擋下,未做
+
+**來源 [[codex-exec-stdin-hang]]**(confirmed,2026-09-02)
+**症狀**:從腳本/agent 的 Bash 呼叫 `codex exec '<prompt>'`,印出 `Reading additional input from stdin...` 後永久卡住,零 CPU、不開 session、無錯誤。
+**根因**:`codex exec` 在 stdin 不是 TTY 時會**額外**讀 stdin 到 EOF 當補充輸入(即使已給 prompt 參數);agent 的 shell stdin 是不會關的 pipe,EOF 永遠不來。與 [[hook-stdin-tty-block]] 同一家族,只是這次卡的是 Codex 本體而非我們的 hook。
+**解法/繞法**:非互動呼叫一律 `codex exec … </dev/null`(或 `echo | codex exec …`)。macOS 沒有 `timeout` 指令,別指望它救場。
+**佐證**:[[260902-codex-gemini-native]](真機驗證第一次卡 9 分鐘 0% CPU;加 `</dev/null` 後同指令 100 秒內完成——開關對照一次;第二次 Stop-hook 測試同法直接過,合計兩次)
+
+
+---
+name: codex-custom-agent-limits
+type: gotcha
+status: active
+tags: [codex, subagents, toml, sandbox, security]
+discovered: 2026-09-27
+confidence: probable
+paths: ["bin/roles.mjs", "docs/roles*.md"]
+---
+
+**摘要**:Codex 自訂 agent(`.codex/agents/*.toml`):不認得的欄位會讓角色消失,`sandbox_mode` 不保證被強制。2026-11-10 壓實由 [[codex-agent-toml-unknown-field-drops-role]]、[[codex-custom-agent-sandbox-not-enforced]] 合併,原文照錄如下;各段的把握度以本條為準(取最低的那條)。
+
+**來源 [[codex-agent-toml-unknown-field-drops-role]]**(confirmed,2026-09-28)
+**症狀**:`.codex/agents/*.toml` 加了一個 Codex 不認得的欄位(如 `disallowedTools`、`permissionMode`、任意自訂 key)或型別錯誤,該角色從選單消失;主命令照樣 exit 0。
+**根因**:角色定義嚴格解析,未知欄位/型別錯誤 → 整份角色被忽略(JSONL 有 `Ignoring malformed agent role definition`),不是只忽略那一欄。
+**解法/繞法**:產生器只寫 `name` / `description` / `developer_instructions`;ownership 等額外資料放 TOML 註解或外部 manifest。不要把 Claude 的欄位搬過來。
+**佐證**:docs/plans/roles-v2.codex-probe.md §2.1(Codex 0.157.1,逐欄對照)
+
+**來源 [[codex-custom-agent-sandbox-not-enforced]]**(probable,2026-09-27)
+**症狀**:`.codex/agents/<id>.toml` 設 `sandbox_mode = "read-only"`,主 session 以 workspace-write 啟動並成功衍生該 agent(子 rollout 帶有定義裡的 developer_instructions),子 agent 用 shell 與 apply_patch 都**寫檔成功**;子 rollout 的 effective `sandbox_policy.type` 是 workspace-write。
+**根因**:未完全確定。推測自訂 agent 檔只是一層 config,衍生時父 turn 的 live permission 會重套(官方 Subagents 文件有此描述),因此不能當成優先於 runtime 的政策。現象本身已在一個隔離環境重現(Codex 0.157.1);TUI、Orca worker、既有使用者設定未逐一驗證。
+**解法/繞法**:不要把「產生了 read-only 的 agent 定義檔」當成強制唯讀。需要唯讀時,本次同環境實測以唯讀啟動**整個 session**(`codex exec -s read-only`)可擋 shell 與 apply_patch;其他方式與 MCP 遠端副作用未驗證。文件與產出若有權限意圖,只能標 guidance。
+**佐證**:2026-09-27 roles v2 審查,Codex 暫存實測(父 thread 01a0e395-d1a8…、子 thread 01a0e395-f61e…),見 docs/plans/roles-v2.review-codex.md 第二節
+
+
+---
 name: claude-code-toast-40-columns-3-lines
 type: gotcha
 status: active
@@ -22,7 +207,7 @@ paths: ["mods/flightwake/hooks/lib/fleet.ts"]
 ---
 name: plugin-test-kit-denies-unanswered-permission-request
 type: gotcha
-status: active
+status: superseded
 tags: [claude-code, mods, testing, fleet, permission]
 discovered: 2026-10-26
 confidence: confirmed
@@ -30,6 +215,7 @@ paths: ["mods/flightwake/tests/fleet.test.ts"]
 commands: ["claude plugin test"]
 ---
 
+**已併入** [[mod-test-kit-limits]](2026-11-10 壓實)。
 **症狀**:`claude plugin test mods/flightwake` 在 Claude Code 2.1.310(子代理回報 2.1.309 相同)出現 25 個 fleet 測試失敗(13 permission、6 question/plan、4 parallel/ESC/寫入量/順序、1 reload、1 privacy),clean HEAD(`git archive HEAD`)同一組 25 個;2026-10-19 在 2.1.303 是 501/501。典型斷言:預期 `state: "blocked", why: "permission-dialog"`,實得 `state: "working", why: "unblocked:tool-done"`。
 **根因**(2026-11-10 由 2.1.321 型別確認,取代 10-26 的推測):測試 kit 的 `$.tool.call` 會**在呼叫開始前**自己跑一次掛上的 `tool.check`,「as for a background subagent」——`ask` 交給測試的 `classic.PermissionRequest` 回答,沒人答就是 deny(`claude-code.d.ts` 的 `EngineToolCall` 文件:「a test's `classic.PermissionRequest` answers an ask; no test plays a person's yes」;另一處:「Where nobody can be asked it is a deny」;`reference.md` 同義)。fleet 測試的 `on('tool.check')` 對**每一個** check 都答 `ask`,所以 kit 的前置閘門就把呼叫拒掉,底層 `tool.call` 根本沒跑到(`k.held` 空 → `k.held.splice(i, 1)[0].release` TypeError)。這是測試環境的改變;互動 session 的引擎行為沒有因此被證明改變,F7 的 blocked 仍需真機驗。和 [[permission-request-has-no-tool-use-id]]、[[plugin-tool-check-cannot-carry-tool-use-id-in-tests]] 不同:那兩條是引擎輸入欄位。
 **解法/繞法**:測試的 `tool.check` hook 對 kit 的前置閘門答 `allow`,只有底層 `tool.call` 自己 raise 的那個 check(測試扮演的權限對話框)才給 `k.verdict`;用內容鍵(工具、id、input 的 JSON)辨認,因為 hook 拿到的是複本,物件同一性比不到(`mods/flightwake/tests/fleet.test.ts` 的 `raising` 與 `checkKey`)。2.1.321 下 546/546。以後測試 kit 再變,先 grep 當版 `claude-code.d.ts` 的 `EngineToolCall` 與 `reference.md` 的測試段落,不要先寫探針。
@@ -57,6 +243,7 @@ status: active
 tags: [orca, claude-code, mods, testing, panel]
 discovered: 2026-10-19
 confidence: probable
+commands: ["orca terminal send"]
 ---
 
 **症狀**:想用 `orca terminal send --text $'\e[<0;C;RM\e[<0;C;Rm'` 模擬點擊側邊面板的按鈕來真機驗證;一次「跳過去」有效,之後的點擊沒觸發按鈕,放開序列 `\e[<0;166;20m` 以文字留在 Claude Code 輸入框,接著送的 `/exit` 變成一般訊息送給模型。
@@ -83,7 +270,7 @@ commands: ["wrangler pages project create"]
 ---
 name: init-flags-on-private-install-drop-private
 type: gotcha
-status: active
+status: superseded
 tags: [install, private, cli, hints]
 discovered: 2026-10-11
 confidence: confirmed
@@ -91,6 +278,7 @@ paths: ["bin/install.mjs", "bin/cli.mjs", "bin/setup.mjs", "bin/doctor.mjs"]
 commands: ["npx flightwake init"]
 ---
 
+**已修好並有測試**(2026-11-10 壓實):安裝器對已安裝的 repo 只提示 `update --<flag>`,smoke 46.6 守著這個行為。
 **症狀**:`--private` 安裝(`git status` 乾淨)上照著提示跑 `npx flightwake init --statusline`,`git status --porcelain` 出現 `?? .claude/`——共用、會被 commit 的 `.claude/settings.json` 被寫出來,隱私安裝悄悄變成一半共用。
 **根因**:`resolveOptions` 只在 update 時繼承既有的 private(`private: flags.private || (update && det.private)`),init 不帶 `--private` 就是共用安裝。任何對既有安裝說「跑 init 加某旗標」的提示(儀表提示、語言提示、非 TTY 的 setup 說明、覆蓋手改警告、doctor 的不一致提示)都會把 private 丟掉。
 **解法/繞法**:對已安裝的 repo 一律提示 `npx flightwake update --<flag>` / `update --lang=` / `update --agents=` 與 `roles install`(update 沿用 private/儀表/profile/語言);init 的例子只給全新 repo。smoke 46.6 驗 private 安裝上非 TTY setup 與覆蓋警告的輸出不含 `init --`。
@@ -114,13 +302,14 @@ paths: ["bin/install.mjs"]
 ---
 name: permission-request-has-no-tool-use-id
 type: gotcha
-status: active
+status: superseded
 tags: [mods, claude-code, permission, fleet, hooks]
 discovered: 2026-10-11
 confidence: confirmed
 paths: ["mods/flightwake/hooks/features/fleet.ts", "mods/flightwake/tests/fleet.test.ts"]
 ---
 
+**已併入** [[fleet-permission-event-quirks]](2026-11-10 壓實)。
 **症狀**:F7 要知道「哪個 tool call 的權限對話框開著」,但 `classic.PermissionRequest` 的 `e` 沒有 `tool_use_id`,無法直接對到 `tool.call` 的那一筆;用工具名稱亂配會把別的 call 的對話框清掉(R2 PermissionDenied 用工具名稱 fallback 時,auto-mode classifier 拒絕的另一個 Bash 就清掉了開著的 Bash 對話框)。
 **根因**:引擎型別 `PermissionRequestHookInput = BaseHookInput & { tool_name; tool_input; permission_suggestions?; mcp_server? }`(claude-code.d.ts 2.1.289 第 7175 行),沒有 id;`PermissionDeniedHookInput` 反而必有 `tool_use_id`(第 7151 行)。另外 AskUserQuestion / ExitPlanMode 也走權限路徑(check 為 `ask`、會觸發 PermissionRequest),同一個 call 會先有 question/plan 證據、再來一個 permission。
 **解法/繞法**:`tool.check` 結果為 `ask` 時記下 `tool_use_id → tool`,PermissionRequest 再按工具名配「最舊、未配對、仍在飛行中」的那筆;配到的 key 若已有 question/plan 證據就保留它(kind 與 since 不變——since 是讀者的去重鍵);沒有任何同名 call 在飛行中就不設 blocked(那個 call 已結束,沒人會清)。PermissionDenied 只清自己 `tool_use_id` 的證據,不按工具名。
@@ -129,13 +318,14 @@ paths: ["mods/flightwake/hooks/features/fleet.ts", "mods/flightwake/tests/fleet.
 ---
 name: render-hook-state-set-refused-and-after-may-drop
 type: gotcha
-status: active
+status: superseded
 tags: [mods, claude-code, ui-render, state, clock]
 discovered: 2026-10-11
 confidence: confirmed
 paths: ["mods/flightwake/hooks/features/fleet.ts", "mods/flightwake/tests/fleet.test.ts"]
 ---
 
+**已併入** [[fleet-permission-event-quirks]](2026-11-10 壓實)。
 **症狀**:在 `ui.render`(ToolProgress)hook 裡更新 `$.state` 會被拒;改用 `$.clock.after(0, …)` 延後後,若用旗標「已排一個 after(0)」去重,一旦那次 after 被拒,旗標永遠不復位,之後所有清除都被吞掉,紀錄卡在 blocked(心跳還一直把它寫成新鮮的)。
 **根因**:d.ts:`$.state.set` 「Refused while a `ui.render` hook draws」(第 3303 行);`$.clock.after`「`fn` runs when it resolves, and never when a hook refuses it」(第 3349 行附近),而且回傳的 Timer 不會告訴你被拒了。
 **解法/繞法**:render 裡只改模組記憶體,寫入延到 `after(0)`;去重旗標要能被任何一次重新推導(`apply`)清掉,`after` 丟例外時也清;寫檔前若 `state === 'blocked'` 卻沒有證據就先重新推導(blocked 與 null 永不同時寫出);call 結束時發現同樣情況也重新推導。
@@ -144,7 +334,7 @@ paths: ["mods/flightwake/hooks/features/fleet.ts", "mods/flightwake/tests/fleet.
 ---
 name: classic-hook-empty-matcher-accepted
 type: constraint
-status: active
+status: superseded
 tags: [mods, claude-code, plugin-loader, classic-hooks]
 discovered: 2026-10-11
 confidence: confirmed
@@ -152,6 +342,7 @@ paths: ["mods/flightwake/hooks/features/fleet.ts"]
 commands: ["claude plugin validate mods/flightwake"]
 ---
 
+**已不需要**(2026-11-10 壓實):這條記的是「可以這樣寫」,不是坑;`claude plugin validate mods/flightwake` 會擋下不被接受的寫法。
 **症狀**:不確定 `on('classic.PermissionRequest', {}, hook)` 這種在 classic 事件上用空 matcher 的寫法載入器收不收(spec §6 要求若被拒就改成不帶 matcher 並記錄)。
 **根因**:無——實測接受。
 **解法/繞法**:F7 的 `classic.SessionStart` / `classic.PermissionRequest` / `classic.PermissionDenied` 都用 `{}`。`claude plugin validate mods/flightwake` 通過(2026-10-11,2.1.289 型別),`claude plugin test` 實際載入整個 hooks module 並觸發這三個事件(fleet.test.ts)。若日後 validate 拒絕,因為每個事件只有 F7 一個註冊,可以直接改成不帶 matcher。
@@ -160,13 +351,14 @@ commands: ["claude plugin validate mods/flightwake"]
 ---
 name: plugin-tool-check-cannot-carry-tool-use-id-in-tests
 type: gotcha
-status: active
+status: superseded
 tags: [mods, claude-code, testing, permission]
 discovered: 2026-10-11
 confidence: confirmed
 paths: ["mods/flightwake/tests/fleet.test.ts", "mods/flightwake/tests/world.ts"]
 ---
 
+**已併入** [[mod-test-kit-limits]](2026-11-10 壓實)。
 **症狀**:測試想模擬「引擎把 call 交給模式的決策者」(`tool.check` 帶 `tool_use_id`),從外掛自己的 `$.tool.check` 查詢發出去的永遠沒有 id,K1 不記、R1 永遠配不到,看起來像配對邏輯壞了。另:測試的 `on` 同一事件只能註冊一次(第二次整個 hooks module 不載入:`on("clock.after") registered twice`),所以不能在 `mock.clock` 之外再掛一個 `clock.after`。
 **根因**:只有引擎(也就是測試的 `$`)raise 的 `tool.check` 會帶 id;外掛的 `$.tool.check` 是查詢,沒有 call 可對。測試 kit 每個事件只收一個測試 hook。
 **解法/繞法**:在最底層的測試 `tool.call` hook 裡,用測試自己的 `$`(closure 抓住的引擎 `$`)raise `$.tool.check({ tool, input, tool_use_id })` 與 `$.classic.PermissionRequest(...)`;要改寫 mock 的行為(例如拒絕 after(0))就把包過的 `on` 傳給 `mock.clock`,在它註冊時包住 handler。
@@ -175,7 +367,7 @@ paths: ["mods/flightwake/tests/fleet.test.ts", "mods/flightwake/tests/world.ts"]
 ---
 name: mod-installed-into-running-session-is-invisible-until-restart
 type: gotcha
-status: active
+status: superseded
 tags: [mods, claude-code, plugin-loader, install, doctor, session]
 discovered: 2026-10-09
 confidence: confirmed
@@ -183,6 +375,7 @@ paths: ["bin/install.mjs", "docs/mod*.md", "mods/flightwake/**"]
 commands: ["npx flightwake init --mod", "npx flightwake update", "npx flightwake setup"]
 ---
 
+**已併入** [[mod-not-loaded-restart-or-trust]](2026-11-10 壓實)。
 **症狀**:在本 repo `update`/`init --mod` 裝好 `.claude/skills/flightwake-mod/` 後,`doctor` 回報 `ok flightwake-mod v0.1.0`、`Claude Code 2.1.294(mod 需要 2.1.287 以上)`、失敗 0,但正在用的 Claude Code session 裡什麼都沒變:沒有 `/fw-mod`、`/fw-log`,system prompt 沒有 STATE 快照,輸入框上方沒有 band——看起來像 mod 壞了。
 **根因**:hooks module 只在 Claude Code **程序啟動時**載入;`.claude/skills/` 不是熱監看的資料夾(只有 `~/.claude/dev-mods/<session>/` 與 `--plugin-dir` 會熱重載)。這次的 session 程序(pid 72962,`~/.claude/sessions/72962.json`)是 2026-10-04 以 2.1.289 啟動的,mod 2026-10-09 03:34 才裝進去;同一資料夾用新程序實跑(`claude -p --debug-file`,2.1.294)debug log 就有 `hooks module flightwake-mod@skills-dir loaded` 與 `plugin.register: flightwake-mod … admitted`。坐實:舊 session 無 `/fw-mod`、無快照段;2026-10-09 重開 session 後 `/fw-mod` 列出五項且 stateInject 回報「已在本 session 注入 STATE」——同一資料夾、同一安裝,只差程序重啟。
 **解法/繞法**:裝完 mod 要**重開 Claude Code session**(從 repo 根目錄、同一個已信任的資料夾),再跑 `/fw-mod` 確認。安裝器那一半已補(2026-10-11,安裝/升級流程修正這輪,b4db041):`printModNotes` 在 init / `update --mod` / setup 加裝 mod 時都印「已開著的 Claude Code 要結束、從 repo 根目錄重開」,setup 的 mod 列也寫明;`doctor` 那一半仍待補(它只說用 `/fw-mod` 確認有載入,沒提重開)。另注意:就算載入了,band 在 `statusline.mjs` 是生效中狀態列時刻意安靜,所以「看不到東西」不等於沒載入——`/fw-mod` 才是判準。
@@ -192,13 +385,14 @@ commands: ["npx flightwake init --mod", "npx flightwake update", "npx flightwake
 ---
 name: force-color-colours-piped-node-output
 type: gotcha
-status: active
+status: superseded
 tags: [test, smoke, node, environment, color]
 discovered: 2026-10-05
 confidence: confirmed
 paths: ["test/smoke.sh"]
 ---
 
+**已由測試腳本處理**(2026-11-10 壓實):`test/smoke.sh` 開頭就 `unset FORCE_COLOR`。寫新的、會比對 node 輸出的腳本時仍要照做。
 **症狀**:`bash test/smoke.sh` 在第 4 節左右失敗:`❌ FAIL: 重跑後 Codex Stop hook 重複`,但 `.codex/hooks.json` 實際只有一個 hook;同一份程式先前一直全過。
 **根因**:環境裡有 `FORCE_COLOR`(這次是 `3`):node 連輸出到管道都上色,`node -e "console.log(1)"` 輸出 `ESC[33m1ESC[39m`(`od -c` 實看),所有拿 node 輸出做字串比對的斷言都會錯。
 **解法/繞法**:smoke 開頭 `unset FORCE_COLOR`(已加)。其他會比對 node 輸出的腳本同樣要清掉它;CI 若設 FORCE_COLOR 也會中。
@@ -224,13 +418,14 @@ paths: ["bin/setup.mjs"]
 ---
 name: mod-state-refs-must-be-literal
 type: gotcha
-status: active
+status: superseded
 tags: [mods, claude-code, plugin-loader, state]
 discovered: 2026-10-05
 confidence: confirmed
 paths: ["mods/flightwake/hooks/**"]
 ---
 
+**已併入** [[mod-loader-static-rules]](2026-11-10 壓實)。
 **症狀**:`claude plugin validate` 失敗、整個外掛不載入(所有 plugin test 跟著失敗):`$.state.get takes a reference whose plugin and key are string literals ({ plugin: "p", key: "k" }, written there or in a const of this file; only id may be computed)`。觸發的寫法是共用 helper `get(key)` 再組 `{ plugin, key }`。
 **根因**:載入器靜態檢查每個 `$.state` 參照,plugin 與 key 必須是本檔裡的字面值(直接寫在呼叫處或本檔的 const),以便對照 `types/index.d.ts` 的契約;用變數組 key 一律拒絕。與 [[mod-dollar-cannot-cross-import]] 同屬載入器的靜態規則。
 **解法/繞法**:每個 key 宣告一個 `const X_REF = { plugin: 'flightwake-mod', key: '…' } as const`,呼叫處直接用。
@@ -264,6 +459,8 @@ confidence: confirmed
 **根因**:未加引號的 heredoc 會做指令替換,flightwake 紀錄慣用的 `` `指令` `` 標記被當成要執行的指令;STATE 裡的 `` `npx flightwake update` `` 因此真的從 npm 抓已發佈版本、在當前目錄執行 update(寫 dogfood 副本與全域 registry)。
 **解法/繞法**:寫任何含反引號或 `$` 的文字時,heredoc 分隔字一律加引號(`<<'EOF'`),需要的變數改由環境變數傳入;或用 Write/Edit 工具。
 **佐證**:bash 手冊 Here Documents 一節(分隔字未加引號時內文做參數展開、指令替換、算術展開);本次實際發生於合併 commit 9274a09 之前(record 261005-integration)
+**無錨點的理由**(2026-11-10 壓實):這是寫任何含反引號文字時的 shell 習慣,不綁定特定檔案或指令;`/fw-trap` 的範本已改用加引號的 heredoc(smoke 47.5)。
+
 
 ---
 name: smoke-needs-python311-tomllib
@@ -314,12 +511,13 @@ paths: ["mods/**"]
 ---
 name: project-skills-dir-mod-needs-trust
 type: gotcha
-status: active
+status: superseded
 tags: [claude-code, mods, plugin, trust, headless]
 discovered: 2026-10-05
 confidence: confirmed
 ---
 
+**已併入** [[mod-not-loaded-restart-or-trust]](2026-11-10 壓實)。
 **症狀**:mod 放在暫存 repo 的 `.claude/skills/flightwake-mod/`,`claude -p` 跑起來完全沒載入(沒有系統提示區段、沒有 /fw-log,debug log 也沒提到它);同一資料夾以互動模式接受工作區信任後,立刻以 `flightwake-mod@skills-dir` 載入。
 **根因**:專案 skills 目錄的外掛只在資料夾**已受信任**時採用;`-p` 跳過信任對話框但不等於授予信任(與 Astra 審查的警告一致)。只觀察一組對照(同資料夾、信任前 -p 不載、信任後互動載入),2026-10-19 補上信任後 `-p` 的對照,見佐證。
 **解法/繞法**:驗收真機載入要用互動 session 並接受信任(或改 `--plugin-dir` 驗功能,但那驗不到 skills-dir 路徑);文件與安裝器要說明「首次需信任此資料夾」。
@@ -343,13 +541,14 @@ commands: ["bash test/smoke.sh"]
 ---
 name: mod-dollar-cannot-cross-import
 type: constraint
-status: active
+status: superseded
 tags: [claude-code, mods, plugin, hooks]
 discovered: 2026-10-05
 confidence: confirmed
 paths: ["mods/**"]
 ---
 
+**已併入** [[mod-loader-static-rules]](2026-11-10 壓實)。
 **症狀**:`claude plugin validate` / `claude plugin test` 拒載模組:`$ is passed to "fwContext", imported from "../lib/core": $ is followed only into a function declared in this same file, never across an import`;變體二:`"on" is passed to something other than a function named at the top of this file or imported from one of the module's own files`(把 `on` 放進表格再迴圈呼叫);變體三:`on("session.start") is registered twice without a matcher`(兩個功能模組各自 `on('session.start', hook)`——每個功能單獨測都過,合併後整個外掛不載入)。
 **根因**:Claude Code 2.1.289 的載入器靜態追蹤 `$` 與 `on`:`$` 只能在同檔宣告的函式間傳遞且一律寫成 `$.noun.event(...)`;`on` 只能直接傳給頂層具名或 import 的函式;同一外掛對同一事件**最多一個無 matcher 的註冊**(有 matcher 的不限,連重複的 matcher 也可以)。違反者整個 hooks 模組不載入(不是只跳過那個 hook)。
 **解法/繞法**:共用模組只放純函式;需要世界存取時,在功能檔內寫 `function ioOf($)` 回傳閉包物件(`{ read: (p) => $.fs.read(p), … }`)再傳給 import 的函式——閉包跨 import 可通過(validate 會顯示 `$.fs.read (via ioOf)`)。`register` 對每個功能逐行呼叫,不用表格迴圈。多個模組要掛同一事件時一律帶 matcher;要「全部都接」就寫空 matcher `on('session.start', {}, hook)`——實測 validate 通過、執行期每次都觸發。
@@ -358,12 +557,13 @@ paths: ["mods/**"]
 ---
 name: codex-project-trust-exact-path
 type: gotcha
-status: active
+status: superseded
 tags: [codex, trust, subagents, config]
 discovered: 2026-09-28
 confidence: confirmed
 ---
 
+**已併入** [[codex-project-trust]](2026-11-10 壓實)。
 **症狀**:repo 有有效的 `.codex/agents/fw-x.toml`,Codex 的 spawn 工具卻沒有 `agent_type` 欄位,叫不出自訂角色;`~/` 明明已在 `~/.codex/config.toml` 設成 trusted。
 **根因**:專案層(`.codex/`)只在**該 git repo 的精確路徑**受信任時才載入;上層目錄受信任不涵蓋底下新建的 git repo(`codex app-server` 的 `config/read` 顯示 project layer disabledReason 要求精確路徑)。另外 `-c 'projects."/path".trust_level="trusted"'` 這種 dotted 寫法在 0.157.1 會把引號留進 key,等於沒設;單次 override 要用 inline table:`-c 'projects={"/path"={trust_level="trusted"}}'`。
 **解法/繞法**:確認實際工作的 repo(含 Orca worktree 路徑,例如 `workspaces/<repo>/<name>`)各自在信任清單裡;驗收看 agent_type 清單與一次真的 spawn,不是看 TOML 存在。
@@ -372,12 +572,13 @@ confidence: confirmed
 ---
 name: codex-agent-toml-unknown-field-drops-role
 type: gotcha
-status: active
+status: superseded
 tags: [codex, subagents, toml]
 discovered: 2026-09-28
 confidence: confirmed
 ---
 
+**已併入** [[codex-custom-agent-limits]](2026-11-10 壓實)。
 **症狀**:`.codex/agents/*.toml` 加了一個 Codex 不認得的欄位(如 `disallowedTools`、`permissionMode`、任意自訂 key)或型別錯誤,該角色從選單消失;主命令照樣 exit 0。
 **根因**:角色定義嚴格解析,未知欄位/型別錯誤 → 整份角色被忽略(JSONL 有 `Ignoring malformed agent role definition`),不是只忽略那一欄。
 **解法/繞法**:產生器只寫 `name` / `description` / `developer_instructions`;ownership 等額外資料放 TOML 註解或外部 manifest。不要把 Claude 的欄位搬過來。
@@ -386,12 +587,13 @@ confidence: confirmed
 ---
 name: orca-worker-start-writes-codex-trust
 type: gotcha
-status: active
+status: superseded
 tags: [orca, codex, config, side-effect]
 discovered: 2026-09-28
 confidence: probable
 ---
 
+**已併入** [[codex-project-trust]](2026-11-10 壓實)。
 **症狀**:用 `orca orchestration worker-start --agent codex` 在一個未受信任的 repo 啟動 worker 後,`~/.codex/config.toml` 多了 `[projects."<repo>"] trust_level = "trusted"`。
 **根因**:推測是 Orca 的 worker 啟動流程自動確認信任(worker 本身回報沒改設定);未追原始碼。
 **解法/繞法**:在暫存/測試 repo 用 worker-start 後,檢查並移除多出的信任項;不要宣稱 worker-start 零設定寫入。也因此 Orca 管理過的 repo 通常已受信任,而沒跑過 worker 的 worktree 路徑可能沒有。
@@ -400,12 +602,13 @@ confidence: probable
 ---
 name: codex-custom-agent-sandbox-not-enforced
 type: gotcha
-status: active
+status: superseded
 tags: [codex, subagents, sandbox, security]
 discovered: 2026-09-27
 confidence: probable
 ---
 
+**已併入** [[codex-custom-agent-limits]](2026-11-10 壓實)。
 **症狀**:`.codex/agents/<id>.toml` 設 `sandbox_mode = "read-only"`,主 session 以 workspace-write 啟動並成功衍生該 agent(子 rollout 帶有定義裡的 developer_instructions),子 agent 用 shell 與 apply_patch 都**寫檔成功**;子 rollout 的 effective `sandbox_policy.type` 是 workspace-write。
 **根因**:未完全確定。推測自訂 agent 檔只是一層 config,衍生時父 turn 的 live permission 會重套(官方 Subagents 文件有此描述),因此不能當成優先於 runtime 的政策。現象本身已在一個隔離環境重現(Codex 0.157.1);TUI、Orca worker、既有使用者設定未逐一驗證。
 **解法/繞法**:不要把「產生了 read-only 的 agent 定義檔」當成強制唯讀。需要唯讀時,本次同環境實測以唯讀啟動**整個 session**(`codex exec -s read-only`)可擋 shell 與 apply_patch;其他方式與 MCP 遠端副作用未驗證。文件與產出若有權限意圖,只能標 guidance。
@@ -414,12 +617,13 @@ confidence: probable
 ---
 name: codex-exec-project-hooks-not-loaded
 type: gotcha
-status: active
+status: superseded
 tags: [codex, hooks, testing]
 discovered: 2026-09-27
 confidence: probable
 ---
 
+**已併入** [[codex-exec-pitfalls]](2026-11-10 壓實)。
 **症狀**:在暫存 repo 放 `.codex/hooks.json`(SessionStart/Stop/UserPromptSubmit 探針 hook,寫檔留痕),用 `codex exec` 跑,探針檔始終沒有產生。加 `--dangerously-bypass-hook-trust`、`-c 'projects."<path>".trust_level="trusted"'`、放在已信任的 `~` 底下、補空的 `.codex/config.toml`,全都一樣。輸出裡的 `hook: SessionStart` 行是全域 `~/.codex/hooks.json`(Orca 的 hook)觸發的,不是專案 hook。
 **根因**:Codex 只執行有持久化 hook 信任的專案 hook。0.163 的 `codex exec --help` 對 `--dangerously-bypass-hook-trust` 的說明是「Run enabled hooks without requiring persisted hook trust」;新專案的 hook 沒有信任紀錄,所以不跑。但 0.157 時加這個旗標也沒跑,0.163 加旗標的情況未驗。真實 repo 的 Stop hook 是在 TUI 裡被信任過(`~/.codex/config.toml` 的 `[hooks.state]` 有 trusted_hash)才生效。
 **解法/繞法**:不要用 `codex exec` 驗證新的專案 hook,改在 TUI 開新對話、信任 hook 後再驗。需要「/clear 後仍在」的內容,優先寫進 `AGENTS.md`,它不需要信任就會載入。實測 Codex 0.157.0 只讀 AGENTS.md、不讀 CLAUDE.md,Claude Code 2.1.283 則相反。
@@ -428,12 +632,13 @@ confidence: probable
 ---
 name: macos-mktemp-symlink-cwd-mismatch
 type: gotcha
-status: active
+status: superseded
 tags: [macos, testing, node, paths]
 discovered: 2026-08-11
 confidence: confirmed
 ---
 
+**已由測試腳本處理**(2026-11-10 壓實):`test/smoke.sh` 第 17 行就把 `$TMP` 正規化成實體路徑。寫新的測試腳本時仍要照做。
 **症狀**:測試在暫存 repo 裡把 `process.cwd()` 記下的路徑(如 registry 條目)拿去和 shell 的 `$TMP` 比對,比對永遠落空——兩邊看起來是同一個目錄。
 **根因**:macOS `mktemp -d` 回傳 `/var/folders/…`,而 `/var` 是 `/private/var` 的 symlink;bash 保留邏輯路徑,Node 的 `process.cwd()` 回實體路徑,字串永不相等。
 **解法/繞法**:測試腳本拿到 `$TMP` 後立刻 `TMP="$(cd "$TMP" && pwd -P)"` 正規化成實體路徑再往下用(smoke.sh 已內建)。任何「shell 路徑 vs Node cwd」的字串比對都適用本條。
@@ -462,6 +667,7 @@ status: active
 tags: [gh, github, multi-account]
 discovered: 2026-07-23
 confidence: probable
+commands: ["gh release", "gh auth", "git push"]
 ---
 
 **症狀**:`gh release create` 失敗說 "workflow scope may be required";或 `git push` 403 denied to 另一個帳號——明明這個 session 剛 `gh auth switch` 成功過。
@@ -476,6 +682,7 @@ status: active
 tags: [hooks, node, stdin]
 discovered: 2026-07-19
 confidence: confirmed
+paths: ["hooks/*.mjs"]
 ---
 
 **症狀**:hook/statusline 腳本手動執行(終端機直接跑、沒接 pipe)時永久卡住,無錯誤訊息。Node 26 下則可能直接丟 `EAGAIN: resource temporarily unavailable, read`,不卡;兩種都是讀不到。
@@ -490,6 +697,7 @@ status: active
 tags: [dogfooding, hooks, release]
 discovered: 2026-07-18
 confidence: confirmed
+paths: ["hooks/*.mjs", "skills/**", "mods/flightwake/hooks/**"]
 ---
 
 **症狀**:修了 statusline/hook 的 bug,本機儀表變正常,但發版後使用者拿到的還是舊行為(或反過來:改了源頭,本機看不到效果)。
@@ -513,12 +721,13 @@ discovered: {{YYYY-MM-DD}}
 ---
 name: codex-exec-stdin-hang
 type: trap
-status: active
+status: superseded
 tags: [codex, stdin, automation]
 discovered: 2026-09-02
 confidence: confirmed
 ---
 
+**已併入** [[codex-exec-pitfalls]](2026-11-10 壓實)。
 **症狀**:從腳本/agent 的 Bash 呼叫 `codex exec '<prompt>'`,印出 `Reading additional input from stdin...` 後永久卡住,零 CPU、不開 session、無錯誤。
 **根因**:`codex exec` 在 stdin 不是 TTY 時會**額外**讀 stdin 到 EOF 當補充輸入(即使已給 prompt 參數);agent 的 shell stdin 是不會關的 pipe,EOF 永遠不來。與 [[hook-stdin-tty-block]] 同一家族,只是這次卡的是 Codex 本體而非我們的 hook。
 **解法/繞法**:非互動呼叫一律 `codex exec … </dev/null`(或 `echo | codex exec …`)。macOS 沒有 `timeout` 指令,別指望它救場。
@@ -527,13 +736,14 @@ confidence: confirmed
 ---
 name: mod-test-kit-no-ui-close-no-state-noun
 type: gotcha
-status: active
+status: superseded
 tags: [claude-code, mod, tests]
 discovered: 2026-10-11
 confidence: confirmed
 paths: ["mods/flightwake/tests/**"]
 ---
 
+**已併入** [[mod-test-kit-limits]](2026-11-10 壓實)。
 **症狀**:mod 測試裡寫 `$.ui.close({ id, origin: { kind: 'person' } })` 或 `$.state.set(...)`,得到 `$.ui.close is not a function` / `undefined is not an object (evaluating '$.state.set')`。
 **根因**:`claude plugin test` 給測試的 `$` 只有 kit 自己的 `ui` 名詞(mount / render / press / input / select),沒有 close;也沒有 `state` 名詞(Claude Code 2.1.296)。因此「使用者手動關 pane」(`ui.close` origin person)無法從測試觸發。
 **解法/繞法**:要預放某個 `$.state` 值,就在測試裡自己掛 `on('state.get')` / `on('state.set')` 以 Map 回答(band.test.ts、panel.test.ts 的作法),session.start 之後再寫 Map。person 關閉的行為只能真機驗。
