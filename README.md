@@ -1,4 +1,4 @@
-<!-- Primary edition (English). Translations: README.zh-TW.md / README.zh-CN.md / README.ja.md — editing any edition obligates syncing the others. -->
+<!-- Primary edition (English). Translations: README.zh-TW.md (kept in sync) / README.zh-CN.md and README.ja.md (frozen at v0.17.0 since 2026-11-10, DECISIONS) — editing this edition obligates syncing zh-TW. -->
 # flightwake ✈️
 
 > **Records are the contrail your work naturally leaves behind — not a flight plan you must file before takeoff.**

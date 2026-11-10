@@ -1,4 +1,4 @@
-<!-- 繁體中文版。主版:README.md(英文);其他:README.zh-CN.md / README.ja.md — 改任一版必同步其他版。 -->
+<!-- 繁體中文版。主版:README.md(英文);其他:README.zh-CN.md / README.ja.md(2026-11-10 起停在 v0.17.0,見 DECISIONS)— 改英文版或本版必同步另一版。 -->
 # flightwake ✈️
 
 > **記錄是工作飛過後自然留下的航跡,不是起飛前必須申報的飛行計畫。**

@@ -2,6 +2,8 @@
 
 > English:[mod.md](mod.md) · 繁體中文:[mod.zh-TW.md](mod.zh-TW.md) · 简体中文:[mod.zh-CN.md](mod.zh-CN.md)
 
+> **この版は v0.17.0 で止まっています(2026-11-10 以降は同期しません)。** その後の変更(Antigravity 対応など)は英語版と繁體中文版だけを更新します。この版の更新は issue や PR で歓迎します。 → [mod.md](mod.md)
+
 **オプトインのアドオン。Claude Code 専用。** `init` が黙ってインストールすることはない。
 
 ## これは何か

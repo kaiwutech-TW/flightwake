@@ -3,6 +3,8 @@
 
 > **记录是工作飞过后自然留下的航迹,不是起飞前必须申报的飞行计划。**
 
+> **此版本停在 v0.17.0(2026-11-10 起不再同步)。** 之后的变更(包括 Antigravity 支持)只更新英文版与繁体中文版;欢迎以 issue 或 PR 协助更新本版。 → [README.md](README.md)
+
 [![npm](https://img.shields.io/npm/v/flightwake)](https://www.npmjs.com/package/flightwake) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/kaiwutech-TW/flightwake/badge)](https://scorecard.dev/viewer/?uri=github.com/kaiwutech-TW/flightwake)
 
 🌐 [English](README.md) · [繁體中文](README.zh-TW.md) · **简体中文** · [日本語](README.ja.md)

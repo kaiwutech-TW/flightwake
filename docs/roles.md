@@ -4,6 +4,8 @@
 
 **Opt-in add-on, flightwake v0.14.0+.** `init` never installs it.
 
+> **Maintenance mode (since 2026-11-10):** roles get compatibility fixes only, no new features.
+
 ## The problem it solves
 
 You run a small team of agents, e.g. Codex as project manager, Claude as tech lead, Claude writing code, Codex

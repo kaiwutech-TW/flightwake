@@ -3,6 +3,8 @@
 
 > **記録とは、仕事が飛び去った後に自然と残る飛行機雲であって、離陸前に提出を強いられる飛行計画ではない。**
 
+> **この版は v0.17.0 で止まっています(2026-11-10 以降は同期しません)。** その後の変更(Antigravity 対応など)は英語版と繁體中文版だけを更新します。この版の更新は issue や PR で歓迎します。 → [README.md](README.md)
+
 [![npm](https://img.shields.io/npm/v/flightwake)](https://www.npmjs.com/package/flightwake) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/kaiwutech-TW/flightwake/badge)](https://scorecard.dev/viewer/?uri=github.com/kaiwutech-TW/flightwake)
 
 🌐 [English](README.md) · [繁體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md) · **日本語**

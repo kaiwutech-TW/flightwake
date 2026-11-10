@@ -2,6 +2,8 @@
 
 > English:[roles.md](roles.md) · 繁體中文:[roles.zh-TW.md](roles.zh-TW.md) · 日本語:[roles.ja.md](roles.ja.md)
 
+> **此版本停在 v0.17.0(2026-11-10 起不再同步)。** 之后的变更(包括 Antigravity 支持)只更新英文版与繁体中文版;欢迎以 issue 或 PR 协助更新本版。 → [roles.md](roles.md)
+
 **可选附加组件,flightwake v0.14.0 起。** `init` 永远不会安装它。
 
 ## 它解决什么问题

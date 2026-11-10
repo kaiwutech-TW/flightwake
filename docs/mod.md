@@ -4,6 +4,11 @@
 
 **Opt-in add-on, Claude Code only.** `init` never installs it unless you pass `--mod` (or answer yes in `setup`).
 
+> **Maintenance mode (since 2026-11-10):** `fleet`, the side panel (`/fw-panel` and the fleet console), `spend` and
+> the role guard get compatibility fixes only, no new features. The memory features — STATE injection, the band, the
+> flight log and the tripwire — are still developed. Claude Code now ships its own multi-session views, and this
+> project's focus is the Markdown record that every agent can read.
+
 ## What it is
 
 `flightwake-mod` is a Claude Code plugin (a "mod") made of function hooks. Codex and Gemini CLI have no equivalent,

@@ -2,6 +2,8 @@
 
 > English:[mod.md](mod.md) · 繁體中文:[mod.zh-TW.md](mod.zh-TW.md) · 日本語:[mod.ja.md](mod.ja.md)
 
+> **此版本停在 v0.17.0(2026-11-10 起不再同步)。** 之后的变更(包括 Antigravity 支持)只更新英文版与繁体中文版;欢迎以 issue 或 PR 协助更新本版。 → [mod.md](mod.md)
+
 **可选附加组件,只支持 Claude Code。** `init` 默认不会安装它,要加 `--mod`(或在 `setup` 里回答是)。
 
 ## 它是什么

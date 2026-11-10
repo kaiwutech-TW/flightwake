@@ -4,6 +4,10 @@
 
 **選用附加元件,只支援 Claude Code。** `init` 預設不會安裝它,要用 `init --mod` 或在 `setup` 裡選。
 
+> **維護模式(2026-11-10 起)**:`fleet`、側邊面板(`/fw-panel` 與機隊中控台)、`spend` 與角色守門只做相容性修正,不加新功能。
+> 記憶相關的功能——STATE 注入、狀態列、飛行日誌與絆線——繼續開發。Claude Code 已內建多 session 的檢視,
+> 本專案的重心是每個 agent 都讀得到的 Markdown 紀錄。
+
 ## 它是什麼
 
 `flightwake-mod` 是一個 Claude Code 外掛(plugin,也就是 mod),由一組 function hook 組成。它只服務 Claude Code:Codex 與
