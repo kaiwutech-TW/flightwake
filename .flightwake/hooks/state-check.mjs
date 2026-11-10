@@ -12,7 +12,9 @@
  * LANG is stamped by the installer (`npx flightwake init --lang=…`).
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const LANG = 'zh-TW';
 // Message table lookup. Keyed rather than positional: with four languages, positional args silently
@@ -32,13 +34,44 @@ if (!CI && !process.stdin.isTTY) {
   try { input = JSON.parse(readFileSync(0, 'utf8')); } catch {}
 }
 if (input.stop_hook_active) process.exit(0); // already inside a hook-triggered continuation — avoid loops
-// Same script, three hosts: Claude Code (Stop) and Codex (Stop) honor `decision: "block"`; Gemini CLI's AfterAgent
-// spells the same thing `decision: "deny"`. Every host feeds `reason` back to the model as the next prompt.
-const DECISION = input.hook_event_name === 'AfterAgent' ? 'deny' : 'block';
+// Antigravity (agy) Stop: camelCase stdin keyed by conversationId, no hook_event_name, no stop_hook_active, and the
+// command's cwd is not documented (antigravity.google/docs/hooks, read 2026-11-10) — so the workspace comes from
+// workspacePaths and the loop guard is ours (agyOnce).
+const AGY = typeof input.conversationId === 'string' && !input.hook_event_name;
+// Same script, four hosts: Claude Code (Stop) and Codex (Stop) honor `decision: "block"`; Gemini CLI's AfterAgent
+// spells it `decision: "deny"`; Antigravity's Stop `decision: "continue"` (its `reason` becomes a system message).
+// Every host feeds `reason` back to the model.
+const DECISION = AGY ? 'continue' : input.hook_event_name === 'AfterAgent' ? 'deny' : 'block';
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 
+/** Antigravity has no stop_hook_active: remind at most once per conversation per HEAD commit. After a reminder the
+ *  model either wraps up (a new commit → a stale STATE may be named again) or does not (same HEAD → quiet). The
+ *  marker lives in the temp folder, never in the repo. Any failure answers "already reminded": a missed reminder
+ *  beats a stop that never ends. */
+function agyOnce() {
+  try {
+    const id = input.conversationId;
+    if (!/^[A-Za-z0-9._-]{1,128}$/.test(id)) return false;
+    const head = git('rev-parse', 'HEAD');
+    const dir = join(tmpdir(), 'flightwake-agy-stop');
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    if (!statSync(dir).isDirectory()) return false;
+    const f = join(dir, id);
+    if (existsSync(f) && readFileSync(f, 'utf8') === head) return false;
+    writeFileSync(f, head, { mode: 0o600 });
+    return readFileSync(f, 'utf8') === head;
+  } catch { return false; }
+}
+const emit = (reason) => {
+  if (AGY && !agyOnce()) return;
+  console.log(JSON.stringify({ decision: DECISION, reason }));
+};
+
 try {
+  if (AGY && Array.isArray(input.workspacePaths) && typeof input.workspacePaths[0] === 'string') {
+    try { process.chdir(input.workspacePaths[0]); } catch {}
+  }
   process.chdir(git('rev-parse', '--show-toplevel'));
   if (!existsSync(STATE)) process.exit(0);
 
@@ -85,15 +118,12 @@ try {
       if (evidence) console.error(`⚠️  ${evidence}`);
       process.exit(1);
     }
-    console.log(JSON.stringify({
-      decision: DECISION,
-      reason: M({
+    emit(M({
         en: `flightwake: ${STATE} lags ${behind} commits behind. Run fw-record to wrap up (flight record + update STATE's situation and health), or at least make STATE reflect reality before ending.`,
         'zh-TW': `flightwake:${STATE} 已落後 ${behind} 個 commit。請跑 fw-record 收尾(寫飛行紀錄 + 更新 STATE 的現況與 health),或至少讓 STATE 反映真實現況再結束。`,
         'zh-CN': `flightwake:${STATE} 已落后 ${behind} 个 commit。请跑 fw-record 收尾(写飞行记录 + 更新 STATE 的现况与 health),或至少让 STATE 反映真实现况再结束。`,
         ja: `flightwake:${STATE} が ${behind} コミット遅れています。fw-record で締めて(飛行記録 + STATE の現状と health を更新)ください。少なくとも STATE を現状に合わせてから終了を。`,
-      }) + (evidence ? `\n${evidence}` : ''),
-    }));
+      }) + (evidence ? `\n${evidence}` : ''));
   } else if (CI) {
     console.log(M({
       en: `✅ flightwake: STATE fresh (${behind} behind < threshold ${THRESHOLD})`,
@@ -103,7 +133,7 @@ try {
     }));
     if (evidence) console.error(`⚠️  ${evidence}`); // warning only — free-frontmatter detection must never gate CI
   } else if (evidence) {
-    console.log(JSON.stringify({ decision: DECISION, reason: evidence }));
+    emit(evidence);
   }
 } catch {}
 process.exit(0);

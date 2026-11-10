@@ -173,12 +173,65 @@ function operands(args: readonly string[], withValue: { short: string; long: rea
 
 const joinDir = (dir: string, name: string): string => `${dir.replace(/\/+$/, '')}/${name.replace(/^.*\//, '')}`
 
+/** What one segment's words write, without the directory it runs in (segmentWrites). */
+export type SegmentWrite = Omit<ShellWrite, 'dir'>
+
 /**
- * The write targets plainly readable from a command (F3's "changed through shell commands" list): output
- * redirections (`>f`, `>> f`, `2>f`, `&>f`; not fd duplications like `2>&1`, not /dev/*), and the operands of
- * cp/mv (destination, or each source joined to `-t DIR`; mv also its sources), rm, tee and `sed -i`, each read with that
- * command's option grammar so option values (sed -e/-f scripts, -S suffixes, …) never pass for paths. Words with
- * expansions or globs are skipped. Only a candidate list — the recorder lists what git confirms as changed.
+ * The write targets plainly readable from one segment's words: output redirections (`>f`, `>> f`, `2>f`, `&>f`; not
+ * fd duplications like `2>&1`, not /dev/*), and the operands of cp/mv (destination, or each source joined to `-t DIR`;
+ * mv also its sources), rm, tee and `sed -i`, each read with that command's option grammar so option values (sed
+ * -e/-f scripts, -S suffixes, …) never pass for paths. Words with expansions or globs are skipped. `cd` writes nothing.
+ * Shared by F3 (shellWriteTargets) and F4's tripwire, which walks the possible cwds itself.
+ */
+export function segmentWrites(t: readonly string[]): SegmentWrite[] {
+  const out: SegmentWrite[] = []
+  const add = (path: string, via: ShellWrite['via'], effect: ShellWrite['effect'] = 'write') => { if (isPathWord(path)) out.push({ path, via, effect }) }
+  const words: string[] = []
+  for (let i = 0; i < t.length; i++) {
+    const tok = t[i] as string
+    const m = /^(?:\d*|&)(>>?)(.*)$/.exec(tok)
+    if (m) {
+      const via = m[1] as '>' | '>>'
+      const rest = m[2] as string
+      if (rest === '') add(t[++i] as string, via) // `> file`
+      else if (!rest.startsWith('&')) add(rest, via) // `>file`; `>&2` duplicates a descriptor
+      continue
+    }
+    if (/^\d*<.*/.test(tok)) { if (tok.replace(/^\d*</, '') === '') i++; continue } // input redirection: skip its word
+    words.push(tok)
+  }
+  const [cmd, ...args] = words
+  if (cmd === 'cp' || cmd === 'mv') {
+    const { operands: o, values } = operands(args, { short: 'tS', long: ['target-directory', 'suffix', 'backup'] })
+    const into = values.t?.[0] ?? values['target-directory']?.[0]
+    if (into !== undefined) {
+      if (isPathWord(into)) for (const src of o) { if (cmd === 'mv') add(src, 'mv', 'remove'); if (isPathWord(src)) add(joinDir(into, src), cmd) }
+    } else if (o.length >= 2) {
+      if (cmd === 'mv') for (const src of o.slice(0, -1)) add(src, 'mv', 'remove')
+      add(o[o.length - 1] as string, cmd)
+    }
+  } else if (cmd === 'rm') {
+    for (const a of operands(args, { short: '', long: [] }).operands) add(a, 'rm', 'remove')
+  } else if (cmd === 'tee') {
+    for (const a of operands(args, { short: '', long: [] }).operands) add(a, 'tee')
+  } else if (cmd === 'sed') {
+    // -i takes its suffix only when attached (GNU) — except BSD's separate empty word (`-i ''`), which is dropped here
+    const hasInPlace = args.some((a) => a === '-i' || /^-i./.test(a) || a === '--in-place' || a.startsWith('--in-place='))
+    if (hasInPlace) {
+      const cleaned = args.filter((a, i) => !(a === '' && args[i - 1] === '-i'))
+      const { operands: o, values } = operands(cleaned.map((a) => (/^-i./.test(a) ? '-i' : a)), { short: 'efl', long: ['expression', 'file', 'line-length'] })
+      // with -e/-f the script is an option value, so every operand is a file; otherwise the first operand is the script
+      const files = values.e || values.f || values.expression || values.file ? o : o.slice(1)
+      for (const f of files) add(f, 'sed -i')
+    }
+  }
+  return out
+}
+
+/**
+ * The write targets plainly readable from a command (F3's "changed through shell commands" list): segmentWrites for
+ * each segment, with the directory it runs in when a plain `cd X &&` chain makes that certain (null otherwise).
+ * Only a candidate list — the recorder lists what git confirms as changed.
  */
 export function shellWriteTargets(command: string): ShellWrite[] {
   const out: ShellWrite[] = []
@@ -188,52 +241,18 @@ export function shellWriteTargets(command: string): ShellWrite[] {
   for (const seg of parseCommand(command).segments) {
     if (seg.group === 'open') { depth++; continue }
     if (seg.group === 'close') { depth = Math.max(0, depth - 1); if (seg.op && seg.op !== '&&') isChainCertain = false; continue }
-    const add = (path: string, via: ShellWrite['via'], effect: ShellWrite['effect'] = 'write') => { if (isPathWord(path)) out.push({ path, via, effect, dir }) }
-    const words: string[] = []
     const t = seg.tokens
-    for (let i = 0; i < t.length; i++) {
-      const tok = t[i] as string
-      const m = /^(?:\d*|&)(>>?)(.*)$/.exec(tok)
-      if (m) {
-        const via = m[1] as '>' | '>>'
-        const rest = m[2] as string
-        if (rest === '') add(t[++i] as string, via) // `> file`
-        else if (!rest.startsWith('&')) add(rest, via) // `>file`; `>&2` duplicates a descriptor
-        continue
-      }
-      if (/^\d*<.*/.test(tok)) { if (tok.replace(/^\d*</, '') === '') i++; continue } // input redirection: skip its word
-      words.push(tok)
-    }
-    const [cmd, ...args] = words
-    if (cmd === 'cd') {
+    // the words with redirections and their operands left out (as segmentWrites reads them)
+    const words = t.filter((tok, i) => !/^(?:(?:\d*|&)>>?|\d*<)$/.test(t[i - 1] ?? '') && !/^(?:\d*|&)>>?/.test(tok) && !/^\d*</.test(tok))
+    if (words[0] === 'cd') {
+      const args = words.slice(1)
       const target = args[0] === '--' ? args[1] : args[0]
       const isResolvable = target !== undefined && args.length <= (args[0] === '--' ? 2 : 1) && target !== '-' && isPathWord(target)
       dir = depth === 0 && isChainCertain && seg.op === '&&' && isResolvable && dir !== null
         ? (target.startsWith('/') ? target : dir ? `${dir}/${target}` : target)
         : null
-    } else if (cmd === 'cp' || cmd === 'mv') {
-      const { operands: o, values } = operands(args, { short: 'tS', long: ['target-directory', 'suffix', 'backup'] })
-      const into = values.t?.[0] ?? values['target-directory']?.[0]
-      if (into !== undefined) {
-        if (isPathWord(into)) for (const src of o) { if (cmd === 'mv') add(src, 'mv', 'remove'); if (isPathWord(src)) add(joinDir(into, src), cmd) }
-      } else if (o.length >= 2) {
-        if (cmd === 'mv') for (const src of o.slice(0, -1)) add(src, 'mv', 'remove')
-        add(o[o.length - 1] as string, cmd)
-      }
-    } else if (cmd === 'rm') {
-      for (const a of operands(args, { short: '', long: [] }).operands) add(a, 'rm', 'remove')
-    } else if (cmd === 'tee') {
-      for (const a of operands(args, { short: '', long: [] }).operands) add(a, 'tee')
-    } else if (cmd === 'sed') {
-      // -i takes its suffix only when attached (GNU) — except BSD's separate empty word (`-i ''`), which is dropped here
-      const hasInPlace = args.some((a) => a === '-i' || /^-i./.test(a) || a === '--in-place' || a.startsWith('--in-place='))
-      if (hasInPlace) {
-        const cleaned = args.filter((a, i) => !(a === '' && args[i - 1] === '-i'))
-        const { operands: o, values } = operands(cleaned.map((a) => (/^-i./.test(a) ? '-i' : a)), { short: 'efl', long: ['expression', 'file', 'line-length'] })
-        // with -e/-f the script is an option value, so every operand is a file; otherwise the first operand is the script
-        const files = values.e || values.f || values.expression || values.file ? o : o.slice(1)
-        for (const f of files) add(f, 'sed -i')
-      }
+    } else {
+      for (const w of segmentWrites(t)) out.push({ ...w, dir })
     }
     if (seg.op !== '&&') isChainCertain = false
   }
