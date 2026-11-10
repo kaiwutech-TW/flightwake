@@ -2794,7 +2794,7 @@ TH="$TMP/trap-home"; mkdir -p "$TH"
 FLIGHTWAKE_HOME="$TH" node "$CLI" init --lang=en --agents=claude,codex >/dev/null || fail "50 init 應成功"
 [ -f .flightwake/hooks/trap-check.mjs ] && [ -f .flightwake/hooks/traps-core.mjs ] || fail "50 trap-check.mjs 與 traps-core.mjs 應成對安裝"
 cmp -s .flightwake/hooks/traps-core.mjs "$SRC/mods/flightwake/hooks/lib/traps-core.mjs" || fail "50 複製出去的 traps-core.mjs 應與 mod 用的那份相同"
-[ "$(stat -f %Lp "$TH/hints" 2>/dev/null || stat -c %a "$TH/hints")" = 700 ] || fail "50 init 應建立 0700 的 <base>/hints"
+[ "$(modeof "$TH/hints")" = 700 ] || fail "50 init 應建立 0700 的 <base>/hints"
 node -e '
   const c = require("./.claude/settings.json").hooks.PreToolUse;
   const x = require("./.codex/hooks.json").hooks.PreToolUse;
@@ -2830,7 +2830,7 @@ echo "$out" | node -e '
   const j = JSON.parse(require("fs").readFileSync(0, "utf8")); const t = j.hookSpecificOutput;
   if (t.hookEventName !== "PreToolUse" || !t.additionalContext.includes("`db-order` [confirmed] matches db/001.sql") || !t.additionalContext.includes("after this call ran") || t.permissionDecision !== undefined) process.exit(1)' \
   || fail "50 Write 命中 paths 應回 additionalContext(不擋)(got: $out)"
-[ "$(stat -f %Lp "$TH/hints/claude-s1.json" 2>/dev/null || stat -c %a "$TH/hints/claude-s1.json")" = 600 ] || fail "50 hints 紀錄應為 0600"
+[ "$(modeof "$TH/hints/claude-s1.json")" = 600 ] || fail "50 hints 紀錄應為 0600"
 H1="$TH/hints/claude-s1.json" R1="$R1" node -e '
   const d = require(process.env.H1); const repo = d.repos[process.env.R1] || {}; const k = Object.keys(repo);
   if (d.v !== 1 || d.host !== "claude" || k.length !== 1 || !k[0].startsWith("db-order@") || repo[k[0]].toolUseId !== "t1" || JSON.stringify(d).includes("001.sql")) process.exit(1)' \
