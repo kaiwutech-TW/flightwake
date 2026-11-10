@@ -25,15 +25,15 @@ type: gotcha
 status: active
 tags: [claude-code, mods, testing, fleet, permission]
 discovered: 2026-10-26
-confidence: probable
+confidence: confirmed
 paths: ["mods/flightwake/tests/fleet.test.ts"]
 commands: ["claude plugin test"]
 ---
 
 **症狀**:`claude plugin test mods/flightwake` 在 Claude Code 2.1.310(子代理回報 2.1.309 相同)出現 25 個 fleet 測試失敗(13 permission、6 question/plan、4 parallel/ESC/寫入量/順序、1 reload、1 privacy),clean HEAD(`git archive HEAD`)同一組 25 個;2026-10-19 在 2.1.303 是 501/501。典型斷言:預期 `state: "blocked", why: "permission-dialog"`,實得 `state: "working", why: "unblocked:tool-done"`。
-**根因**:測試底層的 `tool.call` hook 自己呼叫 `$.tool.check`(得 `ask`)與 `$.classic.PermissionRequest`(回 `{}`,沒人答),然後把呼叫掛住等 `release`。2.1.310 下 mod 的 hooks 都有跑(check、perm 配對、evidence 設起),但 mod 的 `tool.call` 的 `next(e)` 在底層還掛著時就回了 `Permission to use Bash has been denied…`——推測新版測試環境對「沒人回答的權限請求」直接判拒絕並結束呼叫。機制未看到原始碼(2.1.310 型別不在磁碟上),只用 toast 探針觀察到。和 [[permission-request-has-no-tool-use-id]]、[[plugin-tool-check-cannot-carry-tool-use-id-in-tests]] 不同:那兩條是引擎輸入欄位,這條是測試環境行為隨版本改變。
-**解法/繞法**:未修。判斷新功能是否打壞東西時,拿 `git archive HEAD` 的乾淨副本跑同一版 `claude plugin test`,比對失敗清單(`grep '^(fail)' | sed 's/ \[.*//' | sort` 後 diff)。要修得先拿到 2.1.310 的 testing 型別/文件,找出讓權限請求保持「等待中」的方式;真引擎(互動 session)是否也改了行為要另做真機驗證。
-**佐證**:2026-10-26 本 session:基線與工作樹失敗清單 diff 相同(SAME-SET);探針副本在 scratchpad `modprobe/`,toast 顯示 `PROBE check {decision:ask}`、`PROBE perm {r:{}, asks 已配對, inFlight 有該 id}`、`PROBE next-resolved … Permission to use Bash has been denied`。record [[261026-traps-similar-and-trips]]
+**根因**(2026-11-10 由 2.1.321 型別確認,取代 10-26 的推測):測試 kit 的 `$.tool.call` 會**在呼叫開始前**自己跑一次掛上的 `tool.check`,「as for a background subagent」——`ask` 交給測試的 `classic.PermissionRequest` 回答,沒人答就是 deny(`claude-code.d.ts` 的 `EngineToolCall` 文件:「a test's `classic.PermissionRequest` answers an ask; no test plays a person's yes」;另一處:「Where nobody can be asked it is a deny」;`reference.md` 同義)。fleet 測試的 `on('tool.check')` 對**每一個** check 都答 `ask`,所以 kit 的前置閘門就把呼叫拒掉,底層 `tool.call` 根本沒跑到(`k.held` 空 → `k.held.splice(i, 1)[0].release` TypeError)。這是測試環境的改變;互動 session 的引擎行為沒有因此被證明改變,F7 的 blocked 仍需真機驗。和 [[permission-request-has-no-tool-use-id]]、[[plugin-tool-check-cannot-carry-tool-use-id-in-tests]] 不同:那兩條是引擎輸入欄位。
+**解法/繞法**:測試的 `tool.check` hook 對 kit 的前置閘門答 `allow`,只有底層 `tool.call` 自己 raise 的那個 check(測試扮演的權限對話框)才給 `k.verdict`;用內容鍵(工具、id、input 的 JSON)辨認,因為 hook 拿到的是複本,物件同一性比不到(`mods/flightwake/tests/fleet.test.ts` 的 `raising` 與 `checkKey`)。2.1.321 下 546/546。以後測試 kit 再變,先 grep 當版 `claude-code.d.ts` 的 `EngineToolCall` 與 `reference.md` 的測試段落,不要先寫探針。
+**佐證**:2026-10-26 探針(toast 顯示 `PROBE check {decision:ask}` → `Permission to use Bash has been denied`);2026-11-10 2.1.321 修正前 521/25(同一組)、只分開閘門 529/17(物件同一性失敗)、改內容鍵 546/0。record [[261026-traps-similar-and-trips]]
 
 ---
 name: codex-dollar-skill-enter-eaten-by-picker

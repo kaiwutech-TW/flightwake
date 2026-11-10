@@ -27,6 +27,10 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   is installed. New switch `trips`; when unset it follows `fleet`. Hints are unchanged.
 
 ### Fixed
+- **Mod tests pass again on current Claude Code (546/546 on 2.1.321).** Since 2.1.310 the test kit runs the hooked
+  `tool.check` itself before a test's tool call, as for a background subagent, and denies an ask nobody answers. The
+  fleet tests answered every check with `ask`, so 25 calls were denied before they started. The test harness now
+  allows that gate and keeps its verdict for the permission dialog it plays. Test-only; the mod itself is unchanged.
 - **Fleet console "Wrap up" could report "sent" for a Codex command that was never submitted**, and a second press
   during the check sent it again. The panel now reads back only Codex tabs, says when it cannot confirm the command
   went through, and ignores a second press while one is in progress.

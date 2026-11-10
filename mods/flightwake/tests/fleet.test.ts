@@ -39,8 +39,10 @@ type Knobs = {
   toasts: string[]
   /** Tools whose bottom call asks the mode's decider (engine `tool.check`) and, on `ask`, raises PermissionRequest. */
   dialog: Set<string>
-  /** The engine tool.check bottom's verdict. */
+  /** The engine tool.check bottom's verdict, for the checks the bottom tool.call raises itself (the dialog it plays). */
   verdict: 'ask' | 'allow'
+  /** The checks the bottom tool.call is raising right now. Any other check is the kit's own gate before the call. */
+  raising: Set<string>
   /** A settings hook beneath PermissionRequest answers it (no dialog). */
   isAnswered: boolean
   /** The bottom's check goes without a tool_use_id (as a plugin's own $.tool.check query would). */
@@ -83,7 +85,7 @@ function boot($: any, on: On, init: Partial<World> = {}, opts: { env?: Record<st
   w.now = () => clock.now()
   mock.env(on, opts.env ?? { HOME: HOME_OUT })
   const k: Knobs = {
-    w, clock, state: new Map(), registered: [], toasts: [], dialog: new Set(), verdict: 'ask', isAnswered: false, isNoId: false,
+    w, clock, state: new Map(), registered: [], toasts: [], dialog: new Set(), verdict: 'ask', raising: new Set(), isAnswered: false, isNoId: false,
     isAskOnly: false, isDenied: false, dialogDelayMs: 0, isAfter0Refused: false, isHolding: false, isThrowing: false, held: [], ids: [], turns: 0, atEnd: [],
   }
   on('state.get', (_$, e) => ({ value: k.state.get(e.key) ?? { value: undefined, version: 0 } }))
@@ -116,7 +118,10 @@ function boot($: any, on: On, init: Partial<World> = {}, opts: { env?: Record<st
   on('prompt.submit', (_$, e) => ({ text: e.text }) as never)
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: '' }))
-  on('tool.check', () => ({ decision: k.verdict }) as never)
+  // The kit gates every test $.tool.call with the hooked tool.check before the call starts (since 2.1.310, as for a
+  // background subagent: an ask nobody answers is a deny). That gate is allowed here; only the check the bottom
+  // raises — the permission dialog this file plays — gets the knob's verdict.
+  on('tool.check', (_$, e) => ({ decision: k.raising.has(checkKey(e)) ? k.verdict : 'allow' }) as never)
   on('classic.SessionStart', () => ({}) as never)
   on('classic.PermissionRequest', () => (k.isAnswered ? { decision: { behavior: 'allow' } } : {}) as never)
   on('classic.PermissionDenied', () => ({}) as never)
@@ -126,7 +131,9 @@ function boot($: any, on: On, init: Partial<World> = {}, opts: { env?: Record<st
     const { tool, tool_use_id: _id, agentId, ...input } = e as unknown as Record<string, unknown> & { tool: string; tool_use_id: string; agentId?: string }
     if (k.dialog.has(tool)) {
       if (k.dialogDelayMs > 0) await clock.sleep(k.dialogDelayMs)
-      const r = await $.tool.check(k.isNoId ? { tool, input } : { tool, input, tool_use_id: id })
+      const q = k.isNoId ? { tool, input } : { tool, input, tool_use_id: id }
+      k.raising.add(checkKey(q))
+      const r = await $.tool.check(q).finally(() => k.raising.delete(checkKey(q)))
       if (r?.decision === 'ask' && !k.isAskOnly) {
         const base = { session_id: w.sessionId, transcript_path: '', cwd: w.root, ...(agentId ? { agent_id: agentId } : {}) }
         await $.classic.PermissionRequest({ ...base, hook_event_name: 'PermissionRequest', tool_name: tool, tool_input: input } as never)
@@ -140,6 +147,11 @@ function boot($: any, on: On, init: Partial<World> = {}, opts: { env?: Record<st
   return k
 }
 
+/** Which check this is: the tool, its id when the query carries one, and its input (the hook gets a copy, not the object). */
+const checkKey = (q: unknown) => {
+  const { tool, tool_use_id, input } = q as { tool?: unknown; tool_use_id?: unknown; input?: unknown }
+  return JSON.stringify([tool, tool_use_id ?? null, input ?? null])
+}
 const settle = (k: Knobs) => k.clock.settle()
 const rec = (k: Knobs, id = 's1') => fleetFile(k.w, id)
 const start = async ($: any, k: Knobs, s: object = START) => { await $.session.start(s); await settle(k) }
