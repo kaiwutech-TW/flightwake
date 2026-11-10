@@ -19,7 +19,7 @@
 import { createInterface } from 'node:readline';
 import { execFileSync } from 'node:child_process';
 import {
-  LANGS, GROUPS, MOD_MIN_CLAUDE, isAgentName, makeM, gitAvailable, repoState, detectInstall, detectedAgents, defaultAgents,
+  LANGS, GROUPS, PLATFORMS, MOD_MIN_CLAUDE, isAgentName, makeM, gitAvailable, repoState, detectInstall, detectedAgents, defaultAgents,
   detectOrcaSource, detectLocale, userStatusline, claudeVersion, addonStatus, addonShortName, joinNames, ADDON_KEYS, ADDON_FLAG,
   missingAddons, resolveOptions, install, printNext, printModNotes, addPrivateExcludes, gitMissingMessage, monorepoMessage,
   createWriter, refusalReport, incompleteReport,
@@ -358,8 +358,8 @@ export async function runSetup({ io, flags = {}, ctx }) {
     let agents = flags.agents;
     if (!agents) {
       const detected = ctx.detectedAgents();
-      const NAMES = Object.keys(GROUPS);
-      const LABEL = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini CLI' };
+      const NAMES = PLATFORMS;
+      const LABEL = { claude: 'Claude Code', codex: 'Codex', agy: 'Antigravity', gemini: 'Gemini CLI — enterprise / API key' };
       if (detected.length) {
         say(M({
           en: `\nAgents to set up (detected: ${detected.join(', ')}). Available: ${NAMES.join(', ')}.`,

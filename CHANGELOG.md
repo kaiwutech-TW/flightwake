@@ -9,6 +9,14 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 ## [Unreleased]
 
 ### Added
+- **Antigravity (`agy`) is a supported platform** (`--agents=…,agy`; listed before Gemini CLI in `setup`). It reads
+  `AGENTS.md`, so it shares the Codex obligation table (Codex's `$fw-…` form when Codex is set up too, plain skill
+  names when agy is alone, with a line for each tool). Skills go to `.agents/skills/fw-*`. The wrap-up reminder is a
+  `flightwake-state-check` Stop hook in `.agents/hooks.json`, merged with your own hooks and removed alone on
+  `uninstall`. The check script answers Antigravity's Stop with `decision: "continue"`, finds the repo from
+  `workspacePaths`, and reminds at most once per conversation per HEAD commit (Antigravity passes no loop guard).
+  `update` keeps an agy-only repo agy-only; `doctor` checks the hook. Skills were tried in agy; the Stop hook follows
+  the documented format and is not yet verified on a real machine (`docs/plans/agy.probe.md`).
 - **`npx flightwake traps similar`** checks a new TRAPS entry against the existing ones before it is written (name,
   tags, paths, commands and the symptom text, read from stdin so a pasted symptom is never run by the shell; local and
   deterministic, threshold 0.40). `/fw-trap` now runs it first and asks for a choice when it finds candidates: update
@@ -25,6 +33,10 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   merged with what is already there (a resumed session keeps its records), under the session file's refusal rules,
   and only into a `trips` folder that is private (0700). `init` / `update` create or tighten that folder when the mod
   is installed. New switch `trips`; when unset it follows `fleet`. Hints are unchanged.
+
+### Changed
+- **Gemini CLI is kept for enterprise / API-key users.** Google stopped serving individual plans on 2026-06-18;
+  `--agents=gemini` and existing installs work as before, and `update` never switches them to agy.
 
 ### Fixed
 - **Mod tests pass again on current Claude Code (546/546 on 2.1.321).** Since 2.1.310 the test kit runs the hooked

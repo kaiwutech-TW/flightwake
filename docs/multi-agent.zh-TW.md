@@ -1,4 +1,4 @@
-# 一個資料夾、三個模型——讓 Claude Code、Codex、Gemini CLI 共用 flightwake 的記憶
+# 一個資料夾、多個模型——讓 Claude Code、Codex、Antigravity 共用 flightwake 的記憶
 
 > English version: [multi-agent.md](multi-agent.md)
 
@@ -22,20 +22,26 @@ flightwake 的記憶是 **repo 裡的檔案**,不是服務、也不是任何一�
 
 ## init 替每個模型裝了什麼
 
-| | Claude Code | Codex | Gemini CLI |
-|---|---|---|---|
-| 靠什麼偵測 | `CLAUDE.md`(或 `.claude/CLAUDE.md`) | `AGENTS.md` | `GEMINI.md` |
-| 義務表貼進 | `CLAUDE.md` | `AGENTS.md` | `GEMINI.md` |
-| skill | `.claude/skills/fw-*` | `.agents/skills/fw-*` | `.agents/skills/fw-*`(同一個目錄) |
-| 怎麼叫 skill | `/fw-coldstart` | `$fw-coldstart` | 說「跑 fw-coldstart skill」(靠名字/描述啟用) |
-| 收尾 hook | `.claude/settings.json` 的 `Stop` | `.codex/hooks.json` 的 `Stop` | `.gemini/settings.json` 的 `AfterAgent` |
-| 平台一次性提示 | 載入 repo hook 時確認 | 要你**信任**這個 repo hook 一次(hook 改了會再問) | — |
+| | Claude Code | Codex | Antigravity(`agy`) | Gemini CLI |
+|---|---|---|---|---|
+| `--agents=` 名稱 | `claude` | `codex` | `agy` | `gemini` |
+| 靠什麼偵測 | `CLAUDE.md`(或 `.claude/CLAUDE.md`) | `AGENTS.md` | `.agents/hooks.json` 裡它的 hook(第一次用 `--agents` 指定) | `GEMINI.md` |
+| 義務表貼進 | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md`(與 Codex 同一個區塊) | `GEMINI.md` |
+| skill | `.claude/skills/fw-*` | `.agents/skills/fw-*` | `.agents/skills/fw-*`(同一個目錄) | `.agents/skills/fw-*`(同一個目錄) |
+| 怎麼叫 skill | `/fw-coldstart` | `$fw-coldstart` | 用名字,例如「跑 fw-coldstart」 | 說「跑 fw-coldstart skill」(靠名字/描述啟用) |
+| 收尾 hook | `.claude/settings.json` 的 `Stop` | `.codex/hooks.json` 的 `Stop` | `.agents/hooks.json` 的 `flightwake-state-check` → `Stop` | `.gemini/settings.json` 的 `AfterAgent` |
+| 平台一次性提示 | 載入 repo hook 時確認 | 要你**信任**這個 repo hook 一次(hook 改了會再問) | 文件未記載 | — |
+| 真機驗證 | 有 | 有 | skill 有;Stop hook **尚未**([探針](plans/agy.probe.md)) | 沒有——而且 Google 已於 2026-06-18 對個人方案停止 Gemini CLI,只剩企業授權與 API key 用戶 |
 
-今天只有 `CLAUDE.md` 的 repo,要一次三家到位:
+Antigravity 沒有自己的指令檔,它讀 `AGENTS.md`。同時裝了 Codex 時,共用的區塊用 Codex 的 `$fw-…` 寫法,並各附一行說明;
+只裝 Antigravity 時用裸名。它的 Stop hook 回 `decision: "continue"`;Antigravity 不提供迴圈防護,所以每個對話在同一個
+HEAD commit 最多提醒一次。
+
+今天只有 `CLAUDE.md` 的 repo,要一次裝好 Claude Code、Codex、Antigravity:
 
 ```bash
-npx flightwake init --agents=claude,codex,gemini   # 建 AGENTS.md 與 GEMINI.md,全部裝齊
-git add .flightwake .claude .agents .codex .gemini CLAUDE.md AGENTS.md GEMINI.md && git commit
+npx flightwake init --agents=claude,codex,agy   # 建 AGENTS.md,全部裝齊
+git add .flightwake .claude .agents .codex CLAUDE.md AGENTS.md && git commit
 ```
 
 已經裝過?`npx flightwake update` 會重新偵測現有的指令檔,把缺的平台補上。install/update 任何情況都不會

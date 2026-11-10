@@ -5,7 +5,8 @@
  * + Stop hook, and appends the trigger-obligation table to detected agent instruction files
  * (CLAUDE.md/AGENTS.md/GEMINI.md; override with --agents). Each detected platform gets the skills and the
  * wrap-up hook in its own dialect: Claude Code → .claude/skills + .claude/settings.json (`/fw-…`);
- * Codex → .agents/skills + .codex/hooks.json (`$fw-…`); Gemini CLI → .agents/skills + .gemini/settings.json.
+ * Codex → .agents/skills + .codex/hooks.json (`$fw-…`); Antigravity (agy) → .agents/skills + .agents/hooks.json, reading
+ * AGENTS.md; Gemini CLI (enterprise / API key) → .agents/skills + .gemini/settings.json.
  * Pure file copying, cross-platform (Node ≥18). User data (STATE/DECISIONS/TRAPS) is never overwritten;
  * framework-owned files (skills/hooks/TEMPLATE/CLAUDE.md snippet) are not overwritten by default — --force updates them.
  * `update` = re-detect the existing install's options (lang/statusline/private/profile) and force-refresh framework files;
@@ -23,7 +24,7 @@ import { removeShippedTree } from './remove.mjs';
 import { runFleet, fleetBase, isWithin, realish } from './fleet.mjs';
 import { runTraps, tripFilesFor, tripsDir, forgetTrips } from './traps.mjs';
 import {
-  LANGS, PROFILES, GROUPS, isAgentName, INSTRUCTION_CANDIDATES, ORCA_BLOCK_RE, MOD_REL, modShips, modSrc, noJunk, makeM, gitAvailable, repoState, excludePath,
+  LANGS, PROFILES, GROUPS, PLATFORMS, AGY_HOOKS_REL, AGY_HOOK_NAME, isAgentName, INSTRUCTION_CANDIDATES, ORCA_BLOCK_RE, MOD_REL, modShips, modSrc, noJunk, makeM, gitAvailable, repoState, excludePath,
   addPrivateExcludes, gitMissingMessage, monorepoMessage, notRepoMessage, detectInstall, resolveOptions, install,
   printNext, unregisterRepo, createWriter, refusalReport, incompleteReport, readMarkers,
   detectLocale, detectOrcaSource, addonStatus, printAddonNotice, printModNotes,
@@ -65,7 +66,8 @@ if (!COMMANDS.includes(cmd) || args.includes('--help') || args.includes('-h')) {
               content and CLI output (default en — never guessed; init prints the switch command when your terminal locale is another language);
               --private keeps records local, out of git (.git/info/exclude + settings.local.json);
               --statusline installs the bottom gauge (health / STATE lag / context usage; never overwrites an existing statusline);
-              --agents=claude,codex,gemini picks which platform instruction files get the obligation table (auto-detected by default);
+              --agents=claude,codex,agy,gemini picks the platforms to set up (auto-detected by default; agy = Antigravity, which
+              reads AGENTS.md; gemini = Gemini CLI, now for enterprise / API-key users);
               --profile=code|notes picks the obligation table (notes drops the tests/typecheck and schema/prod duties; default code);
               --orca adds the Orca collaboration block (opt-in add-on); --git-init creates the git repo first when there is none;
               --mod installs the Claude Code mod into .claude/skills/flightwake-mod (opt-in; needs Claude Code 2.1.287+; skipped without claude)
@@ -115,7 +117,7 @@ const agentsArg = flagValue('agents');
 const wanted = agentsArg !== undefined ? agentsArg.split(',').map((s) => s.trim()).filter(Boolean) : null;
 if (wanted) {
   const bad = wanted.filter((w) => !isAgentName(w));
-  if (bad.length) { log(`⚠️  --agents not recognized: ${bad.join(', ')} (available: ${Object.keys(GROUPS).join(', ')})`); process.exit(1); }
+  if (bad.length) { log(`⚠️  --agents not recognized: ${bad.join(', ')} (available: ${PLATFORMS.join(', ')})`); process.exit(1); }
 }
 const flags = {
   force: args.includes('--force'),
@@ -266,6 +268,21 @@ if (cmd === 'uninstall') {
       if (!changed) continue;
       if (!Object.keys(st).length) rm(rel, ' (empty after removal)');
       else if (W.write(p, JSON.stringify(st, null, 2) + '\n')) out(`  edit ${rel} ← flightwake settings removed`);
+    }
+    // 2b. Antigravity's .agents/hooks.json: drop our named entry only (other hooks kept); delete the file if empty after
+    {
+      const rel = AGY_HOOKS_REL;
+      const p = join(TARGET, ...rel.split('/'));
+      if (existsSync(p)) {
+        let st = null;
+        try { st = JSON.parse(readFileSync(p, 'utf8')); } catch {}
+        if (!st || typeof st !== 'object' || Array.isArray(st)) out(`  ⚠️  ${rel} is not a JSON object — remove the "${AGY_HOOK_NAME}" entry manually`);
+        else if (Object.hasOwn(st, AGY_HOOK_NAME) && JSON.stringify(st[AGY_HOOK_NAME]).includes('state-check.mjs')) {
+          delete st[AGY_HOOK_NAME];
+          if (!Object.keys(st).length) rm(rel, ' (empty after removal)');
+          else if (W.write(p, JSON.stringify(st, null, 2) + '\n')) out(`  edit ${rel} ← flightwake hook removed`);
+        }
+      }
     }
     // 3. Marker blocks (obligation table + Orca add-on) in instruction files; delete the file only if empty after
     //    (= flightwake created it)

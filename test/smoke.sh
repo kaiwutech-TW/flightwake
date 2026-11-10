@@ -2710,5 +2710,53 @@ node --input-type=module -e "
 pass "47.6 同名條目保留名額並標明;catch-all glob(**、*、**/*)只與相同的重疊"
 cd "$TMP"
 
+# 48. Antigravity(agy,DECISIONS 2026-11-10):沒有自己的指令檔,讀 AGENTS.md(codex 群組的區塊,單獨裝時用裸名);
+#     skill 在 .agents/skills;Stop hook 在 .agents/hooks.json(頂層鍵是 hook 名,與使用者的 hook 合併);
+#     update 不把 agy-only 的 repo 認成 Codex;uninstall 只拿掉自己那一條;state-check 對 agy 的 stdin 回 continue,
+#     同一對話同一個 HEAD 只提醒一次,cwd 在 repo 外時用 workspacePaths
+newrepo "$TMP/agy1" >/dev/null && git commit -q --allow-empty -m init
+mkdir -p .agents && echo '{"my-lint":{"PreToolUse":[{"matcher":"run_command","hooks":[{"command":"./lint.sh"}]}]}}' > .agents/hooks.json
+node "$CLI" init --agents=agy >/dev/null || fail "48 init --agents=agy 應成功"
+[ -f .agents/skills/fw-coldstart/SKILL.md ] || fail "48 agy 的 skill 應落 .agents/skills"
+[ "$(grep -c 'flightwake:begin' AGENTS.md)" = 1 ] || fail "48 agy 應在 AGENTS.md 貼一份義務表"
+grep -q '`fw-coldstart`' AGENTS.md && ! grep -q '`\$fw-\|`/fw-' AGENTS.md || fail "48 只有 agy 時 AGENTS.md 應用裸名"
+grep -q 'Antigravity (agy)' AGENTS.md || fail "48 AGENTS.md 應有 Antigravity 的說明"
+[ -e .codex ] && fail "48 只裝 agy 不應建 .codex"
+node -e "const j=require('./.agents/hooks.json'); const h=j['flightwake-state-check']?.Stop?.[0];
+  if(!j['my-lint']?.PreToolUse || !h || h.type!=='command' || !h.command.includes('state-check.mjs') || h.timeout!==30) process.exit(1)" \
+  || fail "48 .agents/hooks.json 應保留使用者的 hook 並加上 flightwake-state-check.Stop"
+out=$(node "$CLI" init --agents=agy 2>&1); echo "$out" | grep -q 'skip .agents/hooks.json Stop hook' || fail "48 重跑應冪等(got: $out)"
+[ "$(grep -o 'state-check.mjs' .agents/hooks.json | wc -l | tr -d ' ')" = 1 ] || fail "48 重跑不得重複登記"
+out=$(node "$CLI" update 2>&1) || fail "48 update 應成功"
+[ -e .codex ] && fail "48 update 不得把 agy-only 的 repo 認成 Codex(got: $out)"
+node "$CLI" doctor >/dev/null 2>&1 || fail "48 agy-only 安裝 doctor 應 0 failed(got: $(node "$CLI" doctor 2>&1 | grep -E '✗|FAIL|failed'))"
+node "$CLI" doctor 2>&1 | grep -q 'Antigravity: .agents/hooks.json flightwake-state-check Stop hook' || fail "48 doctor 應確認 agy 的 Stop hook"
+# agy + codex:同一份 AGENTS.md,Codex 方言,兩段說明都在
+node "$CLI" update --agents=codex,agy >/dev/null || fail "48 update --agents=codex,agy 應成功"
+[ "$(grep -c 'flightwake:begin' AGENTS.md)" = 1 ] && grep -q '`\$fw-coldstart`' AGENTS.md && grep -q '^Codex:' AGENTS.md && grep -q '^Antigravity (agy):' AGENTS.md \
+  || fail "48 codex+agy 共用一份 AGENTS.md:Codex 方言、兩段說明"
+[ -f .codex/hooks.json ] || fail "48 加上 codex 應裝 .codex/hooks.json"
+# --agents 錯字仍擋;help 列出 agy
+node "$CLI" init --agents=antigravity >/dev/null 2>&1 && fail "48 未知平台名應退出非零"
+node "$CLI" --help | grep -q 'agy = Antigravity' || fail "48 help 應說明 agy"
+# state-check:agy 的 stdin → continue、同 HEAD 只一次、新 commit 再提醒;cwd 在 repo 外也找得到 repo
+git add -A && git commit -qm base && for i in 1 2 3; do git commit -q --allow-empty -m "w$i"; done
+CONV="smoke-$$-$RANDOM"; IN="{\"conversationId\":\"$CONV\",\"workspacePaths\":[\"$PWD\"],\"terminationReason\":\"model_stop\",\"fullyIdle\":true}"
+H="$PWD/.flightwake/hooks/state-check.mjs"
+o1=$(cd / && echo "$IN" | TMPDIR="$TMP/agytmp" node "$H"); o2=$(cd / && echo "$IN" | TMPDIR="$TMP/agytmp" node "$H")
+echo "$o1" | grep -q '"decision":"continue"' || fail "48 agy 的 Stop 應回 decision: continue(got: $o1)"
+[ -z "$o2" ] || fail "48 同一對話同一 HEAD 只提醒一次(got: $o2)"
+git commit -q --allow-empty -m w4
+o3=$(cd / && echo "$IN" | TMPDIR="$TMP/agytmp" node "$H"); echo "$o3" | grep -q '"decision":"continue"' || fail "48 新 commit 後應再提醒"
+o4=$(echo '{"conversationId":"../../etc","workspacePaths":["'"$PWD"'"]}' | TMPDIR="$TMP/agytmp" node "$H"); [ -z "$o4" ] || fail "48 不合法的 conversationId 應靜默"
+echo '{"hook_event_name":"Stop"}' | node "$H" | grep -q '"decision":"block"' || fail "48 Claude/Codex 的 Stop 仍回 block"
+echo '{"hook_event_name":"AfterAgent"}' | node "$H" | grep -q '"decision":"deny"' || fail "48 Gemini 的 AfterAgent 仍回 deny"
+[ "$(git status --porcelain --ignored | grep -c agytmp)" = 0 ] || fail "48 迴圈防護的標記不得寫進 repo"
+# uninstall:只拿掉 flightwake 那一條,使用者的 hook 留著
+node "$CLI" uninstall >/dev/null || fail "48 uninstall 應成功"
+node -e "const j=require('./.agents/hooks.json'); if(j['flightwake-state-check'] || !j['my-lint']) process.exit(1)" || fail "48 uninstall 應只移除 flightwake-state-check"
+cd "$TMP"
+pass "48 Antigravity(agy):AGENTS.md 共用(裸名 / Codex 方言)、.agents/hooks.json 合併與冪等、update 不誤認 Codex、doctor、Stop 回 continue 且每對話每 HEAD 一次、uninstall 只拿自己的"
+
 echo ""
 echo "✅ smoke 全過"

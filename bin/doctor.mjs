@@ -11,7 +11,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import {
-  LANGS, GROUPS, INSTRUCTION_CANDIDATES, HOOK_CMD, HOOK_CMD_GIT, SL_CMD, MOD_REL, MOD_MIN_CLAUDE, makeM, gitIn, gitAvailable,
+  LANGS, GROUPS, TABLE_GROUP, AGY_HOOKS_REL, AGY_HOOK_NAME, INSTRUCTION_CANDIDATES, HOOK_CMD, HOOK_CMD_GIT, SL_CMD, MOD_REL, MOD_MIN_CLAUDE, makeM, gitIn, gitAvailable,
   repoState, readMarkers, detectInstall, modShipList, modSrc, atLeast, claudeVersion,
 } from './install.mjs';
 
@@ -108,19 +108,25 @@ export function runDoctor({ target, fwSrc, version, lang, log, claudeVersion: re
   const artifactEvidence = {
     codex: rawHas('.codex/hooks.json', 'state-check.mjs') || !parses('.codex/hooks.json') ? '.codex/hooks.json' : null,
     gemini: rawHas('.gemini/settings.json', 'state-check.mjs') || !parses('.gemini/settings.json') ? '.gemini/settings.json' : null,
+    agy: rawHas(AGY_HOOKS_REL, 'state-check.mjs') || !parses(AGY_HOOKS_REL) ? AGY_HOOKS_REL : null,
   };
+  // An AGENTS.md table can be Antigravity's alone (installed without codex): then it uses plain skill names, not
+  // Codex's `$fw-…`, and there is no Codex hook — don't hold it to Codex's checks.
   const platforms = new Set([...markerPlatforms, ...Object.keys(artifactEvidence).filter((k) => artifactEvidence[k])]);
+  if (artifactEvidence.agy && !artifactEvidence.codex && !rawHas('AGENTS.md', '`$fw-')) platforms.delete('codex');
   for (const [name, ev] of Object.entries(artifactEvidence)) {
-    if (!ev || markerPlatforms.has(name)) continue;
-    const file = GROUPS[name][0];
+    // agy has no file of its own: its table is the codex group's block in AGENTS.md
+    const group = TABLE_GROUP[name] ?? name;
+    if (!ev || markerPlatforms.has(group)) continue;
+    const file = GROUPS[group][0];
     const tracked = det.private && existsSync(at(file)) && isTracked(file);
     (tracked ? warn : fail)(tracked
       ? M({ en: `${ev} is installed but ${file} has no obligation table (--private skips a git-tracked ${file})`, 'zh-TW': `${ev} 已安裝,但 ${file} 沒有義務表(--private 會跳過受追蹤的 ${file})`, 'zh-CN': `${ev} 已安装,但 ${file} 没有义务表(--private 会跳过受追踪的 ${file})`, ja: `${ev} はインストール済だが ${file} に義務表がない(--private は git 管理下の ${file} を飛ばす)` })
       : M({ en: `inconsistent install: ${ev} is installed but ${file} has no flightwake marker block — npx flightwake update --agents=…`, 'zh-TW': `安裝不一致:${ev} 已安裝,但 ${file} 沒有 flightwake 標記區塊 — npx flightwake update --agents=…`, 'zh-CN': `安装不一致:${ev} 已安装,但 ${file} 没有 flightwake 标记区块 — npx flightwake update --agents=…`, ja: `インストールの不整合:${ev} はあるが ${file} に flightwake のマーカーブロックがない — npx flightwake update --agents=…` }));
   }
   const agentsSkillDirs = existsSync(at('.agents/skills')) && readdirSync(at('.agents/skills')).some((d) => d.startsWith('fw-'));
-  if (agentsSkillDirs && !platforms.has('codex') && !platforms.has('gemini')) {
-    warn(M({ en: 'inconsistent install: .agents/skills/fw-* exists but neither Codex nor Gemini CLI has a marker or hook', 'zh-TW': '安裝不一致:有 .agents/skills/fw-*,但 Codex 與 Gemini CLI 都沒有標記區塊或 hook', 'zh-CN': '安装不一致:有 .agents/skills/fw-*,但 Codex 与 Gemini CLI 都没有标记区块或 hook', ja: 'インストールの不整合:.agents/skills/fw-* があるが Codex にも Gemini CLI にもマーカーや hook がない' }));
+  if (agentsSkillDirs && !platforms.has('codex') && !platforms.has('agy') && !platforms.has('gemini')) {
+    warn(M({ en: 'inconsistent install: .agents/skills/fw-* exists but none of Codex, Antigravity or Gemini CLI has a marker or hook', 'zh-TW': '安裝不一致:有 .agents/skills/fw-*,但 Codex、Antigravity 與 Gemini CLI 都沒有標記區塊或 hook', 'zh-CN': '安装不一致:有 .agents/skills/fw-*,但 Codex、Antigravity 与 Gemini CLI 都没有标记区块或 hook', ja: 'インストールの不整合:.agents/skills/fw-* があるが Codex・Antigravity・Gemini CLI のどれにもマーカーや hook がない' }));
   }
   if (!markers.length) {
     if (det.private) warn(M({ en: 'no obligation table in any instruction file (a --private install skips git-tracked files)', 'zh-TW': '所有指令檔都沒有義務表(--private 會跳過受 git 追蹤的檔)', 'zh-CN': '所有指令档都没有义务表(--private 会跳过受 git 追踪的档)', ja: 'どの指示ファイルにも義務表がない(--private は git 管理下のファイルを飛ばす)' }));
@@ -135,7 +141,7 @@ export function runDoctor({ target, fwSrc, version, lang, log, claudeVersion: re
 
   // ── skills: .claude/skills is installed unconditionally; .agents/skills when Codex/Gemini carries a marker ──
   const skillNames = readdirSync(join(fwSrc, 'skills', 'en')).filter((s) => statSync(join(fwSrc, 'skills', 'en', s)).isDirectory());
-  const bases = ['.claude/skills', ...(platforms.has('codex') || platforms.has('gemini') ? ['.agents/skills'] : [])];
+  const bases = ['.claude/skills', ...(platforms.has('codex') || platforms.has('agy') || platforms.has('gemini') ? ['.agents/skills'] : [])];
   for (const base of bases) {
     const missing = skillNames.filter((s) => !existsSync(at(`${base}/${s}/SKILL.md`)));
     if (missing.length) fail(M({ en: `${base}: missing ${missing.join(', ')} — npx flightwake update`, 'zh-TW': `${base}:缺 ${missing.join(', ')} — npx flightwake update`, 'zh-CN': `${base}:缺 ${missing.join(', ')} — npx flightwake update`, ja: `${base}:${missing.join(', ')} がない — npx flightwake update` }));
@@ -209,6 +215,30 @@ export function runDoctor({ target, fwSrc, version, lang, log, claudeVersion: re
     }));
   }
   if (platforms.has('gemini')) checkHook('Gemini CLI', ['.gemini/settings.json'], 'AfterAgent', HOOK_CMD_GIT, { optionalIfTracked: true });
+  // Antigravity: top-level keys are hook names, each holding its events; Stop is a plain list of handlers
+  if (platforms.has('agy')) {
+    const j = existsSync(at(AGY_HOOKS_REL)) ? readJson(AGY_HOOKS_REL) : { ok: true, value: {} };
+    if (!j.ok || !j.value || typeof j.value !== 'object' || Array.isArray(j.value)) {
+      fail(M({ en: `${AGY_HOOKS_REL} is not a JSON object`, 'zh-TW': `${AGY_HOOKS_REL} 不是 JSON 物件`, 'zh-CN': `${AGY_HOOKS_REL} 不是 JSON 对象`, ja: `${AGY_HOOKS_REL} は JSON オブジェクトではない` }));
+    } else {
+      const mentions = Object.entries(j.value).filter(([, v]) => JSON.stringify(v ?? null).includes('state-check.mjs'));
+      const ours = j.value[AGY_HOOK_NAME];
+      const isExact = Array.isArray(ours?.Stop) && ours.Stop.some((h) => h?.type === 'command' && h?.command === HOOK_CMD_GIT);
+      if (mentions.length > 1) fail(M({ en: `Antigravity: state-check hook registered under ${mentions.length} names (${mentions.map(([k]) => k).join(', ')}) — the reminder would fire repeatedly`, 'zh-TW': `Antigravity:state-check hook 登記在 ${mentions.length} 個名稱下(${mentions.map(([k]) => k).join(', ')})— 提醒會重複觸發`, 'zh-CN': `Antigravity:state-check hook 登记在 ${mentions.length} 个名称下(${mentions.map(([k]) => k).join(', ')})— 提醒会重复触发`, ja: `Antigravity:state-check hook が ${mentions.length} 個の名前で登録(${mentions.map(([k]) => k).join(', ')})— リマインドが重複する` }));
+      else if (isExact) ok(`Antigravity: ${AGY_HOOKS_REL} ${AGY_HOOK_NAME} Stop hook`);
+      else if (mentions.length) fail(M({ en: `Antigravity: ${AGY_HOOKS_REL} mentions state-check.mjs but not as "${AGY_HOOK_NAME}".Stop with command: ${HOOK_CMD_GIT}`, 'zh-TW': `Antigravity:${AGY_HOOKS_REL} 提到 state-check.mjs,但不是「${AGY_HOOK_NAME}」.Stop 且 command 為:${HOOK_CMD_GIT}`, 'zh-CN': `Antigravity:${AGY_HOOKS_REL} 提到 state-check.mjs,但不是「${AGY_HOOK_NAME}」.Stop 且 command 为:${HOOK_CMD_GIT}`, ja: `Antigravity:${AGY_HOOKS_REL} に state-check.mjs があるが「${AGY_HOOK_NAME}」.Stop(command: ${HOOK_CMD_GIT})ではない` }));
+      else {
+        const tracked = det.private && existsSync(at(AGY_HOOKS_REL)) && isTracked(AGY_HOOKS_REL);
+        (tracked ? warn : fail)(M({ en: `Antigravity: Stop hook not registered in ${AGY_HOOKS_REL} — npx flightwake update --agents=…,agy`, 'zh-TW': `Antigravity:${AGY_HOOKS_REL} 沒有 Stop hook — npx flightwake update --agents=…,agy`, 'zh-CN': `Antigravity:${AGY_HOOKS_REL} 没有 Stop hook — npx flightwake update --agents=…,agy`, ja: `Antigravity:${AGY_HOOKS_REL} に Stop hook がない — npx flightwake update --agents=…,agy` }));
+      }
+    }
+    info(M({
+      en: 'Antigravity: the Stop hook follows its documented format but has not been verified in agy on a real machine — trigger it once to confirm (docs/plans/agy.probe.md)',
+      'zh-TW': 'Antigravity:Stop hook 依官方文件格式安裝,但尚未在 agy 真機驗證 — 請實際觸發一次確認(docs/plans/agy.probe.md)',
+      'zh-CN': 'Antigravity:Stop hook 依官方文件格式安装,但尚未在 agy 真机验证 — 请实际触发一次确认(docs/plans/agy.probe.md)',
+      ja: 'Antigravity:Stop hook は公式ドキュメントの形式で入れたが、agy の実機では未検証 — 一度発火させて確認を(docs/plans/agy.probe.md)',
+    }));
+  }
 
   // ── --private: the paths that must be ignored come from what is installed, not from what is left in the exclude
   //    block (an entry deleted from it would otherwise vanish from the check). Each artifact file must be ignored
@@ -228,7 +258,7 @@ export function runDoctor({ target, fwSrc, version, lang, log, claudeVersion: re
       for (const d of (existsSync(at(base)) ? readdirSync(at(base)) : [])) if (d.startsWith('fw-')) groups.push([`${base}/${d}/`, walk(`${base}/${d}`)]);
     }
     if (existsSync(at(MOD_REL))) groups.push([`${MOD_REL}/`, walk(MOD_REL)]);
-    for (const rel of ['.claude/settings.json', '.claude/settings.local.json', '.codex/hooks.json', '.gemini/settings.json']) {
+    for (const rel of ['.claude/settings.json', '.claude/settings.local.json', '.codex/hooks.json', '.gemini/settings.json', AGY_HOOKS_REL]) {
       if (has(rel, 'state-check.mjs') || has(rel, 'statusline.mjs')) groups.push([rel, [rel]]);
     }
     for (const rel of INSTRUCTION_CANDIDATES) {

@@ -24,8 +24,16 @@ export const GROUPS = {
   codex: ['AGENTS.md'],
   gemini: ['GEMINI.md'],
 };
-// Own-property check: a plain `GROUPS[x]` lookup accepts inherited names like constructor / toString / __proto__
-export const isAgentName = (x) => Object.hasOwn(GROUPS, x);
+// Every platform --agents accepts, in the order setup lists them. Antigravity (`agy`) has no instruction file of its
+// own: it reads AGENTS.md, so its obligation table is the codex group's block (TABLE_GROUP). It gets the skills in
+// .agents/skills and its own Stop hook in .agents/hooks.json. Gemini CLI stays for enterprise / API-key users
+// (individual plans moved to Antigravity on 2026-06-18; DECISIONS 2026-11-10).
+export const PLATFORMS = ['claude', 'codex', 'agy', 'gemini'];
+export const TABLE_GROUP = { agy: 'codex' };
+export const AGY_HOOKS_REL = '.agents/hooks.json';
+export const AGY_HOOK_NAME = 'flightwake-state-check';
+// Exact-member check: a plain `GROUPS[x]` lookup accepts inherited names like constructor / toString / __proto__
+export const isAgentName = (x) => typeof x === 'string' && PLATFORMS.includes(x);
 export const HOOK_CMD = 'node "$CLAUDE_PROJECT_DIR/.flightwake/hooks/state-check.mjs"';
 export const HOOK_CMD_GIT = 'node "$(git rev-parse --show-toplevel)/.flightwake/hooks/state-check.mjs"';
 export const SL_CMD = 'node "$CLAUDE_PROJECT_DIR/.flightwake/hooks/statusline.mjs"';
@@ -240,7 +248,16 @@ export function detectInstall(target) {
 export function detectedAgents(target) {
   const hasFile = (rel) => existsSync(join(target, ...rel.split('/')));
   const localMarker = () => { try { return readFileSync(join(target, 'CLAUDE.local.md'), 'utf8').includes(BEGIN); } catch { return false; } };
-  return Object.keys(GROUPS).filter((name) => GROUPS[name].some(hasFile) || (name === 'claude' && localMarker()));
+  // agy has no instruction file to find: its own hook in .agents/hooks.json is the evidence it was set up here
+  const agyHook = () => { try { return readFileSync(join(target, ...AGY_HOOKS_REL.split('/')), 'utf8').includes('state-check.mjs'); } catch { return false; } };
+  // An AGENTS.md whose table was written for agy alone (plain skill names, not Codex's `$fw-…`) with no Codex hook is
+  // agy's, not a sign of Codex — otherwise every `update` would add Codex to an agy-only repo
+  const read = (rel) => { try { return readFileSync(join(target, ...rel.split('/')), 'utf8'); } catch { return ''; } };
+  const agyOnlyTable = () => agyHook() && read('AGENTS.md').includes(BEGIN) && !read('AGENTS.md').includes('`$fw-')
+    && !read('.codex/hooks.json').includes('state-check.mjs');
+  return PLATFORMS.filter((name) => (name === 'agy' ? agyHook()
+    : name === 'codex' && agyOnlyTable() ? false
+    : GROUPS[name].some(hasFile) || (name === 'claude' && localMarker())));
 }
 /** Which platforms a default (no --agents) install would target: the detected ones, or codex when none. */
 export function defaultAgents(target) {
@@ -690,8 +707,8 @@ export function install(o) {
 
   const wanted = o.agents ?? null;
   const ACTIVE = new Set(wanted ?? defaultAgents(TARGET));
-  // Codex and Gemini CLI both read `.agents/skills/` (Gemini treats it as an alias of .gemini/skills)
-  const AGENTS_SKILLS = ACTIVE.has('codex') || ACTIVE.has('gemini');
+  // Codex, Antigravity and Gemini CLI all read `.agents/skills/` (Gemini treats it as an alias of .gemini/skills)
+  const AGENTS_SKILLS = ACTIVE.has('codex') || ACTIVE.has('agy') || ACTIVE.has('gemini');
 
   // 3. The four skills → .claude/skills/ always, plus .agents/skills/ when Codex/Gemini is in play
   //    (directories only, junk filtered; --force updates; other skills already in those trees are never touched)
@@ -830,6 +847,49 @@ export function install(o) {
     privateExcludes?.push(rel);
   }
 
+  // 4c. Antigravity (.agents/hooks.json): a different file shape — top-level keys are hook names, each holding its
+  //     events; Stop takes a plain list of handlers (no matcher). One named entry of ours; other hooks are kept.
+  //     The script tells Antigravity's Stop apart by its stdin (camelCase, conversationId) and answers
+  //     `decision: "continue"`. Same --private rule as 4b.
+  if (ACTIVE.has('agy')) {
+    const rel = AGY_HOOKS_REL;
+    const p = join(TARGET, ...rel.split('/'));
+    let s = {};
+    let skip = false;
+    if (PRIVATE && existsSync(p) && isTracked(rel)) {
+      log(`  ⚠️  --private: ${rel}${M({
+        en: ` is git-tracked, writing would leave a trace — skipped; add a "${AGY_HOOK_NAME}" Stop hook yourself: ${HOOK_CMD_GIT}`,
+        'zh-TW': ` 受 git 追蹤,寫入會留下痕跡 — 跳過;請自行加 "${AGY_HOOK_NAME}" 的 Stop hook:${HOOK_CMD_GIT}`,
+        'zh-CN': ` 受 git 追踪,写入会留下痕迹 — 跳过;请自行加 "${AGY_HOOK_NAME}" 的 Stop hook:${HOOK_CMD_GIT}`,
+        ja: ` は git 管理下のため、書き込むと痕跡が残る — スキップ。"${AGY_HOOK_NAME}" の Stop hook はご自分で追加:${HOOK_CMD_GIT}`,
+      })}`);
+      skip = true;
+    } else if (existsSync(p)) {
+      try { s = JSON.parse(readFileSync(p, 'utf8')); } catch { s = null; }
+      if (!s || typeof s !== 'object' || Array.isArray(s)) {
+        log(`  ⚠️  ${rel} is not a JSON object — skipping hook install; add a "${AGY_HOOK_NAME}" Stop hook manually: ${HOOK_CMD_GIT}`);
+        skip = true;
+      }
+    }
+    if (!skip) {
+      if (JSON.stringify(s).includes('state-check.mjs')) {
+        log(`  skip ${rel} Stop hook${M({ en: ' (already set)', 'zh-TW': '(已設定)', 'zh-CN': '(已设定)', ja: '(設定済)' })}`);
+      } else if (Object.hasOwn(s, AGY_HOOK_NAME)) {
+        log(`  ⚠️  ${rel} already has a "${AGY_HOOK_NAME}" entry that is not flightwake's — not overwriting; add the Stop hook yourself: ${HOOK_CMD_GIT}`);
+      } else {
+        s[AGY_HOOK_NAME] = { Stop: [{ type: 'command', command: HOOK_CMD_GIT, timeout: 30 }] };
+        W.mkdir(dirname(p));
+        if (W.write(p, JSON.stringify(s, null, 2) + '\n')) log(`  add  ${rel} ← Stop hook${M({
+          en: ' (STATE staleness check, Antigravity)',
+          'zh-TW': '(STATE 過期檢查,Antigravity)',
+          'zh-CN': '(STATE 过期检查,Antigravity)',
+          ja: '(STATE 遅れチェック、Antigravity)',
+        })}`);
+      }
+      privateExcludes?.push(rel);
+    }
+  }
+
   // 5. Trigger-obligation snippet → each active platform's instruction file, in that platform's dialect:
   //    Claude Code invokes skills as `/fw-…`, Codex as `$fw-…`, Gemini CLI activates them by name.
   //    One snippet source per language and profile (notes = the trimmed table); invocation form rewritten per platform.
@@ -838,13 +898,19 @@ export function install(o) {
   {
     const LEGACY = 'flightwake 工作紀律';
     const body = readFileSync(join(FW_SRC, 'snippets', LANG, `CLAUDE-md-snippet${NOTES ? '.notes' : ''}.md`), 'utf8').replace(/^<!--[\s\S]*?-->\n?/, '');
-    const INVOKE = { claude: (s) => `\`/${s}\``, codex: (s) => `\`$${s}\``, gemini: (s) => `\`${s}\`` };
+    const INVOKE = { claude: (s) => `\`/${s}\``, codex: (s) => `\`$${s}\``, agy: (s) => `\`${s}\``, gemini: (s) => `\`${s}\`` };
     const NOTE = {
       codex: M({
         en: 'Codex: the four skills live in `.agents/skills/fw-*` (mention one with `$fw-…`); the wrap-up reminder is the Stop hook in `.codex/hooks.json` — Codex asks you to trust it once.',
         'zh-TW': 'Codex:四個 skill 在 `.agents/skills/fw-*`(用 `$fw-…` 點名);收尾提醒是 `.codex/hooks.json` 的 Stop hook——Codex 首次會要你信任它一次。',
         'zh-CN': 'Codex:四个 skill 在 `.agents/skills/fw-*`(用 `$fw-…` 点名);收尾提醒是 `.codex/hooks.json` 的 Stop hook——Codex 首次会要你信任它一次。',
         ja: 'Codex:4 つの skill は `.agents/skills/fw-*` にある(`$fw-…` で指名);締めのリマインドは `.codex/hooks.json` の Stop hook——初回に Codex が信頼確認を求める。',
+      }),
+      agy: M({
+        en: 'Antigravity (agy): the four skills live in `.agents/skills/fw-*` (activated by name); the wrap-up reminder is the `flightwake-state-check` Stop hook in `.agents/hooks.json`.',
+        'zh-TW': 'Antigravity(agy):四個 skill 在 `.agents/skills/fw-*`(用名字啟用);收尾提醒是 `.agents/hooks.json` 裡的 `flightwake-state-check` Stop hook。',
+        'zh-CN': 'Antigravity(agy):四个 skill 在 `.agents/skills/fw-*`(用名字启用);收尾提醒是 `.agents/hooks.json` 里的 `flightwake-state-check` Stop hook。',
+        ja: 'Antigravity(agy):4 つの skill は `.agents/skills/fw-*` にある(名前で起動);締めのリマインドは `.agents/hooks.json` の `flightwake-state-check` Stop hook。',
       }),
       gemini: M({
         en: 'Gemini CLI: the four skills live in `.agents/skills/fw-*` (activated by name); the wrap-up reminder is the AfterAgent hook in `.gemini/settings.json`.',
@@ -853,13 +919,18 @@ export function install(o) {
         ja: 'Gemini CLI:4 つの skill は `.agents/skills/fw-*` にある(名前で起動);締めのリマインドは `.gemini/settings.json` の AfterAgent hook。',
       }),
     };
-    const blockFor = (name) => {
-      const dialect = body.replace(/`\/(fw-[a-z]+)`/g, (_, s) => INVOKE[name](s)).trimEnd();
-      return `${BEGIN} v${VERSION} lang=${LANG}${NOTES ? ' profile=notes' : ''} -->\n${dialect}${NOTE[name] ? `\n${NOTE[name]}` : ''}\n${END}\n`;
+    // One table per instruction-file group; a platform without a file of its own (agy → codex) reads the group's
+    // block. Dialect: the group's own platform when it is set up, else the first reader's. Each reader adds its note.
+    const readersOf = (group) => [group, ...Object.keys(TABLE_GROUP).filter((x) => TABLE_GROUP[x] === group)].filter((x) => ACTIVE.has(x));
+    const blockFor = (readers) => {
+      const dialect = body.replace(/`\/(fw-[a-z]+)`/g, (_, s) => INVOKE[readers[0]](s)).trimEnd();
+      const notes = readers.map((r) => NOTE[r]).filter(Boolean).map((n) => `\n${n}`).join('');
+      return `${BEGIN} v${VERSION} lang=${LANG}${NOTES ? ' profile=notes' : ''} -->\n${dialect}${notes}\n${END}\n`;
     };
     for (const [name, rels] of Object.entries(GROUPS)) {
-      if (!ACTIVE.has(name)) continue;
-      const block = blockFor(name);
+      const readers = readersOf(name);
+      if (!readers.length) continue;
+      const block = blockFor(readers);
       const files = rels.map((rel) => ({ rel, path: join(TARGET, ...rel.split('/')) }));
       // --private: writing to a git-tracked file always leaves a trace (exclude has no effect on tracked files).
       // claude has a local equivalent, CLAUDE.local.md → detection still scans the originals, writes go to the local file;
@@ -1131,7 +1202,7 @@ export function printNext({ lang, private: PRIVATE, statusline: STATUSLINE, lang
   const M = makeM(lang);
   const addPaths = ['.flightwake', '.claude',
     ...(agentsSkills ? ['.agents'] : []),
-    ...(active.has('codex') ? ['.codex', 'AGENTS.md'] : []),
+    ...(active.has('codex') ? ['.codex', 'AGENTS.md'] : active.has('agy') ? ['AGENTS.md'] : []),
     ...(active.has('gemini') ? ['.gemini', 'GEMINI.md'] : []),
     ...(active.has('claude') ? ['CLAUDE.md'] : []),
   ].join(' ');

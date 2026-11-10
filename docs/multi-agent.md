@@ -1,4 +1,4 @@
-# One folder, three models — sharing flightwake memory across Claude Code, Codex, and Gemini CLI
+# One folder, many models — sharing flightwake memory across Claude Code, Codex, and Antigravity
 
 > 繁體中文版:[multi-agent.zh-TW.md](multi-agent.zh-TW.md)
 
@@ -24,20 +24,27 @@ detects, so you set it up once and then simply switch tools.
 
 ## What init installs for each model
 
-| | Claude Code | Codex | Gemini CLI |
-|---|---|---|---|
-| Detected by | `CLAUDE.md` (or `.claude/CLAUDE.md`) | `AGENTS.md` | `GEMINI.md` |
-| Obligation table goes into | `CLAUDE.md` | `AGENTS.md` | `GEMINI.md` |
-| Skills | `.claude/skills/fw-*` | `.agents/skills/fw-*` | `.agents/skills/fw-*` (same directory) |
-| How you invoke a skill | `/fw-coldstart` | `$fw-coldstart` | say "run the fw-coldstart skill" (activates by name/description) |
-| Wrap-up hook | `Stop` in `.claude/settings.json` | `Stop` in `.codex/hooks.json` | `AfterAgent` in `.gemini/settings.json` |
-| One-time platform prompt | confirms loading the repo hook | asks you to **trust** the repo hook once (re-asks if it changes) | — |
+| | Claude Code | Codex | Antigravity (`agy`) | Gemini CLI |
+|---|---|---|---|---|
+| `--agents=` name | `claude` | `codex` | `agy` | `gemini` |
+| Detected by | `CLAUDE.md` (or `.claude/CLAUDE.md`) | `AGENTS.md` | its hook in `.agents/hooks.json` (set it up once with `--agents`) | `GEMINI.md` |
+| Obligation table goes into | `CLAUDE.md` | `AGENTS.md` | `AGENTS.md` (the same block as Codex) | `GEMINI.md` |
+| Skills | `.claude/skills/fw-*` | `.agents/skills/fw-*` | `.agents/skills/fw-*` (same directory) | `.agents/skills/fw-*` (same directory) |
+| How you invoke a skill | `/fw-coldstart` | `$fw-coldstart` | by name, e.g. "run fw-coldstart" | say "run the fw-coldstart skill" (activates by name/description) |
+| Wrap-up hook | `Stop` in `.claude/settings.json` | `Stop` in `.codex/hooks.json` | `flightwake-state-check` → `Stop` in `.agents/hooks.json` | `AfterAgent` in `.gemini/settings.json` |
+| One-time platform prompt | confirms loading the repo hook | asks you to **trust** the repo hook once (re-asks if it changes) | not documented | — |
+| Verified on a real machine | yes | yes | skills yes; the Stop hook **not yet** ([probe](plans/agy.probe.md)) | no — and Google stopped Gemini CLI for individual plans on 2026-06-18; it remains for enterprise / API-key users |
 
-To get all three at once in a repo that only has `CLAUDE.md` today:
+Antigravity has no instruction file of its own: it reads `AGENTS.md`. With Codex set up too, the shared block uses
+Codex's `$fw-…` form and carries a line for each tool; with Antigravity alone it uses plain skill names. Its Stop hook
+answers `decision: "continue"` and, since Antigravity passes no loop guard, reminds at most once per conversation for
+each HEAD commit.
+
+To set up Claude Code, Codex and Antigravity at once in a repo that only has `CLAUDE.md` today:
 
 ```bash
-npx flightwake init --agents=claude,codex,gemini   # creates AGENTS.md and GEMINI.md, installs everything
-git add .flightwake .claude .agents .codex .gemini CLAUDE.md AGENTS.md GEMINI.md && git commit
+npx flightwake init --agents=claude,codex,agy   # creates AGENTS.md, installs everything
+git add .flightwake .claude .agents .codex CLAUDE.md AGENTS.md && git commit
 ```
 
 Already installed? `npx flightwake update` re-detects the instruction files present and fills in whatever a

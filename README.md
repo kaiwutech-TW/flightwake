@@ -32,7 +32,7 @@ npx flightwake setup                # guided install: a few questions, shows eve
 
 ```bash
 npx flightwake init --statusline    # English (default) + the bottom gauge
-npx flightwake init --statusline --agents=claude,codex,gemini   # all three agents at once (Claude Code + Codex + Gemini CLI)
+npx flightwake init --statusline --agents=claude,codex,agy   # three agents at once (Claude Code + Codex + Antigravity)
 npx flightwake update               # upgrade an existing install in place (keeps your options: lang/statusline/private); ends with one line naming add-ons you don't have
 npx flightwake update --mod         # upgrade and add the Claude Code mod (also --statusline, --orca)
 ```
@@ -148,8 +148,9 @@ your-repo/
 │   └── records/             # flight records (one per meaningful wrap-up)
 ├── .claude/skills/fw-*/     # the four skills (Claude Code)
 ├── .claude/settings.json    # init merges the Stop hook config here
-├── .agents/skills/fw-*/     # the same four skills for Codex / Gemini CLI (only when AGENTS.md / GEMINI.md is detected)
+├── .agents/skills/fw-*/     # the same four skills for Codex / Antigravity / Gemini CLI (when one of them is set up)
 ├── .codex/hooks.json        # Codex Stop hook (only when AGENTS.md is detected)
+├── .agents/hooks.json       # Antigravity Stop hook (only with --agents=…,agy)
 └── .gemini/settings.json    # Gemini CLI AfterAgent hook (only when GEMINI.md is detected)
 ```
 

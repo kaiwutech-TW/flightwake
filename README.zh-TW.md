@@ -32,7 +32,7 @@ npx flightwake setup    # 引導式安裝:問幾個問題、列出將寫入的�
 
 ```bash
 npx flightwake init --lang=zh-TW --statusline   # 繁體中文 + 底部儀表
-npx flightwake init --lang=zh-TW --statusline --agents=claude,codex,gemini   # 三家一次裝齊(Claude Code + Codex + Gemini CLI)
+npx flightwake init --lang=zh-TW --statusline --agents=claude,codex,agy   # 三家一次裝齊(Claude Code + Codex + Antigravity)
 npx flightwake update                           # 就地升級,沿用你裝過的選項(lang/statusline/private);結尾用一行列出你還沒裝的附加元件
 npx flightwake update --mod                     # 升級並加上 Claude Code mod(也可 --statusline、--orca)
 ```
@@ -142,8 +142,9 @@ your-repo/
 │   └── records/             # 飛行紀錄(每次有意義的收尾一份)
 ├── .claude/skills/fw-*/     # 四個 skill(Claude Code)
 ├── .claude/settings.json    # init 併入 Stop hook 設定
-├── .agents/skills/fw-*/     # 同一套四個 skill 給 Codex / Gemini CLI(偵測到 AGENTS.md / GEMINI.md 才裝)
+├── .agents/skills/fw-*/     # 同一套四個 skill 給 Codex / Antigravity / Gemini CLI(設定了其中一家才裝)
 ├── .codex/hooks.json        # Codex 的 Stop hook(偵測到 AGENTS.md 才裝)
+├── .agents/hooks.json       # Antigravity 的 Stop hook(用 --agents=…,agy 才裝)
 └── .gemini/settings.json    # Gemini CLI 的 AfterAgent hook(偵測到 GEMINI.md 才裝)
 ```
 
