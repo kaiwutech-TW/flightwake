@@ -4,7 +4,7 @@ import type { On } from 'claude-code'
 import type { MockClock } from 'claude-code/testing'
 
 import { addTrips, codeCell, isOursTripsText, mergeTrips, tripsOfFile } from '../hooks/lib/fleet'
-import { REFUSAL_RE } from '../hooks/lib/traps'
+import { parseTraps, REFUSAL_RE } from '../hooks/lib/traps'
 import { HOME_OUT, installWorld, MARKER, STATE_FILLED, STATE_TEMPLATE } from './world'
 import type { World } from './world'
 
@@ -199,6 +199,39 @@ describe('tripwire: dedup', () => {
     setup(on, traps(entry('sql', { paths: '["*.sql"]' })))
     expect(ctx(await $.tool.call({ ...(write('/repo/a.sql') as object), agentId: 'agent-1' } as never))).toContain('`sql`')
     expect((await $.tool.call(write('/repo/a.sql'))).context).toBeUndefined()
+  })
+})
+
+describe('tripwire: the plain trap-check hook (A5)', () => {
+  const HINTS = `${HOME_OUT}/.flightwake/hints/claude-session-1.json`
+  const T = traps(entry('sql', { paths: '["*.sql"]' }))
+  const key = `sql@${parseTraps(T)[0]!.version}`
+  const record = (toolUseId: string, k = key): string => JSON.stringify({ v: 1, host: 'claude', sessionId: 'session-1', updated: '', repos: { '/repo': { [k]: { at: '', toolUseId } } } })
+  const call = (id: string) => ({ ...(write('/repo/a.sql') as object), tool_use_id: id }) as never
+
+  test('shown by the hook for this very call: the mod stays quiet and counts it as shown', async ($, on) => {
+    mock.env(on, { HOME: HOME_OUT })
+    setup(on, T, { outside: { [HINTS]: record('tu-1') } })
+    expect((await $.tool.call(call('tu-1'))).context).toBeUndefined()
+    expect((await $.tool.call(call('tu-2'))).context).toBeUndefined()
+  })
+
+  test('shown for another call, an older entry version, or another session: the mod hints', async ($, on) => {
+    mock.env(on, { HOME: HOME_OUT })
+    const w = setup(on, T, { outside: { [HINTS]: record('tu-other') } })
+    expect(ctx(await $.tool.call(call('tu-1')))).toContain('`sql`')
+    w.sessionId = 'session-2'
+    w.outside[HINTS] = record('tu-3', 'sql@00000000')
+    expect(ctx(await $.tool.call(call('tu-3')))).toContain('`sql`')
+  })
+
+  test('a broken or foreign record, or none: the mod hints as before', async ($, on) => {
+    mock.env(on, { HOME: HOME_OUT })
+    const w = setup(on, T, { outside: { [HINTS]: '{not json' } })
+    expect(ctx(await $.tool.call(call('tu-1')))).toContain('`sql`')
+    w.sessionId = 'session-2'
+    w.outside[`${HOME_OUT}/.flightwake/hints/claude-session-2.json`] = JSON.stringify({ v: 1, host: 'codex', sessionId: 'session-2', repos: { '/repo': { [key]: { toolUseId: 'tu-2' } } } })
+    expect(ctx(await $.tool.call(call('tu-2')))).toContain('`sql`')
   })
 })
 

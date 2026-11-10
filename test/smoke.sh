@@ -2394,7 +2394,7 @@ discovered: {{YYYY-MM-DD}}
 EOF
 git add -A && git commit -qm traps
 # parser 一致:mod 的 traps.ts 以 extensionless import 讀 core,複製一份把 './core' 改成 './core.ts' 再由 node 直接載入
-TSP="$TMP/traps-ts"; mkdir -p "$TSP"; cp "$SRC/mods/flightwake/hooks/lib/core.ts" "$TSP/core.ts"
+TSP="$TMP/traps-ts"; mkdir -p "$TSP"; cp "$SRC/mods/flightwake/hooks/lib/core.ts" "$TSP/core.ts"; cp "$SRC/mods/flightwake/hooks/lib/traps-core.mjs" "$TSP/"
 sed "s#from './core'#from './core.ts'#" "$SRC/mods/flightwake/hooks/lib/traps.ts" > "$TSP/traps.ts"
 node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --input-type=module -e "
   import fs from 'node:fs';

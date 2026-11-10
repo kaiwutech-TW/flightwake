@@ -13,103 +13,21 @@
 import { readdirSync, lstatSync, readFileSync, existsSync, writeFileSync, chmodSync, renameSync, rmSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { fleetBase, fleetDirInRepo, realish, isAbs, FILE_RE } from './fleet.mjs';
+import { parseFlatYaml, parseInlineList, parseTraps, isActive, hasMatchers, normGlob, globRegExp } from '../mods/flightwake/hooks/lib/traps-core.mjs';
 
 export const TRAPS_REL = '.flightwake/TRAPS.md';
 const DAY_MS = 86400000;
 const LANGS = ['en', 'zh-TW', 'zh-CN', 'ja'];
 
-// ── TRAPS.md parser: MIRRORS mods/flightwake/hooks/lib/traps.ts parseTraps (+ parseFlatYaml / parseInlineList /
-//    contentHash from hooks/lib/core.ts). Change both together. Adds `tags` and `discovered`, which the mod does not read.
-const ENTRY_RE = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n([\s\S]*?)(?=^---[ \t]*\r?\n[A-Za-z_][\w-]*:|(?![\s\S]))/gm;
+// ── TRAPS.md parser and globs: the shared TRAPS core (mods/flightwake/hooks/lib/traps-core.mjs), the same file the mod
+//    imports and the installer copies next to the plain trap-check hook — one parser, not mirrors (A5).
+export { parseFlatYaml, parseInlineList, parseTraps, isActive, hasMatchers };
 
-/** `key: value` lines → record; `# comment` tails and surrounding quotes removed; nested/continuation lines ignored. */
-export function parseFlatYaml(block) {
-  const out = {};
-  for (const line of block.split(/\r?\n/)) {
-    const m = /^([A-Za-z_][\w-]*):\s*(.*)$/.exec(line);
-    if (!m) continue;
-    let v = (m[2] ?? '').replace(/\s+#.*$/, '').trim();
-    if (/^(['"]).*\1$/.test(v)) v = v.slice(1, -1);
-    out[m[1]] = v;
-  }
-  return out;
-}
-/** An inline YAML list (`[a, "b c", 'd']`) or a single scalar → items; empty input → []. */
-export function parseInlineList(v) {
-  if (!v) return [];
-  const s = v.trim();
-  const body = s.startsWith('[') && s.endsWith(']') ? s.slice(1, -1) : s;
-  const items = [];
-  const re = /\s*("([^"\\]*(?:\\.[^"\\]*)*)"|'([^']*)'|([^,]+))\s*(?:,|$)/g;
-  let m;
-  while ((m = re.exec(body)) !== null && m[0] !== '') {
-    const item = (m[2] ?? m[3] ?? m[4] ?? '').trim();
-    if (item) items.push(item);
-  }
-  return items;
-}
-const contentHash = (text) => {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
-  return h.toString(16).padStart(8, '0');
-};
-/** Entries in file order. Missing `status` → active; missing/unknown `confidence` → unknown; `{{…}}` residue skipped. */
-export function parseTraps(text) {
-  const out = [];
-  // Drop HTML comments first (the shipped header documents the format with example frontmatter-like lines); repeat
-  // until nothing changes: one pass can join the text around a removed comment into a new `<!--`.
-  let clean = text;
-  for (let prev = ''; prev !== clean;) { prev = clean; clean = clean.replace(/<!--[\s\S]*?-->/g, ''); }
-  ENTRY_RE.lastIndex = 0;
-  let m;
-  while ((m = ENTRY_RE.exec(clean)) !== null) {
-    const fmText = m[1] ?? '';
-    const body = (m[2] ?? '').trim();
-    const fm = parseFlatYaml(fmText);
-    const name = fm.name ?? '';
-    if (!name) continue;
-    if (/\{\{[^}\n]*\}\}/.test(fmText) || /\{\{[^}\n]*\}\}/.test(body)) continue;
-    const conf = (fm.confidence ?? '').toLowerCase();
-    out.push({
-      name,
-      status: (fm.status ?? 'active').toLowerCase() || 'active',
-      confidence: conf === 'confirmed' || conf === 'probable' || conf === 'suspected' ? conf : 'unknown',
-      type: fm.type ?? '',
-      tags: parseInlineList(fm.tags),
-      discovered: fm.discovered ?? '',
-      paths: parseInlineList(fm.paths),
-      commands: parseInlineList(fm.commands),
-      labelled: body.split(/\r?\n/).filter((l) => /^\*\*[^*]+\*\*/.test(l.trim())).map((l) => l.trim()),
-      body,
-      version: contentHash(`${fmText}\n${body}`),
-    });
-  }
-  return out;
-}
-export const isActive = (e) => e.status !== 'superseded';
-export const hasMatchers = (e) => e.paths.length > 0 || e.commands.length > 0;
-
-// ── Glob overlap: the compile rules MIRROR mods/flightwake/hooks/lib/glob.ts (`**` any segments, `*` within one,
-//    `?` one char; no `/` = any depth; trailing `/` = everything under it). Two globs overlap when they are identical
-//    after normalizing, or one of them matches the other's literal prefix (the text before its first `*` / `?`; a
-//    glob without wildcards is its own prefix). An empty literal prefix (`**`, `*.sql`) is never tested, and a catch-all
-//    glob (only `*` and `/`: `**`, `*`, `**/*`) overlaps only an identical one, so it does not overlap everything.
-//    Deliberately coarse: a hint for a human choice, not a proof.
-const normGlob = (g) => { let p = g.trim().replace(/^\.\//, '').replace(/^\/+/, ''); if (p.endsWith('/')) p += '**'; return p; };
-function globRe(pattern) {
-  const p = normGlob(pattern);
-  let re = '';
-  for (let i = 0; i < p.length; i++) {
-    const c = p[i];
-    if (c === '*') {
-      if (p[i + 1] === '*') {
-        if (p[i + 2] === '/') { re += '(?:[^/]+/)*'; i += 2; } else { re += '.*'; i += 1; }
-      } else re += '[^/]*';
-    } else if (c === '?') re += '[^/]';
-    else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-  }
-  return new RegExp(!p.includes('/') ? `^(?:.*/)?${re}$` : `^${re}$`);
-}
+// ── Glob overlap: two globs overlap when they are identical after normalizing, or one of them matches the other's
+//    literal prefix (the text before its first `*` / `?`; a glob without wildcards is its own prefix). An empty literal
+//    prefix (`**`, `*.sql`) is never tested, and a catch-all glob (only `*` and `/`: `**`, `*`, `**/*`) overlaps only an
+//    identical one, so it does not overlap everything. Deliberately coarse: a hint for a human choice, not a proof.
+const globRe = globRegExp;
 const literalPrefix = (g) => { const p = normGlob(g); const i = p.search(/[*?]/); return i < 0 ? p : p.slice(0, i); };
 const isCatchAll = (p) => /^[*/]+$/.test(p);
 export function globsOverlap(a, b) {
