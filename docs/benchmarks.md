@@ -1,5 +1,9 @@
 # flightwake 基準測試(vs GSD)
 
+> **讀這份之前**(2026-11-10 補):目前只有 n=2 的真冷啟動,GSD 那一側是檔案實量、沒有實跑同一個任務。
+> 這些數字描述的是 flightwake 自己的成本,不能當成與 GSD 或其他工具的比較結論,對外也不要這樣引用。
+> English summary: two real cold starts so far; the GSD side was measured from its files, not run. Not a comparison.
+
 框架的兩個量化指標:**冷啟動成本**(品質主指標)與 **token 邊際成本**(用量指標)。
 資料點持續累積於本檔;測量方式如下。
 
