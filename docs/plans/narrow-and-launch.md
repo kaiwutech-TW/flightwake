@@ -165,6 +165,11 @@ A 的第一批發版之後做。B 裡的每一句對外宣稱都要對得上當�
   1. 把專案交給別人或另一個 session 時,對方從 repo 就看得懂怎麼做出來的、解過什麼問題、做過哪些決定。這是 Kai 的親身使用經驗,現在就成立。
   2. 踩過的坑記在 repo 裡,所有 agent 都讀得到。「改到之前先提醒」等 A5、A6 完成才能加上。
 - **[Kai]** 那一句痛點由 Kai 定稿。實作者給三個候選,不要自己選。
+  - 候選(2026-11-10,實作者擬):
+    1. "Hand this repo to another person or another agent, and they can see how it was built: what was done, why each choice was made, and which traps were found."(主打交接,現在就成立)
+    2. "Your agents forget between sessions. flightwake writes down what happened, what was decided and what bit you, in the repo, where Claude Code, Codex and Antigravity all read it."(主打跨 agent;Antigravity 要等 agy 探針)
+    3. "A flight recorder for AI coding agents: a short state file, a decision log and a list of known traps, kept in git and read by every agent at the start of a session."(主打機制,保留原比喻)
+  - 量測(2026-11-10):乾淨暫存 repo 裡 `node bin/cli.mjs init --agents=claude,codex` 三次各約 0.1 秒;`npx` 下載套件(約 1.1 MB、119 個檔)另計,沒量。真正的好處(新 session 冷啟動接手)要在 agent 裡量,沒量。
 - 旗標、附加元件、語系變數等細節搬到 `docs/install.md`(四語或依 D3)。
 - 時間宣稱:在乾淨的暫存 repo 量一次安裝到第一次冷啟動回報的時間,全文只用這一個數字,並寫明量測條件。「5 分鐘」是品質指標的門檻,不是宣稱,保留但改寫清楚。
 - 其他語言版本依 D3 同步或標示。
