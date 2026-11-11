@@ -25,7 +25,7 @@
 | 05 | 0:11–0:18 | One command: npx flightwake setup. It asks a few questions, and shows **every file** it will write. | 一行指令。問你幾個問題,先列出它會寫的每一個檔。 | S1 |
 | 06 | 0:18–0:28 | Next day, a fresh session runs **coldstart**. In about **twenty-five seconds**, it knows where you left off, what is not verified yet, and what comes next. | 隔天開新 session 跑 coldstart,大約 25 秒就知道上次做到哪、哪些還沒驗證、下一步是什麼。 | S2 |
 | 07 | 0:28–0:35 | When you make a call that rules out other options, it is **one line** in DECISIONS, with the reason. | 做了排除其他選項的決定,就在 DECISIONS 寫一行,附上理由。 | S3 |
-| 08 | 0:35–0:45 | When something **surprising** bites you, the agent writes it down: the cause, and the way around it. The next time an agent edits that file, the warning shows up **right after** the edit. | 踩到意想不到的坑,agent 會記下原因和繞法。下次有 agent 改到那個檔,改完馬上看到提醒。 | S4 |
+| 08 | 0:35–0:45 | When something **surprising** bites you, the agent writes it down: the cause, and the way around it. The next agent that heads for that spot **stops** and checks first. | 踩到意想不到的坑,agent 會記下原因和繞法。下一個要碰那裡的 agent,會先停下來確認。 | S4 |
 | 09 | 0:45–0:52 | At the end, it writes a flight record with the **test results**. Forget to do it, and a hook **reminds** the agent. | 收尾時寫一份飛行紀錄,附上測試結果。忘了寫,hook 會提醒 agent。 | S5 |
 | 10 | 0:52–0:59 | Claude Code, Codex and Antigravity read the **same files**. Plain Markdown in git. No server, no account. | Claude Code、Codex、Antigravity 讀同一份檔。git 裡的純 Markdown,不用伺服器、不用帳號。 | S6 |
 | 11 | 0:59–1:05 | flightwake. Hand off the repo, **not the guesswork**. | flightwake:交接 repo,不必從頭講一遍。 | E1 |
@@ -43,7 +43,7 @@
 | 05 | 一行指令裝好。它會問幾個問題,先列出要寫的每一個檔。 | S1 |
 | 06 | 隔天開新的 session,跑 coldstart,大約二十五秒,就知道上次做到哪、哪些還沒驗證、下一步做什麼。 | S2 |
 | 07 | 做了排除其他選項的決定,在 DECISIONS 寫一行,附上理由。 | S3 |
-| 08 | 踩到意想不到的坑,agent 會記下原因和繞法。下次有人改到那個檔,改完馬上看到提醒。 | S4 |
+| 08 | 踩到意想不到的坑,agent 會記下原因和繞法。下一個要碰那裡的 agent,會先停下來確認。 | S4 |
 | 09 | 收尾時寫一份飛行紀錄,附上測試結果;忘了寫,hook 會提醒。 | S5 |
 | 10 | Claude Code、Codex、Antigravity 讀的是同一份檔案。git 裡的 Markdown,不用伺服器,不用帳號。 | S6 |
 | 11 | flightwake:交接 repo,不必從頭講一遍。 | E1 |
@@ -61,7 +61,7 @@
 | S1 | `npx flightwake setup --lang=en` 在乾淨的暫存 repo,走到「確認前列出寫入路徑」那一步 | 暫存 repo 實錄(取代現在的繁中 `docs/demo.gif`) | `npx flightwake setup` |
 | S2 | 本 repo 的乾淨 clone 跑 `/fw-coldstart`,回報出現 | 照 `README.md` 量測條件(約 25 秒,可快轉並標 2×) | ~25 s, measured |
 | S3 | `DECISIONS.md` 一行(例:2026-11-10 A5 不承諾執行前提示) | 編輯器捲動到該行 | One line, with the why |
-| S4 | 裝了 mod 的 Claude Code 改 `hooks/state-check.mjs`,工具結果下方出現 `hook-stdin-tty-block` 的提示 | 本 repo 實錄;提示文字要清楚可讀 | Hint right after the edit |
+| S4 | 請 Claude Code 做一個會踩坑的改動,它停下來、引用 TRAPS 那條坑、給安全做法(提示本身畫面上看不到,見 `demo-video-recording.md`) | 示範 repo 實錄 | Stops and checks first |
 | S5 | STATE 落後 3 個 commit 時,Stop hook 提醒收尾,agent 接著跑 `/fw-record` | 本 repo 或暫存 repo | Reminded to wrap up |
 | S6 | Orca 三個分頁(Claude Code、Codex、agy)各自跑 coldstart,讀到同一份 STATE | Orca 實錄 | Same files, every agent |
 | E1 | 網站首屏或黑底大字 + `npx flightwake setup` + 網址 | 靜態畫面 | flightwake.kaiwu.com.tw |
@@ -96,6 +96,22 @@
   Kai 要求重生兩支(21 點,累計 63 點):H2 v2 全程側面朝右、沒發現洞就掉下去,只在下墜瞬間手微抬,採用;
   H4 v2 卡片一張一張貼、不再疊在一起,但仍有卡片飛過臉前約 0.25 秒(提示詞寫明走畫面上緣也擋不住,路徑本來就經過頭部)。
   目前組合 H1-v1、H2-v2、H3-v1、H4-v2,串接無聲預覽 `hook-串接預覽.mp4`。H4 生成 4 秒、旁白 3.3 秒,剪輯時再決定裁頭或裁尾(比讚約從 3.0 秒開始)。
+- 實錄:S1–S6 都用 vhs 錄好(`影片製作/實錄/`,1920×1080),做法與每段的取捨見 `demo-video-recording.md`。
+- 粗剪 v2(`影片製作/build_v2.py` → `粗剪/flightwake-demo-v2-{en,zh}.mp4`,65.3 / 51.4 秒):S1–S6 換成實錄跳剪,S6 右上角標 agent 名稱;E1 仍是字卡。
+- 粗剪 v3(`影片製作/build_v3.py` + `影片製作/remotion/`,Remotion 4.0.542 → `粗剪/flightwake-demo-v3-{en,zh}.mp4`):
+  實錄段落加鏡頭推近、重點框(框外壓暗)、左下小標(S1 在右下);E1 換成 Flow 生成的交接動畫(`hook影片/E1-v1.mp4`,5 秒 15 點,累計 78 點):
+  橘衣把記錄器交給青綠衣、打開後儀表板亮起、比讚,3.3 秒起背景糊掉、浮出網站同款 logo、標語、`npx flightwake setup`、網址。
+  配樂:Flow Music 生成兩版(`配樂/theme-a.wav` 68 秒、開頭輕、淡出收尾;`theme-b.wav` 72 秒、整體大聲約 3 dB),先用 A;
+  壓在旁白下(-12 dB + sidechain),中文版較短,接上曲子最後 8 秒保住收尾。Kai 2026-11-11:配樂用 A;中文 hook 字卡、小標、片尾標語都 OK。
+- 直式版(`影片製作/build_v4.py`,Remotion `Vertical` → `粗剪/flightwake-demo-vertical-{en,zh}.mp4`,1080×1920):
+  頂部 logo → 標題(hook 字卡 / 段落小標)→ 中間 1080×1080 → 底部旁白字幕(依標點切段、照字數比例對時)。
+  hook 用不帶字卡的乾淨版整幅置中、底下同畫面模糊;S1–S5 把終端機左半欄(約 1180 px 寬)塞進方框,重點框同橫式;S6、E1 整幅置中,E1 換直式片尾卡。
+  字幕照旁白稿;中文 06「下一步要做什麼」、08「留下」照實際念法(兩次語音辨識一致)。
+- **旁白第 8 句已改、已補錄**(Kai 2026-11-11 選 S4 拍「agent 停下來引用坑」):原句說「改完馬上看到警告」,但提示是給 agent 的、畫面上看不到。
+  新句見上面兩張表。補錄檔 `Audio Files/音訊 1 #05.wav`(英文取 7.43–14.47 + 24.70–29.85 秒,後半句前幾次卡住;中文取 33.99–41.84 秒),
+  剪輯點已寫進 `旁白剪輯點.tsv`;舊的 08 備份在 `剪好的旁白_舊08_備份/`。
+- 粗剪 v1(`影片製作/build_v1.py` → `粗剪/flightwake-demo-v1-{en,zh}.mp4`,66.9 / 51.0 秒):hook 換成插畫影片,其餘沿用 v0 字卡。
+  每格最多加速 1.15 倍、還太長就裁開頭(保住結尾動作);2x lanczos 後數位推近(H1)/拉遠(H4)8%,輕微銳化;底部疊一行大字(中文字卡文字是草稿)。
 
 ## 交付兩個版本(Kai 2026-11-11)
 

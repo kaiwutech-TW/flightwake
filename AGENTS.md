@@ -1,4 +1,4 @@
-<!-- flightwake:begin v0.18.0 lang=zh-TW -->
+<!-- flightwake:begin v0.19.0 lang=zh-TW -->
 ## flightwake 工作紀律
 
 本 repo 使用 flightwake(行車記錄器式工作框架):**記錄追隨工作,不引導工作**。
@@ -19,7 +19,7 @@
 Codex:四個 skill 在 `.agents/skills/fw-*`(用 `$fw-…` 點名);收尾提醒是 `.codex/hooks.json` 的 Stop hook——Codex 首次會要你信任它一次。
 <!-- flightwake:end -->
 
-<!-- flightwake-orca:begin v0.18.0 lang=zh-TW -->
+<!-- flightwake-orca:begin v0.19.0 lang=zh-TW -->
 ## Orca 協作(flightwake 附加元件)
 
 在 Orca 裡工作、要找另一個 agent 討論或審查時:
