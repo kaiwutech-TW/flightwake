@@ -15,6 +15,10 @@ cd your-repo && npx flightwake setup
 
 *A real cold start on this very repo (recorded live, zh-TW install): one command, two file reads, and a fresh session reports where the last one left off. Measured: about 25 seconds, two runs of `claude -p "/fw-coldstart"` on a fresh clone of this repo (Claude Code 2.1.321, 2026-11-10).*
 
+[![Demo video (1:09): a fresh session picks up where the last one left off, a decision with its reason, an agent stopping at a known trap, and the wrap-up record](https://img.youtube.com/vi/gl1f08QLzWY/maxresdefault.jpg)](https://youtu.be/gl1f08QLzWY)
+
+*Demo video, 1 minute 9 seconds ([vertical version](https://youtube.com/shorts/pTJE5pARVt4)).*
+
 flightwake keeps four plain Markdown files in your repo's `.flightwake/`: a short STATE (where things are, what's next), a
 decision log (one line per choice, with the why), a list of known traps (each with how sure its root cause is), and a
 flight record per stretch of work. The agent writes them as it works; Claude Code, Codex and Antigravity read them at
@@ -24,7 +28,7 @@ Antigravity gets it as a rule it read *before* editing such a file in our tests.
 the repo. **See what four months of it look like
 in this repo: [docs/evidence.md](docs/evidence.md).**
 
-[Illustrated website](https://flightwake.kaiwu.com.tw/en/) · [Website source](website/)
+[Illustrated website](https://flightwake.kaiwu.com.tw/) · [Website source](website/)
 
 ## Install
 

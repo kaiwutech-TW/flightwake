@@ -15,6 +15,10 @@ cd your-repo && npx flightwake setup
 
 *就在本 repo 實錄:一個指令、兩次讀檔,全新 session 準確回報上次做到哪、這次從哪接。實測約 25 秒:在本 repo 的乾淨 clone 跑兩次 `claude -p "/fw-coldstart"`(Claude Code 2.1.321,2026-11-10)。*
 
+[![示範影片(55 秒):新 session 接上上次的進度、一行附理由的決定、agent 在已知的坑前停下來確認、收尾的飛行紀錄](https://img.youtube.com/vi/VKgTIfcjCEc/maxresdefault.jpg)](https://youtu.be/VKgTIfcjCEc)
+
+*示範影片，55 秒([直式版](https://youtube.com/shorts/IwBm7B9Xam8))。*
+
 flightwake 在 repo 的 `.flightwake/` 裡放四種純 Markdown 檔:一份簡短的 STATE(現在在哪、下一步)、一份決策日誌
 (每個選擇一行,附原因)、一份已知的坑(每條標明根因有多確定),以及每段工作一份飛行紀錄。agent 邊做邊寫;
 Claude Code、Codex、Antigravity 每個 session 開始時都會讀。坑會跟著它錨定的檔案走:Claude Code 或 Codex 的 agent
@@ -22,7 +26,7 @@ Claude Code、Codex、Antigravity 每個 session 開始時都會讀。坑會跟�
 實測裡它在改這類檔案**之前**就先讀了。全部在 git 裡,跟著 repo 走。
 **看這個 repo 自己用了四個月的樣子:[docs/evidence.zh-TW.md](docs/evidence.zh-TW.md)。**
 
-[圖解展示網站](https://flightwake.kaiwu.com.tw/) · [網站原始碼](website/)
+[圖解展示網站](https://flightwake.kaiwu.com.tw/zh-TW/) · [網站原始碼](website/)
 
 ## 安裝
 
