@@ -31,6 +31,8 @@ npx wrangler pages deploy website/dist --project-name flightwake --branch main
 
 Run Wrangler from the repository root, outside `website/`. Wrangler 4.149.0 interpreted `pages project create` from the Astro directory as a Workers setup and changed local files; see `.flightwake/TRAPS.md`. The Pages project already exists, so do not run that create command again.
 
+Cloudflare Web Analytics is on for the Pages project (Metrics tab → Web Analytics): Cloudflare injects its cookie-free beacon at deploy time, so the site source has no analytics code. A change to that switch takes effect on the next deploy.
+
 The deployment is available at `https://flightwake.pages.dev`. Attach `flightwake.kaiwu.com.tw` as a Pages custom domain and create a proxied CNAME from `flightwake` to `flightwake.pages.dev` in the `kaiwu.com.tw` DNS zone. The custom domain serves traffic after Cloudflare verifies the record.
 
 The build settings, if recreating the project with Git integration, are:

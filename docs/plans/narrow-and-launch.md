@@ -202,7 +202,7 @@ A 的第一批發版之後做。B 裡的每一句對外宣稱都要對得上當�
 - `llms.txt` 同步。
 - 流量統計:目前完全沒有。網站在 Cloudflare Pages,**[Kai]** 決定是否啟用 Cloudflare Web Analytics(不用 cookie),需要 Kai 在後台開啟並提供 token。
 - 部署照 `website/README.md` 的 Direct Upload。**[Kai]** 部署前確認;部署後把四語路由的 HTTP 狀態寫進 record。
-- **2026-11-11 已部署**(Kai 確認):0.18.0、首屏交接句與安裝指令、平台加 agy、`/` 改英文(DECISIONS 同日)、`llms.txt`;流量統計未開(要 Kai 在 Cloudflare 後台決定)。
+- **2026-11-11 已部署**(Kai 確認):0.18.0、首屏交接句與安裝指令、平台加 agy、`/` 改英文(DECISIONS 同日)、`llms.txt`;流量統計未開(要 Kai 在 Cloudflare 後台決定)。**2026-11-11 已開**:Pages 專案的 Web Analytics 開關，部署時自動插入 beacon,不需 token。
 
 #### B5. GitHub 與 npm 頁面
 
