@@ -28,7 +28,7 @@ npm latest 是 **v0.19.0**(2026-11-11,mod 0.5.0;發佈證據見 [[261111-release
 
 # 下一步入口
 
-1. **[Kai] 對外發文**(計畫 C):X、Reddit 先發英文版；文案 Kai 本人寫，實作者只做事實核對、不改寫(HN 與社群反感 AI 文)。之後 YouTube 上傳，再把影片放進 README(縮圖連 YouTube)與網站(自架 mp4)、FB/IG/Threads。
+1. **[Kai] 對外推廣**(計畫 C):2026-11-11 已發 YouTube 四支、README 與網站影片、X 串文、Reddit 兩個每週串的留言(連結見 [[261111-release-019]])。接下來:FB / IG / Threads(中文文案);Reddit 獨立經驗文要等帳號有 karma 或改用個人帳號。文案 Kai 本人寫，實作者只做事實核對、不改寫。
 2. **[Kai]** 網站流量統計要不要開(Cloudflare Web Analytics,影片發出前決定);舊待決:roles 座位設計對只有 AGENTS.md 的 repo 的影響、`~/.claude/projects` 下的 scratch session 資料夾是否刪除;`~/.codex/config.toml` 裡兩條 `/Users/Shared/fw-demo/shop-api` 的信任設定與 `/Users/Shared/fw-demo` 是否清掉(錄影用，備份 `config.toml.bak`)。
 3. **[Kai] TRAPS 壓實**:active 21 條 > 20;提案是把 `codex-hook-entry-change-silently-untrusted` 併進 `codex-project-trust`。Kai 2026-11-11 說「先不用」。
 4. 未驗證平台:Windows(含 Intl 語系)、Linux Intl、Gemini CLI hook 真機。根目錄 plugin 補 icon(只影響官方目錄上架)。
