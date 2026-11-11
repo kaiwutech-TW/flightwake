@@ -59,7 +59,7 @@ init 會:建 `.flightwake/`(模板 + Stop hook)、複製 4 個 skill 到 `.claud
 
 **`--orca`**(選配;也是 `setup` 清單的一列,只在偵測到 Orca 時列出,只在 setup 於 Orca 裡執行時預選)在每個啟用平台的指令檔加一個標記區塊:跨 agent 討論與審查要用看得見的 Orca 分頁,不要用藏在背景的執行;並附單一寫手審查協議(被請來審查的 agent 不寫 record、不碰 STATE;提問方把採納的結論寫進自己的 record)。`uninstall` 會移除;`update` 在已安裝處刷新;`update --orca` 會加上。
 
-**`--mod`**(選配;`setup` 選了 Claude Code 時列出,版本 ≥2.1.287 時預選)把 `flightwake-mod` 裝到 `.claude/skills/flightwake-mod/`。mod 0.4.0 有九個開關:STATE 注入、提示橫條、session 飛行日誌、TRAPS 絆線、預設關閉的角色守門、API 等值費用、session Fleet、觸發紀錄、側邊面板。`/fw-mod` 顯示各功能狀態;`/fw-panel` 開啟面板,可看這個 repo 的 health、context 與注意事項。在 Orca 裡,面板還會按 repo 顯示 Claude、Codex 終端機,提供跳轉與須再次確認的閒置 agent 收尾。面板只在你要求後開啟,並記住這個選擇直到關閉。需要 Claude Code 2.1.287+、接受資料夾信任提示,並從 repo 根目錄啟動。**新安裝**後請重開 Claude Code,再跑 `/fw-mod` 確認載入。`update` 刷新已安裝的 mod,`update --mod` 加裝;`uninstall` 只移除發行檔並保留使用者自加檔。完整說明見 [docs/mod.zh-TW.md](mod.zh-TW.md)。
+**`--mod`**(選配;`setup` 選了 Claude Code 時列出,版本 ≥2.1.287 時預選)把 `flightwake-mod` 裝到 `.claude/skills/flightwake-mod/`。mod 0.5.0 有九個開關:STATE 注入、提示橫條、session 飛行日誌、TRAPS 絆線、預設關閉的角色守門、API 等值費用、session Fleet、觸發紀錄、側邊面板。`/fw-mod` 顯示各功能狀態;`/fw-panel` 開啟面板,可看這個 repo 的 health、context 與注意事項。在 Orca 裡,面板還會按 repo 顯示 Claude、Codex 終端機,提供跳轉與須再次確認的閒置 agent 收尾。面板只在你要求後開啟,並記住這個選擇直到關閉。需要 Claude Code 2.1.287+、接受資料夾信任提示,並從 repo 根目錄啟動。**新安裝**後請重開 Claude Code,再跑 `/fw-mod` 確認載入。`update` 刷新已安裝的 mod,`update --mod` 加裝;`uninstall` 只移除發行檔並保留使用者自加檔。完整說明見 [docs/mod.zh-TW.md](mod.zh-TW.md)。
 
 **`--git-init`** 讓 `init` 在目錄不是 git repo 時先建立它——只有明確給旗標才會做;沒給就停下並告知。`init` 與 `setup` 都會先檢查 git 是否已安裝,沒有則依平台給出安裝提示。
 

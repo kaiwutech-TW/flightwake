@@ -8,6 +8,8 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-11-11
+
 ### Added
 - **Trap check for Claude Code and Codex, without the mod.** Every install now gets `.flightwake/hooks/trap-check.mjs`
   as a `PreToolUse` hook (`.claude/settings.json`: Edit, Write, NotebookEdit, Bash; `.codex/hooks.json`: Bash,
