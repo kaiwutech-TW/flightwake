@@ -42,6 +42,12 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
   silently stops running an entry that changed; `update` only refreshes the scripts. `doctor` names `/hooks` → "needs
   review" as the place to look.
 
+### Fixed
+- **`npx flightwake --version` installed instead of printing the version.** It fell through to the default command
+  (`init`). Now `--version`, `-v` and `version` print the version and stop. `init`, `update`, `setup`, `uninstall`
+  and `doctor` refuse a flag they do not know, before reading or writing anything, so a typo such as `--privat` no longer
+  installs without the option it meant. A bare `npx flightwake` and flags without a command still run `init`.
+
 ## [0.18.0] — 2026-11-10
 
 ### Added

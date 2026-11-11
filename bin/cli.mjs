@@ -51,12 +51,36 @@ const exitAfterFlush = async (code) => {
   process.exit(code);
 };
 
+// --version / -v: print and stop. Before 0.19.0 it fell through to the default command and ran init.
+if (args.includes('--version') || args.includes('-v') || cmd === 'version') {
+  log(VERSION);
+  process.exit(0);
+}
+
+// Commands that install or remove reject a flag they do not know, before anything is read or written: a typo such as
+// --privat would otherwise install without the option it meant. roles, fleet and traps check their own flags.
+const KNOWN_FLAGS = {
+  install: ['--force', '--private', '--statusline', '--orca', '--mod', '--plugin', '--git-init', '--lang=', '--profile=', '--agents='],
+  uninstall: ['--purge', '--lang='],
+  doctor: ['--lang='],
+};
+const flagsFor = { init: 'install', update: 'install', setup: 'install', uninstall: 'uninstall', doctor: 'doctor' }[cmd];
+if (flagsFor && !args.includes('--help') && !args.includes('-h')) {
+  const known = KNOWN_FLAGS[flagsFor];
+  const bad = args.filter((a) => a.startsWith('-') && !known.some((k) => (k.endsWith('=') ? a.startsWith(k) : a === k)));
+  if (bad.length) {
+    log(`⚠️  ${cmd}: flag not recognized: ${bad.join(' ')} — nothing was written (available: ${known.map((k) => (k.endsWith('=') ? `${k}…` : k)).join(' ')}; npx flightwake --help)`);
+    process.exit(1);
+  }
+}
+
 if (!COMMANDS.includes(cmd) || args.includes('--help') || args.includes('-h')) {
   log(`flightwake — usage:
   npx flightwake setup [flags]     guided install: asks a few questions, shows every path it will write, then installs
   npx flightwake init [flags]      non-interactive install (a bare \`npx flightwake\` does the same; never asks anything)
   npx flightwake update | doctor | uninstall [--purge] | roles [install|apply [--dry-run]|card <id>|assign <repo>:<vendor> <id> [--add] [--dry-run]|remove]
   npx flightwake fleet [--json] [--all] [--root=<path>] [--prune [--days=N] [--dry-run]]   (runs anywhere; needs no repo)
+  npx flightwake --version         print the installed version
   npx flightwake traps similar --name='<slug>' [--tags='…'] [--paths='…'] [--commands='…'] [--json] <<'EOF' … EOF | traps stats [--json] [--days=N] | traps forget [--dry-run] | traps rules [--dry-run]
   Run at the target repo root.
   setup       interactive (needs a terminal): the language question starts on your terminal locale (LC_ALL / LC_MESSAGES / LANG);

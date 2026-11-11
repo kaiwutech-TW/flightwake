@@ -2988,5 +2988,22 @@ cd "$P2" && HOME="$PH" FLIGHTWAKE_HOME="$PH" node "$CLI" doctor 2>&1 | grep -q '
 cd "$TMP"
 pass "52 Claude Code plugin:manifest 與市集、版號同步、init --plugin、兩支 hook 的 plugin 模式(repo 有自己那份就安靜)、doctor 抓重複"
 
+# 53. --version 只印版號、不安裝;install / uninstall / doctor 遇到不認得的旗標零寫入、退出非零;只帶旗標不帶指令照舊是 init
+newrepo "$TMP/ver" >/dev/null && git commit -q --allow-empty -m init
+want=$(node -e "console.log(require('$SRC/package.json').version)")
+for a in --version -v version; do
+  [ "$(node "$CLI" $a)" = "$want" ] || fail "53 $a 應只印 $want"
+done
+[ -z "$(git status --porcelain --ignored)" ] && [ ! -e .flightwake ] || fail "53 --version 不該寫任何檔"
+for c in "--privat" "init --privat" "update --statusline --nope" "setup --dry-run" "uninstall --force" "doctor --json"; do
+  out=$(node "$CLI" $c 2>&1) && fail "53 '$c' 應退出非零"
+  printf '%s' "$out" | grep -q 'flag not recognized' || fail "53 '$c' 應說哪個旗標不認得(out: $out)"
+done
+[ -z "$(git status --porcelain --ignored)" ] && [ ! -e .flightwake ] || fail "53 不認得的旗標不該寫任何檔"
+node "$CLI" --lang=en --agents=claude >/dev/null && [ -f .flightwake/STATE.md ] || fail "53 只帶旗標(--lang= --agents=)應照舊執行 init"
+node "$CLI" init --help | grep -q 'npx flightwake --version' || fail "53 --help 應列出 --version"
+cd "$TMP"
+pass "53 --version / -v / version 只印版號;不認得的旗標零寫入;只帶旗標照舊 init"
+
 echo ""
 echo "✅ smoke 全過"
