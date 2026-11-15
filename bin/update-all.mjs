@@ -7,8 +7,8 @@
  * Nothing new is decided here: this file only picks which repos to run and reports what changed.
  *
  * Skipped: folders that no longer exist, folders without a flightwake marker, repos already on this version (or newer).
- * Uncommitted work does not stop a repo — most working repos have some — but a file that had uncommitted changes before
- * the update and was changed by it is named, so the person reviews it before committing. Never commits, never removes
+ * Uncommitted work does not stop a repo — most working repos have some — but an instruction or settings file (the files
+ * update edits while keeping the person's content) that had uncommitted changes and was changed by the update is named, so the person reviews it before committing. Never commits, never removes
  * registry entries.
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -16,6 +16,9 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { registryPath, readRegistry, readMarkers } from './install.mjs';
+
+/** Files update edits in place while keeping the rest of their content: instruction files and settings. */
+const SHARED_RE = /^(?:(?:[^/]+\/)*(?:CLAUDE|AGENTS|GEMINI)\.md|\.claude\/settings(?:\.local)?\.json|\.codex\/hooks\.json|\.gemini\/settings\.json|\.agents\/hooks\.json)$/;
 
 /** -1 / 0 / 1 for dotted numeric versions; anything unparsable sorts as oldest. */
 export function cmpVersion(a, b) {
@@ -176,7 +179,9 @@ export function runUpdateAll({ args, cli, version, M, log, env = process.env, ho
     if (before && after) {
       changed = [...after.keys()].filter((k) => after.get(k) !== before.get(k));
       for (const k of before.keys()) if (!after.has(k)) changed.push(k); // the update reverted a change back to HEAD
-      overlap = changed.filter((k) => before.has(k));
+      // Only files that also hold the person's own content: framework-owned files (skills, hook scripts, the mod) are
+      // replaced whole on every update, and an earlier update that was never committed makes them all look "dirty"
+      overlap = changed.filter((k) => before.has(k) && SHARED_RE.test(k));
     }
     log(`  ✓  ${show(repo)}  ${M(MSG.updated(from, version, changed.length))}`);
     if (overlap.length) log(M(MSG.overlap(overlap.join(', '))));

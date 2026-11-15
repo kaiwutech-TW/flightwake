@@ -11,8 +11,8 @@ Releases before 0.7.1 predate the public launch and were never published; the hi
 ### Added
 - **`npx flightwake update --all [--dry-run]`** upgrades every repo in `~/.flightwake/registry.json` in one go, from any
   folder. Each repo runs its own `update` (same options, same preflight); folders that are gone, folders without a
-  flightwake marker and repos already on this version are skipped. A file that had uncommitted changes and was changed
-  by the update is named; nothing is committed. Exits 1 when any repo's update fails.
+  flightwake marker and repos already on this version are skipped. An instruction or settings file that had uncommitted
+  changes and was changed by the update is named; nothing is committed. Exits 1 when any repo's update fails.
 
 ## [0.19.0] — 2026-11-11
 

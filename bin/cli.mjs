@@ -118,7 +118,7 @@ if (!COMMANDS.includes(cmd) || args.includes('--help') || args.includes('-h')) {
               Installed add-ons are refreshed; --statusline / --mod / --orca add that add-on, --lang=… / --profile=… switch it
               (roles: npx flightwake roles install). Ends with one line naming add-ons that apply here but are not installed.
               --all: the same update in every registered repo (skips missing folders, unmarked ones and repos already on this
-              version; names files that had uncommitted changes and were changed; never commits); --dry-run lists them first
+              version; names instruction/settings files that had uncommitted changes and were changed; never commits); --dry-run lists them first
   doctor      read-only check of the install structure (git, STATE, markers, skills, hooks, private excludes, add-ons); exit 1 on any failure
   uninstall   reverse-remove framework files and marker blocks; keeps .flightwake/ user data unless --purge
   roles       opt-in add-on: install the fw-roles skill; apply renders .flightwake/ROLES.md — seats into CLAUDE.md/AGENTS.md/GEMINI.md,

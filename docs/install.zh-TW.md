@@ -31,7 +31,7 @@ npx flightwake update --all                     # 升級這台電腦上裝過的
 
 `update` 與 `init` 從不提問。有這裡適用、但尚未安裝的附加元件時,結尾會用一行點名,並附上 `npx flightwake setup`(先問、列出所有路徑)或直接的指令(`npx flightwake update --statusline / --mod / --orca`、`npx flightwake roles install`)。不會自動加裝,那一行也明寫要 agent 先問使用者;適用的都裝好後就不再出現。`--private` 安裝請照這些 `update` 指令,不要用 `init` 旗標:不帶 `--private` 的 `init` 會寫入共用的 `.claude/settings.json`。
 
-**repo 很多?** `npx flightwake update --all` 會對 `~/.flightwake/registry.json` 裡的每個 repo 跑同樣的 `update`(每次 `init` / `update` 都會把該 repo 登記進去),各 repo 沿用自己的選項。不存在的資料夾、沒有 flightwake 標記的、已是這一版的會略過;升級前就有未 commit 變更、又被升級改到的檔會點名;不會替你 commit。`--dry-run` 只列清單不寫入。附加元件與語言切換仍要到各 repo 分別做。
+**repo 很多?** `npx flightwake update --all` 會對 `~/.flightwake/registry.json` 裡的每個 repo 跑同樣的 `update`(每次 `init` / `update` 都會把該 repo 登記進去),各 repo 沿用自己的選項。不存在的資料夾、沒有 flightwake 標記的、已是這一版的會略過;升級前就有未 commit 變更、又被升級改到的指令檔或設定檔(CLAUDE.md、AGENTS.md、`.claude/settings.json` 等)會點名;不會替你 commit。`--dry-run` 只列清單不寫入。附加元件與語言切換仍要到各 repo 分別做。
 
 ## 語言
 

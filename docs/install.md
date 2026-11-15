@@ -31,7 +31,7 @@ npx flightwake update --all         # upgrade every repo you installed on this m
 
 `update` and `init` never ask. When an add-on that applies here is not installed, they end with one line naming it, plus `npx flightwake setup` (asks first, lists every path) or the direct command (`npx flightwake update --statusline / --mod / --orca`, `npx flightwake roles install`). Nothing is added automatically, and the line tells agents to ask the person before adding any; it is gone once everything that applies is installed. On a `--private` install, follow these `update` commands rather than `init` flags: `init` without `--private` would write the shared `.claude/settings.json`.
 
-**Many repos?** `npx flightwake update --all` runs the same `update` in every repo listed in `~/.flightwake/registry.json` (every `init` / `update` adds its repo there). Each repo keeps its own options. It skips folders that are gone, folders without a flightwake marker and repos already on this version, names any file that had uncommitted changes and was changed by the update, and never commits. `--dry-run` shows the list without writing. Add-ons and language switches stay per repo.
+**Many repos?** `npx flightwake update --all` runs the same `update` in every repo listed in `~/.flightwake/registry.json` (every `init` / `update` adds its repo there). Each repo keeps its own options. It skips folders that are gone, folders without a flightwake marker and repos already on this version, names any instruction or settings file (CLAUDE.md, AGENTS.md, `.claude/settings.json`, …) that had uncommitted changes and was changed by the update, and never commits. `--dry-run` shows the list without writing. Add-ons and language switches stay per repo.
 
 ## Language
 

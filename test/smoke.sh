@@ -3012,6 +3012,7 @@ newrepo "$TMP/ua-old" >/dev/null && FLIGHTWAKE_HOME="$UH" node "$CLI" init --lan
 sed -i.bak 's/flightwake:begin v[0-9.]*/flightwake:begin v0.0.1/' CLAUDE.md && rm CLAUDE.md.bak
 git add -A && git commit -qm base
 echo "my own note KEEP" >> CLAUDE.md
+echo "stale edit" >> .claude/skills/fw-record/SKILL.md
 newrepo "$TMP/ua-cur" >/dev/null && FLIGHTWAKE_HOME="$UH" node "$CLI" init --lang=zh-TW --agents=codex >/dev/null && git add -A && git commit -qm base
 newrepo "$TMP/ua-unmarked" >/dev/null && FLIGHTWAKE_HOME="$UH" node "$CLI" init --lang=en --agents=claude >/dev/null
 sed -i.bak 's/flightwake:begin/flightwake-gone:begin/' CLAUDE.md && rm CLAUDE.md.bak
@@ -3027,6 +3028,7 @@ cur_head=$(cd "$TMP/ua-cur" && git status --porcelain)
 out=$(FLIGHTWAKE_HOME="$UH" node "$CLI" update --all) || fail "54 update --all 應退出 0(out: $out)"
 echo "$out" | grep -q "✓  $TMP/ua-old  0.0.1 → $want, [0-9]* file(s) changed" || fail "54 應回報升級與變更檔數(out: $out)"
 echo "$out" | grep -q 'had uncommitted changes before the update and were changed by it: CLAUDE.md' || fail "54 應點名升級前就有變更的 CLAUDE.md(out: $out)"
+! echo "$out" | grep -q 'fw-record/SKILL.md' || fail "54 框架檔(整份換掉的 skill)不列進重疊清單(out: $out)"
 grep -q "flightwake:begin v$want lang=en" "$TMP/ua-old/CLAUDE.md" && grep -q 'my own note KEEP' "$TMP/ua-old/CLAUDE.md" || fail "54 標記應升到 $want、使用者內容保留"
 [ "$(cd "$TMP/ua-old" && git log --oneline | wc -l | tr -d ' ')" = 1 ] || fail "54 不得替使用者 commit"
 [ "$cur_head" = "$(cd "$TMP/ua-cur" && git status --porcelain)" ] || fail "54 已是這版的 repo 不得被動到"
