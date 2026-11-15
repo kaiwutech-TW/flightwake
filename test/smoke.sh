@@ -3005,5 +3005,44 @@ node "$CLI" init --help | grep -q 'npx flightwake --version' || fail "53 --help 
 cd "$TMP"
 pass "53 --version / -v / version 只印版號;不認得的旗標零寫入;只帶旗標照舊 init"
 
+# 54. update --all:照 registry 逐個 repo 跑 update;不存在、沒標記、已是這版的略過;--dry-run 零寫入;
+#     升級前就有未 commit 變更又被改到的檔要點名;使用者的內容保留;不 commit;任一 repo 失敗 → 退出非零;不收 per-repo 旗標
+UH="$TMP/ua-home"; mkdir -p "$UH"
+newrepo "$TMP/ua-old" >/dev/null && FLIGHTWAKE_HOME="$UH" node "$CLI" init --lang=en --agents=claude >/dev/null
+sed -i.bak 's/flightwake:begin v[0-9.]*/flightwake:begin v0.0.1/' CLAUDE.md && rm CLAUDE.md.bak
+git add -A && git commit -qm base
+echo "my own note KEEP" >> CLAUDE.md
+newrepo "$TMP/ua-cur" >/dev/null && FLIGHTWAKE_HOME="$UH" node "$CLI" init --lang=zh-TW --agents=codex >/dev/null && git add -A && git commit -qm base
+newrepo "$TMP/ua-unmarked" >/dev/null && FLIGHTWAKE_HOME="$UH" node "$CLI" init --lang=en --agents=claude >/dev/null
+sed -i.bak 's/flightwake:begin/flightwake-gone:begin/' CLAUDE.md && rm CLAUDE.md.bak
+newrepo "$TMP/ua-gone" >/dev/null && FLIGHTWAKE_HOME="$UH" node "$CLI" init --lang=en --agents=claude >/dev/null && cd "$TMP" && rm -rf "$TMP/ua-gone"
+cd "$TMP"
+old_before=$(cd "$TMP/ua-old" && git status --porcelain && shasum < CLAUDE.md)
+out=$(FLIGHTWAKE_HOME="$UH" node "$CLI" update --all --dry-run) || fail "54 --dry-run 應退出 0"
+echo "$out" | grep -q "↑  $TMP/ua-old  0.0.1 → $want" || fail "54 --dry-run 應列出要升級的 repo(out: $out)"
+echo "$out" | grep -q "=  $TMP/ua-cur" && echo "$out" | grep -q "–  $TMP/ua-unmarked" || fail "54 --dry-run 應標出已是最新與沒標記的(out: $out)"
+echo "$out" | grep -q "$TMP/ua-gone" && echo "$out" | grep -q 'Would update 1, failed 0, already current 1, skipped 1, missing 1' || fail "54 --dry-run 摘要(out: $out)"
+[ "$old_before" = "$(cd "$TMP/ua-old" && git status --porcelain && shasum < CLAUDE.md)" ] || fail "54 --dry-run 不得寫入"
+cur_head=$(cd "$TMP/ua-cur" && git status --porcelain)
+out=$(FLIGHTWAKE_HOME="$UH" node "$CLI" update --all) || fail "54 update --all 應退出 0(out: $out)"
+echo "$out" | grep -q "✓  $TMP/ua-old  0.0.1 → $want, [0-9]* file(s) changed" || fail "54 應回報升級與變更檔數(out: $out)"
+echo "$out" | grep -q 'had uncommitted changes before the update and were changed by it: CLAUDE.md' || fail "54 應點名升級前就有變更的 CLAUDE.md(out: $out)"
+grep -q "flightwake:begin v$want lang=en" "$TMP/ua-old/CLAUDE.md" && grep -q 'my own note KEEP' "$TMP/ua-old/CLAUDE.md" || fail "54 標記應升到 $want、使用者內容保留"
+[ "$(cd "$TMP/ua-old" && git log --oneline | wc -l | tr -d ' ')" = 1 ] || fail "54 不得替使用者 commit"
+[ "$cur_head" = "$(cd "$TMP/ua-cur" && git status --porcelain)" ] || fail "54 已是這版的 repo 不得被動到"
+grep -q 'flightwake-gone:begin' "$TMP/ua-unmarked/CLAUDE.md" && ! grep -q 'flightwake:begin' "$TMP/ua-unmarked/CLAUDE.md" || fail "54 沒標記的 repo 不得被裝回"
+FLIGHTWAKE_HOME="$UH" node "$CLI" update --all --lang=zh-TW | grep -q '已是最新 2' || fail "54 --lang=zh-TW 的輸出"
+rc=0; out=$(FLIGHTWAKE_HOME="$UH" node "$CLI" update --all --mod 2>&1) || rc=$?
+[ "$rc" -ne 0 ] && echo "$out" | grep -q 'flag not recognized here: --mod' || fail "54 --all 不收 per-repo 旗標(out: $out)"
+UH2="$TMP/ua-home2"; mkdir -p "$UH2"
+newrepo "$TMP/ua-bad" >/dev/null && FLIGHTWAKE_HOME="$UH2" node "$CLI" init --lang=en --agents=claude >/dev/null
+sed -i.bak 's/flightwake:begin v[0-9.]*/flightwake:begin v0.0.1/' CLAUDE.md && rm CLAUDE.md.bak
+rm .flightwake/hooks/state-check.mjs && ln -s ../STATE.md .flightwake/hooks/state-check.mjs
+cd "$TMP"; st=$(shasum < "$TMP/ua-bad/.flightwake/STATE.md")
+rc=0; out=$(FLIGHTWAKE_HOME="$UH2" node "$CLI" update --all 2>&1) || rc=$?
+[ "$rc" -ne 0 ] && echo "$out" | grep -q "✗  $TMP/ua-bad  update exited 1" && echo "$out" | grep -q 'symlink' || fail "54 repo 的 update 失敗時要非零退出並附上原因(out: $out)"
+[ "$st" = "$(shasum < "$TMP/ua-bad/.flightwake/STATE.md")" ] || fail "54 失敗的 repo 使用者資料不變"
+pass "54 update --all:逐 repo 升級、略過不存在/沒標記/已是這版、--dry-run 零寫入、點名重疊的未 commit 檔、不 commit、失敗非零、不收 per-repo 旗標"
+
 echo ""
 echo "✅ smoke 全過"

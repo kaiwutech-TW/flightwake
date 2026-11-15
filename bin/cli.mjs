@@ -57,6 +57,23 @@ if (args.includes('--version') || args.includes('-v') || cmd === 'version') {
   process.exit(0);
 }
 
+// update --all: run `update` in every registered repo (bin/update-all.mjs). Runs from any folder, before repo detection;
+// takes only --dry-run and --lang= (its own output) — per-repo options such as --mod are never applied to every repo at once.
+if (cmd === 'update' && args.includes('--all') && !args.includes('--help') && !args.includes('-h')) {
+  const bad = args.filter((a) => a.startsWith('-') && !['--all', '--dry-run'].includes(a) && !a.startsWith('--lang='));
+  if (bad.length) {
+    log(`⚠️  update --all: flag not recognized here: ${bad.join(' ')} — nothing was written (available: --dry-run --lang=…; add-ons and language switches are per repo: run \`npx flightwake update …\` inside that repo)`);
+    process.exit(1);
+  }
+  const allLang = args.find((a) => a.startsWith('--lang='))?.slice(7);
+  if (allLang && !LANGS.includes(allLang)) { log(`⚠️  --lang not recognized: ${allLang} (available: ${LANGS.join(', ')})`); process.exit(1); }
+  let markerLang = null;
+  try { markerLang = readMarkers(TARGET).find((m) => !m.orphanOrca)?.lang ?? null; } catch {}
+  const { runUpdateAll } = await import('./update-all.mjs');
+  const code = runUpdateAll({ args, cli: fileURLToPath(import.meta.url), version: VERSION, M: makeM(allLang ?? markerLang ?? 'en'), log });
+  await exitAfterFlush(code);
+}
+
 // Commands that install or remove reject a flag they do not know, before anything is read or written: a typo such as
 // --privat would otherwise install without the option it meant. roles, fleet and traps check their own flags.
 const KNOWN_FLAGS = {
@@ -80,6 +97,7 @@ if (!COMMANDS.includes(cmd) || args.includes('--help') || args.includes('-h')) {
   npx flightwake init [flags]      non-interactive install (a bare \`npx flightwake\` does the same; never asks anything)
   npx flightwake update | doctor | uninstall [--purge] | roles [install|apply [--dry-run]|card <id>|assign <repo>:<vendor> <id> [--add] [--dry-run]|remove]
   npx flightwake fleet [--json] [--all] [--root=<path>] [--prune [--days=N] [--dry-run]]   (runs anywhere; needs no repo)
+  npx flightwake update --all [--dry-run]   run update in every repo in ~/.flightwake/registry.json (runs anywhere)
   npx flightwake --version         print the installed version
   npx flightwake traps similar --name='<slug>' [--tags='…'] [--paths='…'] [--commands='…'] [--json] <<'EOF' … EOF | traps stats [--json] [--days=N] | traps forget [--dry-run] | traps rules [--dry-run]
   Run at the target repo root.
@@ -98,7 +116,9 @@ if (!COMMANDS.includes(cmd) || args.includes('--help') || args.includes('-h')) {
               --mod installs the Claude Code mod into .claude/skills/flightwake-mod (opt-in; needs Claude Code 2.1.287+; skipped without claude)
   update      re-install with the options detected from the existing install (lang / statusline / private / profile) — the in-place upgrade; never asks.
               Installed add-ons are refreshed; --statusline / --mod / --orca add that add-on, --lang=… / --profile=… switch it
-              (roles: npx flightwake roles install). Ends with one line naming add-ons that apply here but are not installed
+              (roles: npx flightwake roles install). Ends with one line naming add-ons that apply here but are not installed.
+              --all: the same update in every registered repo (skips missing folders, unmarked ones and repos already on this
+              version; names files that had uncommitted changes and were changed; never commits); --dry-run lists them first
   doctor      read-only check of the install structure (git, STATE, markers, skills, hooks, private excludes, add-ons); exit 1 on any failure
   uninstall   reverse-remove framework files and marker blocks; keeps .flightwake/ user data unless --purge
   roles       opt-in add-on: install the fw-roles skill; apply renders .flightwake/ROLES.md — seats into CLAUDE.md/AGENTS.md/GEMINI.md,

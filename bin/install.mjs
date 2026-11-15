@@ -412,7 +412,7 @@ export const registryPath = () => {
   const fb = fleetBase(process.env);
   return fb === null ? null : join(fb, 'registry.json');
 };
-const readRegistry = (REGISTRY = registryPath()) => {
+export const readRegistry = (REGISTRY = registryPath()) => {
   if (!existsSync(REGISTRY)) return { version: 1, repos: {} };
   const reg = JSON.parse(readFileSync(REGISTRY, 'utf8'));
   if (!reg || typeof reg.repos !== 'object' || Array.isArray(reg.repos)) throw new Error('unexpected shape');
