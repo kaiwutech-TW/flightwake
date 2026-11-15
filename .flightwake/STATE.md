@@ -1,8 +1,8 @@
 ---
-updated: 2026-11-11
+updated: 2026-11-15
 updated_by: Claude Code (Opus 5.5)
-latest_record: records/261111-release-019.md
-health: yellow  # 0.19.0 已發且從 npm 實裝驗過(smoke 53 節、mod 549/0、doctor 0/0);黃燈只因 TRAPS active 21 條超過 20(Kai 暫緩壓實)
+latest_record: records/261115-update-all-global-probe.md
+health: yellow  # smoke 54 節全過、update --all 實跑 29 repo 0 失敗;黃燈:全域模式探針進行中(探針 plugin 還裝在 Codex/agy)、TRAPS active 21 條 > 20(Kai 暫緩)
 ---
 <!-- flightwake STATE — 永遠短、永遠新。新 session 的第一站。 -->
 <!-- 規則:只寫「現在」與「下一步」;歷史去 records/,決策去 DECISIONS.md。 -->
@@ -18,10 +18,13 @@ npm latest 是 **v0.19.0**(2026-11-11,mod 0.5.0;發佈證據見 [[261111-release
 
 **2026-11-11**([[261111-a5-trap-check]]):B5 GitHub 描述與 topics、B4 網站改版部署(Kai 確認);B2 示範旁白稿 `docs/plans/demo-video.md`。**A5**:Codex 探針顯示兩家都是工具跑完才讀到提示;TRAPS 解析收成一份 `traps-core.mjs`;新的 PreToolUse hook `trap-check.mjs` 給 Claude Code 與 Codex(不需 mod),每 session 一次的紀錄在 `<base>/hints`;真機驗過 mod 不重複提示([[261111-release-019]])。**A6**([[261111-a6-agy-rules]]):agy 的 `glob` 規則實測不載入,改用 `model_decision` 規則 `.agents/rules/flightwake-trap-*.md`(`npx flightwake traps rules`,init/update 重產);agy 在改檔前就讀了坑。**A9**([[261111-a9-plugin]]):repo 根目錄就是 Claude Code plugin,市集指向 npm 套件,`init --plugin`。A5/A6/A9 都隨 0.19.0 發佈。**B2 示範影片完成**:橫式 v3 與直式各中英文，在 Kai 桌面 `~/Desktop/計畫案/影片製作/粗剪/`,做法見 `docs/plans/demo-video.md`。
 
+**2026-11-15**([[261115-update-all-global-probe]]):`npx flightwake update --all [--dry-run]`(未發版,CHANGELOG `[Unreleased]`)照 registry 升級所有 repo,已在 Kai 本機 29 個 repo 實跑(變更待各自 commit)。計畫 B 全域模式:探針證實 Codex、agy 都有 plugin 系統,設計改走三家 plugin(`docs/plans/global-mode.md`,DECISIONS 2026-11-15)。
+
 **展示網站**:四語 Astro 網站在 Cloudflare Pages(Direct Upload),2026-11-11 改版並於 0.19.0 再部署：交接句與安裝指令在首屏、`/` 改英文(繁中在 `/zh-TW/`);證據見 [[261111-a5-trap-check]],指令見 `website/README.md`。2026-11-11 開了 Cloudflare Web Analytics(Pages 專案的開關，Cloudflare 部署時自動插入 beacon,不用 cookie;數字在 Pages 專案 →「指標」→ Web Analytics)。
 
 # 進行中(未完成勿刪)
 
+- **全域模式探針(計畫 B)**:等 Kai 在 Codex 信任探針 hook(步驟見 [[261115-update-all-global-probe]] 未完節);驗完移除 Codex 的 `fwprobe-mkt`/`fwprobe` 與 agy 的 `fwprobe`,對照 `~/.flightwake/backups/261115-global-probe/` 還原。之後實作 `global install`。
 - **仍未驗**:F7 blocked 的直接觀察(今天只有間接證據);權限對話框按「否」不被記;`/fw-fleet` 四語輸出;Codex hook trust 的 bypass 對照;spend 熱重載後「token 不明」但費用有值。
 - **小 bug 不修**(維護模式):面板「本 session」列寫死工作中(`features/panel.ts` 的 `isSelf ? 'working'`)。
 - 慣例演進採讀取端容忍(DECISIONS 2026-07-18),容忍不了時再議遷移工具。
