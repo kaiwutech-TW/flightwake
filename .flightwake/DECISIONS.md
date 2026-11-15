@@ -6,6 +6,7 @@
 
 | 日期 | 決策 | 為什麼 | 重評條件 |
 |---|---|---|---|
+| 2026-11-15 | **全域模式裡 Codex 只把 skill 放進 plugin,hook 留在各 repo 的 `.codex/hooks.json`**(收窄同日「三家各自的 plugin 系統」那條的 Codex 部分;Claude Code 與 agy 的 skills 與 hooks 照舊都走 plugin) | 探針:Codex plugin hook 的信任含整個 plugin 的內容雜湊,任何更新都讓它悄悄變 `modified`(TRAPS `codex-plugin-hook-trust-covers-whole-plugin`);專案層條目固定、只換腳本時信任不掉,`update --all` 已能一次刷新所有 repo 的腳本 | Codex 的 plugin hook 信任改成只看條目,或更新後會主動要求重新信任 |
 | 2026-11-15 | **全域模式走三家各自的 plugin 系統**(Claude Code plugin、Codex plugin + 本機 marketplace、agy `plugin install`),由 `npx flightwake global install` 依語言產生一份 plugin 再用各家指令安裝;**不寫 Orca 管的 `~/.codex/hooks.json` / `~/.gemini/config/hooks.json`**;repo 安裝維持預設(Kai 2026-11-15「先做 a 再做 b」,探針見 `docs/plans/global-mode.md`) | 探針:三家 plugin 的 skill 都載入,agy plugin hook 不需信任就執行,Codex plugin hook 的信任鍵是 `plugin@marketplace:檔:事件:序號`,與 Orca 的檔和安裝路徑無關;Codex 全域檔的信任按序號記,Orca 也在管它,寫進去兩邊都可能默默失效 | Codex 信任後實測不執行或拿不到 plugin 路徑;某家移除 plugin hooks |
 | 2026-11-15 | **`update --all` 有未 commit 的變更也照升級**,只點名「升級前就有變更、又被改到」的指令檔與設定檔;不 commit、不刪 registry 條目;不收 per-repo 旗標 | Kai 的 32 個 repo 有 23 個有未 commit 變更,跳過就等於沒做;框架檔每次整份換掉,上次沒 commit 的升級會讓它們全部看起來有變更(實跑 29 個 repo 時清單長到看不出重點) | 有人因升級混進自己的 commit 而回報 |
 | 2026-11-11 | **示範影片直式版沿用橫式的 hook 影片**(置中放、上下模糊底,不另畫 9:16 首尾幀、不另生成);畫風維持現在的咖啡金屬色調(B2,Kai 2026-11-11) | 直接裁成 9:16 會讓 720p 只剩 405 寬、H2/H3 的主要動作出框;另生一套要再畫八張首尾幀、再生四支(約 42 點),角色漂移也要再對一次。上下空間本來就要放標題與字幕 | 短影片成為主要管道,或置中版成效明顯差 |

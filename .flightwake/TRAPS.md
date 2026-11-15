@@ -5,6 +5,21 @@
 # 坑 Registry
 
 ---
+name: codex-plugin-hook-trust-covers-whole-plugin
+type: gotcha
+status: active
+tags: [codex, hooks, plugin, trust, global]
+discovered: 2026-11-15
+confidence: confirmed
+retire_when: "Codex 的 plugin hook 信任不再含整個 plugin 的內容雜湊,或更新後會主動要求重新信任"
+---
+
+**症狀**:Codex 0.169.0 裡在 `/hooks` 信任過的 plugin hook,`codex plugin add` 重裝新版後 `hooks/list` 的 `trustStatus` 變成 `modified`,hook 不再執行;`/new` 開新 session 時畫面沒有任何提示。hooks 檔本身沒改也一樣。
+**根因**:plugin hook 的信任除了 `trusted_hash`(條目)還記 `trusted_content_hash`(`~/.codex/config.toml` 的 `[hooks.state."<plugin>@<marketplace>:<hooks 檔>:<事件>:<群組>:<序號>"]`),它涵蓋整個 plugin 的內容:改版號、改 skill 文字、在 `hooks/` 加檔或改檔,任一項都讓信任失效;內容改回原樣又變回 trusted。專案層 `.codex/hooks.json` 的信任只有 `trusted_hash`,腳本改了不受影響([[codex-hook-entry-change-silently-untrusted]])。
+**解法**:flightwake 不把 Codex 的 hook 放進 plugin(每次發版都會悄悄失效);Codex 的 plugin 只放 skill,hook 留在各 repo 的 `.codex/hooks.json`(條目固定、只換腳本)。若日後仍要走 plugin hook,每次更新後要請使用者到 `/hooks` 重新信任,且要有偵測(`codex app-server` 的 `hooks/list` 看 `trustStatus`)。
+**佐證**:[[261115-update-all-global-probe]] 收尾後的探針(`docs/plans/global-mode.md` G2):同一個探針 plugin 依序測「內容不變 → trusted;只改版號 / 只改 skill / hooks 資料夾加檔 / 改那個檔 → modified;改回原樣 → trusted」,每一步各重裝一次並讀 `hooks/list`。
+
+---
 name: codex-hook-entry-change-silently-untrusted
 type: gotcha
 status: active
