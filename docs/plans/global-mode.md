@@ -1,7 +1,7 @@
 # 全域模式(計畫 B):skills 與 hooks 只裝一份
 
 > 2026-11-15,Kai 要求「多個資料夾都要個別升級很麻煩」。A(`update --all`,8ac41ab)先解決「一次升級全部」;
-> B 要讓升級本身變成一處:skills 與 hooks 放在使用者層級,repo 裡只留紀錄與規則。本稿是設計與探針清單,**還沒實作**。
+> B 要讓升級本身變成一處:skills 與 hooks 放在使用者層級,repo 裡只留紀錄與規則。本稿是設計與探針結果,**還沒實作**。
 
 ## 目標與界線
 
@@ -10,45 +10,39 @@
 - 使用者層級一份:四個 skill、收尾提醒(state-check)、坑提示(trap-check + traps-core)。升級 = 一個指令換掉這一份。
 - 既有的 repo 安裝方式不拿掉:clone 下來就能用、團隊共用的 repo 仍以 repo 安裝為主。全域是 opt-in。
 
-## 各平台現況(2026-11-15 本機唯讀觀察)
+## 探針結果(2026-11-15,Kai 同意後實測;設定先備份到 `~/.flightwake/backups/261115-global-probe/`)
 
-| 平台 | 使用者層級 skills | 使用者層級 hooks | 狀態 |
-|---|---|---|---|
-| Claude Code | plugin(A9,0.19.0 已發) | plugin 的 `hooks/hooks.json` | **已有**。本機沒裝 flightwake plugin(`~/.claude/settings.json` 的 enabledPlugins 沒有) |
-| Codex 0.167.2 | `~/.codex/skills/` 存在(放著 imagegen、skill-creator 等) | `~/.codex/hooks.json` 存在,**由 Orca 管理**,九個事件各一組 | 待探針 |
-| agy 1.5.5 | `~/.gemini/skills/orca-cli` 存在(Orca 放的),agy 是否讀它未知 | 未知 | 待探針 |
+三家都有自己的 plugin 系統,能把 skills 與 hooks 裝在使用者層級。**不必碰 Orca 管的 `~/.codex/hooks.json` 或 `~/.gemini/config/hooks.json`。**
 
-## 已知的風險
+| # | 結果 | 證據 |
+|---|---|---|
+| G1 Codex 0.167.2 plugin 的 skill | **成立**。本機 marketplace(`.agents/plugins/marketplace.json`,source local)→ `codex plugin marketplace add <dir>` → `codex plugin add fwprobe@fwprobe-mkt`;在未信任的暫存 repo 跑 `codex exec`,它讀了 plugin 快取裡的 SKILL.md 並答出暗號 | 安裝在 `~/.codex/plugins/cache/<mkt>/<plugin>/<version>`;config.toml 只多 `[marketplaces.…]` 與 `[plugins."…"]` 兩段 |
+| G2 Codex plugin 的 hook | **找得到,要信任一次**。`codex app-server` 的 `hooks/list`(唯讀)列出 `fwprobe@fwprobe-mkt:hooks/hooks.json:stop:0:0`,`source: plugin`、`untrusted`。信任的鍵是「plugin@marketplace:檔名:事件:序號」,和安裝路徑、和 Orca 的全域檔都無關。`.codex-plugin/plugin.json` 的 `"hooks": "./hooks/codex.json"` 可指定別的檔;同一資料夾同時有 `.claude-plugin/` 時 Codex 讀自己的 `.codex-plugin/` | `codex exec` 不跑未信任的 hook(探針檔沒產生);`--dangerously-bypass-hook-trust` 被 Claude Code auto mode 擋下,未用。**還沒驗**:信任後實際執行、cwd、`PLUGIN_ROOT` 是否有值(Codex 二進位裡有 `PLUGIN_ROOT`、`CLAUDE_PLUGIN_ROOT` 字串)|
+| G3 agy 1.5.5 plugin | **成立,不需信任**。資料夾放 `plugin.json`、`skills/<name>/SKILL.md`、根目錄 `hooks.json`(agy 格式:具名條目)→ `agy plugin validate` 通過 → `agy plugin install <dir>` 複製到 `~/.gemini/config/plugins/<name>`。在未信任的暫存 repo 跑 `agy -p`:答出 skill 的暗號;plugin 的 Stop hook 有執行,cwd 是 plugin 資料夾、`PLUGIN_ROOT` 有值 | 使用者層級 skill 也可放 `~/.gemini/config/skills/<name>/`(agy 說明文字)。`hooks/hooks.json` 這個位置 agy 不讀 |
+| G4 Claude Code plugin | 0.19.0 已有(A9,smoke 52);本機沒裝,未重測 | — |
 
-1. **Codex 全域 hook 的信任是按序號記的**:`~/.codex/config.toml` 有 `[hooks.state."~/.codex/hooks.json:stop:0:0"]` 這類鍵
-   (TRAPS `codex-hook-entry-change-silently-untrusted`:條目內容或序號一變,那條就默默變回未信任)。Orca 每個事件都寫在
-   群組 0;flightwake 若附加成群組 1,而 Orca 之後重寫檔案時改了順序或丟掉別人的群組,兩邊都可能默默失效。要先探 Orca 何時、
-   怎麼重寫這個檔。
-2. **語言**:hook 腳本的訊息語言是安裝時蓋上去的(`const LANG`)。全域只有一份,要改成執行時讀該 repo 標記的 `lang=`。
-3. **重複提示**:repo 自己有一份、全域也有一份時要只響一次。Claude Code plugin 模式已做到(`--plugin`:repo 自己登記了就安靜,
-   smoke 52);全域版沿用同一個判斷。
-4. **別人 clone**:沒裝全域的人拿到的 repo 只有紀錄與規則,沒有 skill 與提醒。規則區塊要寫明「沒有 `/fw-coldstart` 時跑
-   `npx flightwake global install` 或 `npx flightwake update`(改成 repo 安裝)」。
-5. **從 repo 安裝改成全域**:現在 `update --plugin` 不會移除 repo 裡既有的 `.claude/skills/fw-*` 與 hook 條目(doctor 只警告重複)。
-   遷移要能拿掉 repo 那份;Codex 的 repo hook 條目拿掉不影響信任,加回來才要重新信任。
+## 修正後的形狀
 
-## 預計形狀(探針後再定)
+`npx flightwake global install [--lang=…] [--agents=claude,codex,agy]`:
+1. 依語言在 `~/.flightwake/plugin/` 產生一份 plugin(該語言的四個 skill、兩支 hook 腳本與 traps-core、三家的 manifest:
+   `.claude-plugin/`、`.codex-plugin/`、agy 的 `plugin.json` + 根目錄 `hooks.json`)。順便解決 A9 的 plugin 只有英文。
+2. 用各家自己的指令安裝:`claude plugin marketplace add` + `claude plugin install`、`codex plugin marketplace add` +
+   `codex plugin add`、`agy plugin install`。
+3. hook 指令字串固定(`node "${PLUGIN_ROOT}/…" --plugin`),`global update` 只換腳本與 skill 內容,Codex 的信任不會掉。
 
-- `npx flightwake global install | update | uninstall | status`:把 skills 與 hooks 裝到使用者層級(Claude Code 走 plugin;
-  Codex、agy 依探針結果),腳本放在 `~/.flightwake/hooks/`(fleetBase,與 registry 同一處),`update` 只換腳本內容、條目不動。
-- repo 端:`init --global`(標記 `global=1`,比照 `plugin=1`)只裝 `.flightwake/`、規則區塊、agy 規則;`update` 沿用。
-- `update --all` 對 `global=1` 的 repo 只刷新規則區塊與範本。
+`global update` = 重新產生 + 各家重裝;`global uninstall` = 各家移除。repo 端的 `init --global`(標記 `global=1`)與
+`update --all` 對 `global=1` 的 repo 只刷新規則區塊與範本。hook 腳本的 `--plugin` 模式要改:Codex 下檢查 `.codex/hooks.json`、agy 下檢查
+`.agents/hooks.json` 是否已有 repo 自己那份(現在只看 `.claude/settings*.json`);trap-check 的 host 由參數決定(各家 manifest 指不同的 hooks 檔)。
 
-## 探針(都需要 Kai 同意:會動使用者層級設定)
+## 仍要處理的風險
 
-| # | 問題 | 做法 | 會動到 |
-|---|---|---|---|
-| G1 | Codex 是否載入 `~/.codex/skills/fw-*`(`$fw-coldstart` 可點名) | 放一個探針 skill,開 Codex TUI 點名 | `~/.codex/skills/`(探完移除) |
-| G2 | Codex 全域 hook 在沒信任的 repo 與已信任的 repo 是否都跑;新增群組 1 是否要求信任、Orca 重啟後是否還在 | 備份 `~/.codex/hooks.json` 與 `config.toml`,附加探針群組,重啟 Orca 前後比對 | `~/.codex/hooks.json`、`config.toml`(備份、探完還原) |
-| G3 | agy 是否讀 `~/.gemini/skills/`,有沒有使用者層級 hooks | 查 agy 文件 + 放探針 skill | `~/.gemini/skills/`(探完移除) |
-| G4 | Claude Code plugin 與 repo 安裝並存時只響一次(已有 smoke 52),本機實裝 plugin 後真機看一次 | `claude plugin install`(市集)| `~/.claude/settings.json` |
+- **別人 clone**:沒裝全域的人拿到的 repo 只有紀錄與規則。規則區塊要寫明「沒有 fw-coldstart 時跑 `npx flightwake global install`,
+  或 `npx flightwake update` 改成 repo 安裝」。
+- **從 repo 安裝改成全域**:現在 `update --plugin` 不移除 repo 裡既有的 skills 與 hook 條目(doctor 只警告重複)。遷移要能拿掉
+  repo 那份;Codex 的 repo hook 條目拿掉不影響信任,加回來才要重新信任。
+- **重複提示**:repo 自己有一份、全域也有一份時只響一次(Claude Code 已做到,smoke 52;Codex、agy 要補上述判斷)。
 
 ## 待 Kai 決定
 
 - 全域模式是否只給自己的機器用(預設 repo 安裝不變),還是之後要讓 `setup` 推薦它。
-- G2 動到 Orca 管理的 `~/.codex/hooks.json`;不想碰的話,Codex 先維持 repo 安裝,用 `update --all` 升級。
+- G2 剩下的一步要 Kai 在 Codex 介面裡信任探針 hook(`/hooks`),才能看到它實際執行。
